@@ -78,6 +78,10 @@ program
   )
   .option("--overwrite", "Overwrite existing spec directory when using template")
   .option("--append", "Only add missing files when using template")
+  .option(
+    "--governance-repo <url>",
+    "Git URL of governance constraints repo to clone into .trellis/spec/governance/",
+  )
   .action(async (options: Record<string, unknown>) => {
     try {
       await init(options);

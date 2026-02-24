@@ -29,6 +29,7 @@ import { initializeHashes } from "../utils/template-hash.js";
 import {
   fetchTemplateIndex,
   downloadTemplateById,
+  downloadGovernanceRepo,
   type TemplateStrategy,
 } from "../utils/template-fetcher.js";
 
@@ -302,6 +303,7 @@ interface InitOptions {
   template?: string;
   overwrite?: boolean;
   append?: boolean;
+  governanceRepo?: string;
 }
 
 // Compile-time check: every CliFlag must be a key of InitOptions.
@@ -591,6 +593,21 @@ export async function init(options: InitOptions): Promise<void> {
       createBootstrapTask(cwd, developerName, projectType);
     } catch {
       // Silent failure - user can run init_developer.py manually
+    }
+  }
+
+  // Download governance constraints from custom repo (if specified)
+  if (options.governanceRepo) {
+    console.log(chalk.blue("🔒 Downloading governance constraints..."));
+    try {
+      downloadGovernanceRepo(cwd, options.governanceRepo);
+      console.log(chalk.green("   Governance constraints downloaded."));
+    } catch (error) {
+      console.log(
+        chalk.yellow(
+          `   Failed to download governance repo: ${error instanceof Error ? error.message : error}`,
+        ),
+      );
     }
   }
 

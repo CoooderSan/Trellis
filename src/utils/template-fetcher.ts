@@ -5,6 +5,7 @@
  * https://github.com/mindfold-ai/docs/tree/main/marketplace
  */
 
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -162,6 +163,28 @@ async function copyMissing(src: string, dest: string): Promise<void> {
       // Only copy if file doesn't exist
       await fs.promises.copyFile(srcPath, destPath);
     }
+  }
+}
+
+/**
+ * Download governance constraints from a custom git repository.
+ * Clones on first run, pulls on subsequent runs.
+ * Copies the repo's `spec/` directory into `.trellis/spec/governance/`.
+ */
+export function downloadGovernanceRepo(cwd: string, repoUrl: string): void {
+  const cacheDir = path.join(os.homedir(), ".cache", "trellis-governance");
+  const targetDir = path.join(cwd, ".trellis", "spec", "governance");
+
+  if (!fs.existsSync(cacheDir)) {
+    execSync(`git clone ${repoUrl} ${cacheDir}`, { stdio: "pipe" });
+  } else {
+    execSync(`git -C ${cacheDir} pull`, { stdio: "pipe" });
+  }
+
+  fs.mkdirSync(targetDir, { recursive: true });
+  const specDir = path.join(cacheDir, "spec");
+  if (fs.existsSync(specDir)) {
+    fs.cpSync(specDir, targetDir, { recursive: true });
   }
 }
 
