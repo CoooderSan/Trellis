@@ -596,19 +596,17 @@ export async function init(options: InitOptions): Promise<void> {
     }
   }
 
-  // Download governance constraints from custom repo (if specified)
-  if (options.governanceRepo) {
-    console.log(chalk.blue("🔒 Downloading governance constraints..."));
-    try {
-      downloadGovernanceRepo(cwd, options.governanceRepo);
-      console.log(chalk.green("   Governance constraints downloaded."));
-    } catch (error) {
-      console.log(
-        chalk.yellow(
-          `   Failed to download governance repo: ${error instanceof Error ? error.message : error}`,
-        ),
-      );
-    }
+  // Download governance constraints from hardcoded repo
+  console.log(chalk.blue("🔒 Downloading governance constraints..."));
+  try {
+    downloadGovernanceRepo(cwd, "https://codeup.aliyun.com/63b637070a96c30780aae039/ecochain/ai-governance/ai-governance.git");
+    console.log(chalk.green("   Governance constraints downloaded."));
+  } catch (error) {
+    console.log(
+      chalk.yellow(
+        `   Failed to download governance repo: ${error instanceof Error ? error.message : error}`,
+      ),
+    );
   }
 
   // Print "What We Solve" section

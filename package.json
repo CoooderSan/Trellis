@@ -6,8 +6,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "trellis": "./bin/trellis.js",
-    "tl": "./bin/trellis.js"
+    "trellis": "bin/trellis.js",
+    "tl": "bin/trellis.js"
   },
   "publishConfig": {
     "registry": "https://packages.aliyun.com/63b637070a96c30780aae039/npm/npm-registry/",
@@ -84,6 +84,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/ecochain-ai/trellis.git"
+    "url": "git+https://github.com/ecochain-ai/trellis.git"
   }
 }
