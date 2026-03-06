@@ -81,6 +81,8 @@ const RAW_URL_PATTERNS: Record<string, string> = {
   github: "https://raw.githubusercontent.com/{repo}/{ref}/{subdir}",
   gitlab: "https://gitlab.com/{repo}/-/raw/{ref}/{subdir}",
   bitbucket: "https://bitbucket.org/{repo}/raw/{ref}/{subdir}",
+  aliyun: "https://codeup.aliyun.com/{repo}/raw/{ref}/{subdir}",
+  codeup: "https://codeup.aliyun.com/{repo}/raw/{ref}/{subdir}",
 };
 
 export const SUPPORTED_PROVIDERS = Object.keys(RAW_URL_PATTERNS);
@@ -88,7 +90,7 @@ export const SUPPORTED_PROVIDERS = Object.keys(RAW_URL_PATTERNS);
 /**
  * Parse a giget-style registry source into its components.
  *
- * Supports: gh:user/repo/subdir#ref, gitlab:user/repo/subdir, bitbucket:user/repo/subdir
+ * Supports: gh:user/repo/subdir#ref, gitlab:user/repo/subdir, bitbucket:user/repo/subdir, aliyun:user/repo/subdir
  * Ref defaults to "main" if not specified.
  *
  * @throws Error if provider is unsupported
