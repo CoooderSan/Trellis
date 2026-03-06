@@ -1,6 +1,6 @@
 # Platform Integration Guide
 
-How to add support for a new AI CLI platform (like Claude Code, Cursor, OpenCode, iFlow).
+How to add support for a new AI CLI platform (like Claude Code, Cursor, Gemini CLI, OpenCode, iFlow, Codex, Kilo, Kiro, Qoder).
 
 ---
 
@@ -74,7 +74,7 @@ When adding a new platform `{platform}`, update the following:
 
 > Note: OpenCode uses JS plugins instead of Python hooks, has no `index.ts` template module, and has no `collectTemplates` — so `trellis update` does not track OpenCode template files. If a new platform uses JS plugins, follow this pattern.
 
-**Skills pattern** (Codex):
+**Skills pattern** (Codex, Kiro, Qoder):
 
 | Directory | Contents |
 |-----------|----------|
@@ -82,22 +82,99 @@ When adding a new platform `{platform}`, update the following:
 | `src/templates/{platform}/index.ts` | Export functions for listing skills |
 | `src/templates/{platform}/skills/<skill-name>/SKILL.md` | Skill definitions |
 
-> Note: Codex uses skills (not slash commands). Skill content should use `$<skill-name>` / `/skills` semantics, not `/trellis:*` syntax.
+> Note: Codex/Kiro/Qoder use skills (not slash commands). Skill content should use `$<skill-name>` / `/skills` semantics, not `/trellis:*` syntax. Qoder skills use YAML frontmatter (`---\nname: ...\n---`) at the top of each SKILL.md.
+
+**Commands-only pattern** (Cursor):
+
+| Directory | Contents |
+|-----------|----------|
+| `src/templates/{platform}/` | Root directory |
+| `src/templates/{platform}/index.ts` | Export `getAllCommands(): CommandTemplate[]` |
+| `src/templates/{platform}/commands/` | Slash commands (`.md` files) |
+
+> Note: Cursor uses flat prefix naming (`trellis-start.md` → `/trellis-start`). No hooks, no agents, no settings.
+
+**Workflows pattern** (Kilo):
+
+| Directory | Contents |
+|-----------|----------|
+| `src/templates/{platform}/` | Root directory |
+| `src/templates/{platform}/index.ts` | Export `getAllWorkflows(): WorkflowTemplate[]` |
+| `src/templates/{platform}/workflows/` | Workflow files (`.md` files) |
+
+> Note: Kilo uses flat workflow directory (`workflows/start.md` → `/start`). No hooks, no agents, no settings.
+
+**TOML commands pattern** (Gemini CLI):
+
+| Directory | Contents |
+|-----------|----------|
+| `src/templates/{platform}/` | Root directory |
+| `src/templates/{platform}/index.ts` | Export `getAllCommands(): CommandTemplate[]` (filter `.toml` not `.md`) |
+| `src/templates/{platform}/commands/trellis/` | Slash commands (`.toml` files) |
+
+> Note: Gemini CLI is the first platform using TOML for commands instead of Markdown. TOML format: `description = "..."` + `prompt = """..."""`. Subdirectory namespacing works the same as Claude (`commands/trellis/start.toml` → `/trellis:start`). When creating TOML templates, use triple-quoted strings (`"""`) for multi-line prompts.
+
+**Workflows pattern** (Antigravity):
+
+| Directory | Contents |
+|-----------|----------|
+| `src/templates/{platform}/` | Root directory |
+| `src/templates/{platform}/index.ts` | Export `getAllWorkflows(): WorkflowTemplate[]` |
+
+> Note: Antigravity has no physical template files — workflow content is **derived from Codex skills at runtime** via `adaptSkillContentToWorkflow()`. The config dir is `.agent/workflows` (not `.agent/`). Workflows are triggered with `/workflow-name` slash commands. When adding a new Codex skill, Antigravity automatically picks it up.
+
+**Required commands/skills**: All platforms must include the following (adapted to each platform's format):
+
+| Command | Purpose | Required |
+|---------|---------|----------|
+| `start` | Session initialization | Yes |
+| `finish-work` | Pre-commit checklist | Yes |
+| `brainstorm` | Requirements discovery | Yes |
+| `break-loop` | Post-debug analysis | Yes |
+| `record-session` | Session recording | Yes |
+| `before-backend-dev` | Read backend guidelines | Yes |
+| `before-frontend-dev` | Read frontend guidelines | Yes |
+| `check-backend` | Check backend code quality | Yes |
+| `check-frontend` | Check frontend code quality | Yes |
+| `check-cross-layer` | Cross-layer verification | Yes |
+| `create-command` | Create new slash command | Yes |
+| `integrate-skill` | Integrate external skill | Yes |
+| `onboard` | Team onboarding guide | Yes |
+| `update-spec` | Update code-spec docs | Yes |
+| `parallel` | Multi-agent parallel work | Optional (platform capability) |
+| `migrate-specs` | Migrate spec versions | Optional |
+
+> **Rule**: When a new command is added to any platform, it must be added to ALL platforms. Check `src/templates/claude/commands/trellis/` as the reference list.
 
 ### Step 5: Template Extraction
 
 | File | Change |
 |------|--------|
-| `src/templates/extract.ts` | Add `get{Platform}TemplatePath()` function |
+| `src/templates/extract.ts` | Add `get{Platform}TemplatePath()` function + `get{Platform}SourcePath()` deprecated alias |
 
 ### Step 6: Python Scripts (independent runtime)
+
+> **Warning**: `cli_adapter.py` uses if/elif/else chains with NO exhaustive check. New platforms silently fall through to the `else` branch (Claude defaults). You MUST add explicit branches for **every method** listed below.
 
 | File | Change |
 |------|--------|
 | `src/templates/trellis/scripts/common/cli_adapter.py` | Add to `Platform` literal type, `config_dir_name` property, `detect_platform()`, `get_cli_adapter()` validation |
+
+**cli_adapter.py methods requiring explicit branches** (do NOT rely on `else` fallthrough):
+
+| Method | What to decide | Example |
+|--------|---------------|---------|
+| `config_dir_name` | Config directory name | `".gemini"`, `".agent"` |
+| `get_trellis_command_path()` | Command file path format | `.toml` vs `.md`, subdirectory vs flat |
+| `get_non_interactive_env()` | Non-interactive env var | `{}` if none, or platform-specific |
+| `build_run_command()` | CLI command for running agents | `["gemini", prompt]` or raise ValueError |
+| `build_resume_command()` | CLI command for resuming sessions | `["gemini", "--resume", id]` or raise ValueError |
+| `cli_name` | CLI executable name | `"gemini"`, `"agy"` |
+| `detect_platform()` | Directory detection logic | Check `.gemini/` exists |
+| `get_commands_path()` | Command directory structure | `commands/trellis/` or `workflows/` |
 | `src/templates/trellis/scripts/common/registry.py` | Update default platform if needed |
-| `src/templates/trellis/scripts/multi_agent/plan.py` | Add to `--platform` choices (only if this platform supports multi-agent runtime) |
-| `src/templates/trellis/scripts/multi_agent/start.py` | Add to `--platform` choices (only if this platform supports multi-agent runtime) |
+| `src/templates/trellis/scripts/multi_agent/plan.py` | Add to `--platform` choices **only if** `build_run_command()` returns a valid command (not `raise ValueError`) |
+| `src/templates/trellis/scripts/multi_agent/start.py` | Add to `--platform` choices **only if** `build_run_command()` returns a valid command (not `raise ValueError`) |
 | `src/templates/trellis/scripts/multi_agent/status.py` | Add platform-specific behavior if needed (only if supported) |
 
 > Note: Python scripts run in user projects at runtime — they cannot import from the TS registry and maintain their own registry in `cli_adapter.py`.
@@ -135,6 +212,18 @@ If Trellis project itself should support the new platform:
 |------|--------|
 | `.gitignore` | Add local config patterns (e.g., `{platform}.local.json`) |
 
+### Step 11: Tests (MANDATORY)
+
+> **Warning**: Dynamic iteration tests (e.g., `PLATFORM_IDS.forEach`) only verify registry metadata. They do NOT cover platform-specific runtime behavior. You MUST add explicit tests.
+
+| Test File | What to Add |
+|-----------|-------------|
+| `test/templates/{platform}.test.ts` | **NEW FILE**: Verify `getAllCommands()`/`getAllSkills()`/`getAllWorkflows()` returns expected set, content non-empty, format valid |
+| `test/configurators/platforms.test.ts` | Detection test: `getConfiguredPlatforms` finds `.{configDir}`. Configurator test: `configurePlatform` writes expected files, no compiled artifacts |
+| `test/commands/init.integration.test.ts` | Init test: `init({ {platform}: true })` creates correct directory. Negative assertions: add `.{configDir}` checks to existing platform tests |
+| `test/templates/extract.test.ts` | `get{Platform}TemplatePath()` returns existing dir. `get{Platform}SourcePath()` deprecated alias equals template path |
+| `test/regression.test.ts` | Platform registration: `AI_TOOLS.{platform}` exists with correct `configDir`. cli_adapter: `commonCliAdapter` contains `"{platform}"` and `".{configDir}"`. Update `withTracking` list if `collectTemplates` is defined |
+
 ---
 
 ## What You DON'T Need to Update
@@ -156,15 +245,20 @@ These are now **automatically derived** from the registry:
 
 ## Command Format by Platform
 
-| Platform | Command Format | Example |
-|----------|---------------|---------|
-| Claude Code | `/trellis:xxx` | `/trellis:start` |
-| Cursor | `/trellis-xxx` | `/trellis-start` |
-| OpenCode | `/trellis:xxx` | `/trellis:start` |
-| iFlow | `/trellis:xxx` | `/trellis:start` |
-| Codex | `$<skill-name>` / `/skills` | `$start` |
+| Platform | Command Format | File Format | Example |
+|----------|---------------|-------------|---------|
+| Claude Code | `/trellis:xxx` | Markdown (`.md`) | `/trellis:start` |
+| Cursor | `/trellis-xxx` | Markdown (`.md`) | `/trellis-start` |
+| OpenCode | `/trellis:xxx` | Markdown (`.md`) | `/trellis:start` |
+| iFlow | `/trellis:xxx` | Markdown (`.md`) | `/trellis:start` |
+| Gemini CLI | `/trellis:xxx` | TOML (`.toml`) | `/trellis:start` |
+| Kilo | `/<workflow-name>` | Markdown (`.md`) | `/start` |
+| Codex | `$<skill-name>` / `/skills` | Markdown (`SKILL.md`) | `$start` |
+| Kiro | `$<skill-name>` / `/skills` | Markdown (`SKILL.md`) | `$start` |
+| Qoder | `$<skill-name>` / `/skills` | Markdown (`SKILL.md`) | `$start` |
+| Antigravity | `/<workflow-name>` | Markdown (`.md`) | `/start` |
 
-When creating platform templates, ensure references match the platform's interaction format.
+When creating platform templates, ensure references match the platform's interaction format and file format.
 
 ---
 
@@ -217,6 +311,16 @@ if sys.platform == "win32":
 
 **Fix**: Keep `src/templates/codex/skills/<skill-name>/SKILL.md` complete; when removing a skill, delete both `SKILL.md` and the directory.
 
+### EXCLUDE_PATTERNS missing `.js` in configurator
+
+**Symptom**: In production builds (`dist/`), `trellis init` copies compiled `index.js` (and `.js.map`, `.d.ts`) into the user's config directory (e.g., `.gemini/index.js`).
+
+**Cause**: The configurator's `EXCLUDE_PATTERNS` doesn't filter out `.js` files. In development (`src/`), only `.ts` files exist so the issue is invisible. In production, `tsc` compiles `index.ts` → `index.js` into `dist/templates/{platform}/`, and `copyDirFiltered` copies it.
+
+**Fix**: Ensure `EXCLUDE_PATTERNS` includes `.js`, `.js.map`, `.d.ts`, `.d.ts.map` — matching the Cursor configurator pattern. The Claude configurator correctly excludes these; copy from there.
+
+**Prevention**: When creating a new configurator, copy the full `EXCLUDE_PATTERNS` from an existing one (e.g., `cursor.ts`), don't write from scratch.
+
 ### Missing CLI flag or InitOptions field
 
 **Symptom**: `trellis init --{platform}` doesn't work.
@@ -239,16 +343,103 @@ if sys.platform == "win32":
 
 **Fix**: Ensure every file listed in `collectTemplateFiles()` is actually created during `init`. If a file is project-specific (not a user template), do not include it in the update template list.
 
-### iFlow getAllCommands() reads wrong directory level (known gap)
+### Project-type-conditional content not gated in init or update
 
-**Symptom**: `trellis update` tracks zero iFlow commands — commands are correctly copied during `init` but not tracked for update diffs.
+**Symptom**: Pure backend project gets empty frontend spec templates after `trellis init`. After user deletes the unwanted `spec/frontend/` dir, `trellis update` recreates it.
 
-**Cause**: iFlow `getAllCommands()` calls `listFiles("commands")` which returns `["trellis"]` (a directory, not `.md` files). Claude's version correctly reads `listFiles("commands/trellis")`.
+**Cause (init)**: `createSpecTemplates()` in `workflow.ts` received `projectType` but ignored it (parameter named `_projectType`). All project types got both backend and frontend spec dirs.
 
-**Impact**: Low — iFlow commands are still correctly installed during `init` (recursive directory copy). They just won't be updated by `trellis update` if templates change.
+**Cause (update)**: `collectTemplateFiles()` in `update.ts` unconditionally included all 13 backend + frontend spec files in the template map, without checking whether `spec/backend/` or `spec/frontend/` actually existed on disk.
+
+**Fix (init)**: Use `projectType` to conditionally create spec dirs:
+- `"backend"` → guides + backend only
+- `"frontend"` → guides + frontend only
+- `"fullstack"` / `"unknown"` → guides + both
+
+**Fix (update)**: Wrap backend/frontend spec file blocks in `fs.existsSync()` checks (same pattern as `getConfiguredPlatforms()` for platform dirs).
+
+**Rule**: When init creates content conditionally based on project type, update must check for directory existence before including files in its template map. The two paths must agree.
+
+### iFlow getAllCommands() reads wrong directory level (FIXED)
+
+**Symptom**: `trellis update` tracked zero iFlow commands — commands were correctly copied during `init` but not tracked for update diffs.
+
+**Cause**: iFlow `getAllCommands()` called `listFiles("commands")` which returned `["trellis"]` (a directory, not `.md` files). Fixed to read `listFiles("commands/trellis")`.
+
+**Status**: Fixed — `getAllCommands()` now reads from correct subdirectory.
+
+### PRD assumed platform capabilities without research
+
+**Symptom**: Implementation builds the wrong abstraction (e.g., commands instead of skills, or vice versa). Requires major rework after discovery.
+
+**Cause**: PRD was written based on assumptions about how a platform works (e.g., "Trae uses commands like Kilo") without verifying against official documentation or GitHub repos.
+
+**Fix**: Before writing the PRD for a new platform, research the platform's actual extension mechanism:
+- Check official docs for supported formats (skills, commands, rules, workflows)
+- Check the platform's GitHub repo for directory structure conventions
+- Verify how users invoke extensions (slash command, AI-automatic matching, manual mention)
+
+**Prevention**: Add a "Research" step before PRD finalization. The PRD should cite sources for platform capability claims.
+
+### Added IDE-only platform to multi-agent --platform choices
+
+**Symptom**: `python3 plan.py --platform {platform}` accepts the value but fails at `build_run_command()` because the platform has no CLI executable.
+
+**Cause**: Platform was added to `plan.py`/`start.py` `--platform` choices without checking if it supports CLI agents. IDE-only platforms (e.g., Trae, Codex, Kiro) cannot run headless CLI agents.
+
+**Fix**: Only add platforms to `--platform` choices in `plan.py`/`start.py` if they have `supports_cli_agents: true` (i.e., `build_run_command` does NOT raise `ValueError`).
+
+**Rule**: The `--platform` choices in multi-agent scripts should match platforms where `build_run_command()` returns a valid command, not all platforms in the registry.
+
+### Updated command content but forgot other platforms
+
+**Symptom**: After updating `record-session.md` in Claude's template, other platforms (iFlow, Kilo, OpenCode, Gemini) still use old content (e.g., missing `--mode record` flag, outdated command reference table).
+
+**Cause**: Command templates with identical content exist across multiple platforms. Updating one platform's version without syncing others leaves them inconsistent.
+
+**Fix**: After modifying any command template content, check ALL platforms that have the same command:
+
+```bash
+# Find all platforms with this command
+find src/templates/*/commands/trellis/ -name "record-session.*"
+```
+
+**Key distinction**:
+- "Add new command to all platforms" → covered by the Required Commands table above
+- "Update existing command content across platforms" → THIS mistake. Content changes (new flags, rewritten steps, updated reference tables) must propagate to every platform's copy.
+
+**Note**: Gemini uses `.toml` format — content must be adapted (triple-quoted strings, `\\` line continuations). All other platforms use `.md`.
+
+### Stale platform references in copied templates
+
+**Symptom**: A Qoder skill references "Claude Code" syntax or a Kiro-specific invocation pattern.
+
+**Cause**: When creating templates for a new platform by copying from an existing one, platform-specific references (command syntax, platform names, invocation instructions) weren't updated.
+
+**Fix**: After copying templates, search-and-replace all references to the source platform. Check for:
+- Platform name mentions (e.g., "Claude Code", "Kiro")
+- Command invocation syntax (e.g., `/trellis:xxx` vs `$skill-name`)
+- Config directory references (e.g., `.claude/` vs `.qoder/`)
+
+
+
+**Symptom**: `trellis update` creates iFlow commands at `.iflow/commands/{name}.md` (flat) instead of `.iflow/commands/trellis/{name}.md` (correct).
+
+**Cause**: When commands migrated from flat to `trellis/` subdirectory, `configure()` uses recursive directory copy (automatically correct), but `collectTemplates()` manually constructs paths with `files.set()` (requires manual update). The iFlow `collectTemplates` was not updated — it produced `.iflow/commands/${cmd.name}.md` instead of `.iflow/commands/trellis/${cmd.name}.md`.
+
+**Fix**: Add `trellis/` to the path in iFlow's `collectTemplates` (line 111 of `configurators/index.ts`).
+
+**Design insight**: `configure()` and `collectTemplates()` use asymmetric mechanisms to produce the same file set — one recursive copies a directory tree, the other manually lists `files.set()` calls. This asymmetry makes path drift likely during structural migrations. When migrating directory structures, always check both paths.
+
+**Regression test**: `regression.test.ts` now verifies all platforms with commands use `/commands/trellis/` in their `collectTemplates` paths.
 
 ---
 
-## Reference PR
+## Reference PRs
 
-See PR #22 (iFlow CLI support) for a complete example of adding a new platform.
+| PR | Platform | Pattern | Notes |
+|----|----------|---------|-------|
+| #22 | iFlow CLI | Standard (hooks + agents) | Full platform with Python hooks |
+| feat/gemini branch | Gemini CLI | TOML commands-only | First non-Markdown command format, Cursor-level minimal |
+| main | Antigravity | Workflows (derived from Codex) | No physical templates — runtime adaptation from Codex skills |
+| #71 | Qoder | Skills (like Codex/Kiro) | Skills with YAML frontmatter; Trae was dropped (IDE-only, no deterministic invocation trigger) |

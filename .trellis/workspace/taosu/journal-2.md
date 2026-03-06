@@ -1009,3 +1009,955 @@ Enhanced `/trellis:brainstorm` command with major workflow improvements.
 ### Next Steps
 
 - None - task complete
+
+
+## Session 50: PR Review: Kilo #40 + Kiro #43 Platform Integration
+
+**Date**: 2026-02-24
+**Task**: PR Review: Kilo #40 + Kiro #43 Platform Integration
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+
+## Summary
+
+Reviewed, fixed, and merged two community PRs adding new platform support (Kilo CLI #40 and Kiro Code #43). Also synced the docs project with current Trellis state.
+
+## PR #40 — Kilo CLI (external contributor: Xintong120)
+
+- Reviewed against platform-integration spec, posted review comment
+- Pushed fixes directly to contributor's branch (maintainerCanModify):
+  - Added missing `brainstorm.md` command
+  - Fixed `create-command.md` referencing wrong paths (.cursor/.opencode → .kilocode)
+  - Added `test/templates/kilo.test.ts` with full command list verification
+- Merged to main
+
+## PR #43 — Kiro Code (team: KleinHE)
+
+- Rebased onto latest main (post-Kilo merge), resolved 9 file conflicts
+- Replaced Codex template reuse with independent skill templates:
+  - Copied 14 skills to `src/templates/kiro/skills/`
+  - Fixed `.agents/skills/` → `.kiro/skills/` in create-command and integrate-skill
+  - Rewrote `kiro/index.ts` to read from own directory
+- Added brainstorm to test, added path-leak test
+- 337 tests passing, pushed for merge
+
+## Docs Project Updates
+
+- Updated FAQ with per-platform getting started guide (5 platforms)
+- Updated commands.mdx (added brainstorm, check-cross-layer, create-command, integrate-skill)
+- Updated quickstart.mdx (platform flags, useful flags, trellis update)
+- Updated multi-agent.mdx (5 platforms, 6-agent pipeline)
+- Filled all missing changelogs (beta.9-16, rc.0-rc.5, 28 files)
+- Fixed markdownlint MD036 errors
+
+**Key Files**:
+- `src/templates/kiro/` — new platform templates
+- `src/templates/kilo/` — new platform templates
+- `test/templates/kilo.test.ts` — kilo command verification
+- `test/templates/kiro.test.ts` — kiro skill verification
+- `docs/guides/faq.mdx` — per-platform getting started
+- `docs/changelog/` — 28 new changelog files
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `af9cd7d` | (see git log) |
+| `57edf20` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 51: Fix init-context phantom paths & bootstrap task enhancement
+
+**Date**: 2026-02-24
+**Task**: Fix init-context phantom paths & bootstrap task enhancement
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+
+| Change | Description |
+|--------|-------------|
+| Bootstrap task PRD | Step 0 expanded from 6 to 13 AI config file formats (Windsurf, Cline, Roo Code, aider, VS Code Copilot, etc.) |
+| init-context defaults | Removed 4 non-existent hardcoded paths (spec/shared/index.md, backend/api-module.md, backend/quality.md, frontend/components.md) |
+| Agent templates | Replaced spec/shared/ references with spec/guides/ in 4 implement/research agent templates |
+| Design decision | Only inject index.md entry points — users may rename/delete spec files freely |
+
+**Updated Files**:
+- `src/commands/init.ts` — bootstrap task Step 0 comprehensive AI config file table
+- `src/templates/trellis/scripts/task.py` — removed phantom paths from init-context generators
+- `src/templates/claude/agents/implement.md` — spec/shared → spec/guides
+- `src/templates/iflow/agents/implement.md` — spec/shared → spec/guides
+- `src/templates/opencode/agents/implement.md` — spec/shared → spec/guides
+- `src/templates/opencode/agents/research.md` — spec/shared → spec/guides
+
+**Bug context**: User reported `validate` failing because init-context injected `.trellis/spec/shared/index.md` which was never created by `trellis init`.
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `20fe241` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 52: Restructure Task Workflow into 3 Phases
+
+**Date**: 2026-02-26
+**Task**: Restructure Task Workflow into 3 Phases
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## What was done
+
+Restructured the start/brainstorm workflow so that Research happens AFTER PRD is confirmed, not before.
+
+### Problem
+Old linear Step 1→9 flow had:
+- Research (Step 2) before PRD existed for brainstorm path
+- Redundant Create Task Dir (Step 3) and Write PRD (Step 5) when coming from brainstorm
+- Codex/Kiro output files incorrectly contained `Task()` sub-agent calls
+
+### Solution
+Restructured into 3 Phases:
+- **Phase 1**: Establish Requirements (Path A: brainstorm skips; Path B: simple task creates dir + PRD)
+- **Phase 2**: Prepare for Implementation (shared: depth check → research → configure context → activate)
+- **Phase 3**: Execute (shared: implement → check → complete)
+
+### Files changed (19 total)
+
+**Source templates** (14 files):
+- `src/templates/*/start.md` — 7 platforms restructured
+- `src/templates/*/brainstorm.md` — 7 platforms integration section updated
+
+**Output files** (5 files):
+- `.claude/commands/trellis/start.md` + `brainstorm.md`
+- `.agents/skills/start/SKILL.md` + `brainstorm/SKILL.md`
+- `.cursor/commands/trellis-start.md`
+
+### Platform style distinction preserved
+- Sub-agent style (claude, iflow, kilo, opencode): keeps `Task()` calls
+- Self-driven style (codex, kiro, cursor): no `Task()` calls, AI does work directly
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6bfc0dc` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 53: feat: Gemini CLI platform support (Cursor-level)
+
+**Date**: 2026-02-26
+**Task**: feat: Gemini CLI platform support (Cursor-level)
+
+### Summary
+
+Added Gemini CLI as a first-class Trellis platform with TOML command templates
+
+### Main Changes
+
+## What Was Done
+
+Added Gemini CLI (Google's AI coding CLI) as the 8th supported Trellis platform, at Cursor-level (commands only, no hooks/agents/settings).
+
+### Key Decisions
+- **TOML format**: Gemini CLI is the first platform using `.toml` instead of `.md` for commands
+- **Subdirectory namespacing**: `commands/trellis/start.toml` → `/trellis:start` (same as Claude)
+- **Direct TOML templates**: Independent `.toml` files per command (not runtime conversion from Markdown)
+- **defaultChecked: false**: New platform, users opt-in explicitly
+
+### Changes (5 commits, 24 files)
+
+| Commit | Scope | Files |
+|--------|-------|-------|
+| `ec6114a` | Type definitions + registry | `src/types/ai-tools.ts` |
+| `698a77b` | TOML templates + path resolution | 14 `.toml` files + `gemini/index.ts` + `extract.ts` |
+| `9758468` | Configurator + CLI + registration | `gemini.ts` + `index.ts` + `cli/index.ts` + `init.ts` |
+| `927856a` | Python cli_adapter | `cli_adapter.py` |
+| `3c39d08` | Documentation | `README.md` + `README_CN.md` |
+
+### Spec Updated
+- `.trellis/spec/backend/platform-integration.md` — Added TOML commands pattern, commands-only pattern, updated Command Format table, added EXCLUDE_PATTERNS gotcha
+
+### Quality
+- Lint: 0 errors
+- TypeCheck: 0 errors
+- Tests: 337/337 passed
+- Check Agent found and fixed: missing `.js` in EXCLUDE_PATTERNS (production build artifact leak)
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ec6114a` | (see git log) |
+| `698a77b` | (see git log) |
+| `9758468` | (see git log) |
+| `927856a` | (see git log) |
+| `3c39d08` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 54: feat: Gemini CLI platform support (complete)
+
+**Date**: 2026-02-26
+**Task**: feat: Gemini CLI platform support (complete)
+
+### Summary
+
+Added Gemini CLI as 8th Trellis platform with full tests and spec updates
+
+### Main Changes
+
+## What Was Done
+
+Added Gemini CLI (Google's AI coding CLI) as the 8th supported Trellis platform, at Cursor-level (commands only, no hooks/agents/settings). Then fixed gaps found by comparing with PR #47 (Antigravity).
+
+### Phase 1: Core Implementation (commits 1-4)
+- Type definitions + AI_TOOLS registry (`ai-tools.ts`)
+- 14 TOML command templates in `src/templates/gemini/commands/trellis/`
+- Template path resolution + deprecated alias (`extract.ts`)
+- Configurator using copyDirFiltered (`gemini.ts`)
+- PLATFORM_FUNCTIONS registration (`index.ts`)
+- CLI flag `--gemini` + InitOptions
+- Python cli_adapter with explicit branches for all 8 methods
+
+### Phase 2: Tests (commit 5)
+Found by comparing with PR #47 — original implementation had zero tests.
+- `test/templates/gemini.test.ts` — TOML command validation (NEW)
+- `test/configurators/platforms.test.ts` — detection + configure tests
+- `test/commands/init.integration.test.ts` — init integration + negatives
+- `test/templates/extract.test.ts` — path function tests
+- `test/regression.test.ts` — registration + cli_adapter + withTracking
+
+### Phase 3: Documentation (commit 6)
+- README.md / README_CN.md — supported tools + Quick Start
+- `platform-integration.md` — TOML pattern, cli_adapter method checklist, Step 11 (mandatory tests)
+- `code-reuse-thinking-guide.md` — Python if/elif/else exhaustive check gotcha
+
+### Key Decisions
+- **TOML format**: First non-Markdown command platform
+- **Direct TOML templates**: Independent files, not runtime conversion
+- **defaultChecked: false**: New platform, opt-in
+
+### Quality
+- Lint: 0 errors | TypeCheck: 0 errors | Tests: 351/351 passed (23 files)
+
+### Break-Loop Analysis
+- Root cause: Change Propagation Failure (C) + Test Coverage Gap (D)
+- Python if/elif/else has no exhaustive check — new platforms silently fall through to Claude defaults
+- Dynamic iteration tests only verify registry metadata, not runtime behavior
+- Prevention: Added Step 11 (mandatory tests) to platform-integration spec
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4b59007` | (see git log) |
+| `f6e9eb1` | (see git log) |
+| `653e86d` | (see git log) |
+| `5f00905` | (see git log) |
+| `94295c0` | (see git log) |
+| `7b9699a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 55: 0.3.0 Release Prep: Bug Fix, Manifest, Tests, Promote Script
+
+**Date**: 2026-02-28
+**Task**: 0.3.0 Release Prep: Bug Fix, Manifest, Tests, Promote Script
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| Change | Description |
+|--------|-------------|
+| Bug Fix | `update.ts` early-return 不再跳过 `.version` 写入 — 修复 rc→stable 升级死循环 |
+| Manifest | 新增 `0.3.0.json`，聚合 beta.0~rc.6 全部 changelog，含迁移指南和 AI 指令 |
+| Tests | 新增 10 个测试：集成 #12、迁移边界、回归防护（369 total） |
+| Release Script | 新增 `release:promote` 脚本，预发布→正式版一键升级 |
+
+**Root Cause**: `update.ts:1287-1303` 在无文件变更时直接 return，未调用 `updateVersionFile(cwd)`。rc.6→0.3.0 模板完全相同，导致 `.version` 永远停在 rc.6。
+
+**Updated Files**:
+- `src/commands/update.ts` — 修复 early-return，升级/降级均正确更新版本戳
+- `src/migrations/manifests/0.3.0.json` — 新增正式版 manifest
+- `test/commands/update.integration.test.ts` — 集成测试 #12
+- `test/migrations/index.test.ts` — 预发布→正式版迁移测试
+- `test/regression.test.ts` — rc→stable 回归测试
+- `package.json` — 新增 `release:promote` 脚本
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e4b7227` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 56: 0.3.0 Release & Post-release Fixes
+
+**Date**: 2026-02-28
+**Task**: 0.3.0 Release & Post-release Fixes
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| Change | Description |
+|--------|-------------|
+| Bug Fix | `update.ts` early-return 不写 `.version` — 修复 rc→stable 升级死循环 |
+| Manifest | 新增 `0.3.0.json` 聚合 beta.0~rc.6 changelog |
+| Tests | 新增 10 个测试（集成 #12、迁移边界、回归防护，369 total） |
+| Release Script | 新增 `release:promote` 脚本，预发布→正式版一键升级 |
+| Release | 执行 `pnpm release:promote`，CI 通过，npm 发布 `@mindfoldhq/trellis@0.3.0` |
+| Post-release Fix | `0.3.0.json` breaking flag 改为 false — rc 用户升级不再误显 breaking 警告 |
+| Docs | 两个 README 加入官网链接 (docs.trytrellis.app) |
+
+**发现的问题**:
+- `0.3.0.json` 的 `breaking: true` 会影响 rc→stable 用户（`getMigrationMetadata` 聚合了该 manifest），已修为 false，beta.0 的 breaking flag 足以覆盖 0.2.x 用户
+- `pnpm release` (patch) 对预发布版本会跳到 0.3.1 而非 0.3.0，需用 `release:promote`
+
+**Updated Files**:
+- `src/commands/update.ts` — 修复 early-return 版本戳
+- `src/migrations/manifests/0.3.0.json` — 正式版 manifest (breaking: false)
+- `test/commands/update.integration.test.ts` — 集成测试 #12
+- `test/migrations/index.test.ts` — 迁移边界测试
+- `test/regression.test.ts` — rc→stable 回归测试
+- `package.json` — 新增 release:promote 脚本
+- `README.md` / `README_CN.md` — 官网链接
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e4b7227` | (see git log) |
+| `c2e9118` | (see git log) |
+| `d18137d` | (see git log) |
+| `54798d7` | (see git log) |
+| `be49762` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 57: fix: spec templates respect project type + dead code cleanup
+
+**Date**: 2026-02-28
+**Task**: fix: spec templates respect project type + dead code cleanup
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| Change | Description |
+|--------|-------------|
+| `collectTemplateFiles()` | Added `fs.existsSync` checks — backend/frontend spec files only included when their dirs exist |
+| `createSpecTemplates()` | Renamed `_projectType` → `projectType`, conditionally creates backend/frontend based on type |
+| Dead code removal | Deleted `guidesCrossPlatformThinkingGuideContent` export + 3 dead links in guides/index.md.txt |
+| Integration tests | init #11/#12 (backend/frontend-only), update #13/#14 (spec dir removal) |
+| Regression tests | 2 tests verifying dead export + dead links removed |
+| Spec updates | `platform-integration.md` new Common Mistake, `integration-patterns.md` bug #3 |
+
+**Key Rule**: When init creates content conditionally based on project type, update must check for directory existence before including files in its template map.
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8f15f36` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 58: 0.3.1 manifest + create-manifest slash command
+
+**Date**: 2026-03-02
+**Task**: 0.3.1 manifest + create-manifest slash command
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+| Change | Description |
+|--------|-------------|
+| `0.3.1.json` | 新增 0.3.1 migration manifest，覆盖 PR #58 (spec template project-type, iflow path fix, dead code) 和 PR #59 (SessionStart reinject) |
+| `/trellis:create-manifest` | 新增 slash command，引导 AI 完成完整 manifest 创建流程（找 tag、收集变更、写 changelog、调脚本、修转义） |
+
+**Updated Files**:
+- `src/migrations/manifests/0.3.1.json` — 新版本 manifest
+- `.claude/commands/trellis/create-manifest.md` — Claude slash command
+- `.cursor/commands/trellis-create-manifest.md` — Cursor slash command
+
+**Notes**:
+- `create-manifest.js -y` 的 `\n` 会被 shell 双重转义为 `\\n`，command 文档中已标注需要手动修正
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `de50b03` | (see git log) |
+| `044d4c8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 59: feat: record-session auto-commit workspace changes
+
+**Date**: 2026-03-03
+**Task**: feat: record-session auto-commit workspace changes
+
+### Summary
+
+add_session.py 写完 journal/index 后自动 git add .trellis/workspace && git commit，解决 record-session 后工作目录脏的问题。同步更新 8 个平台的 record-session 命令模板。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d5ac365` | (see git log) |
+| `8fa5771` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 60: feat: record-session auto-commit + config.yaml
+
+**Date**: 2026-03-03
+**Task**: feat: record-session auto-commit + config.yaml
+
+### Summary
+
+record-session 执行后自动提交 workspace 改动，解决脏目录问题。新增 .trellis/config.yaml 支持配置 session_commit_message 和 max_journal_lines，替代硬编码。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d5ac365` | (see git log) |
+| `8fa5771` | (see git log) |
+| `7c4a829` | (see git log) |
+| `f2370fe` | (see git log) |
+| `1d5a84a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 61: feat: update 跳过 spec 目录
+
+**Date**: 2026-03-04
+**Task**: feat: update 跳过 spec 目录
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 概要
+trellis update 不再触碰 .trellis/spec/ 下的任何文件，spec 是用户自定义内容，仅在 init 时创建。
+
+## 改动
+
+| 文件 | 变更 |
+|------|------|
+| `src/commands/update.ts` | 删除 16 个 spec import、移除 collectTemplateFiles 中 ~65 行 spec 收集逻辑、PROTECTED_PATHS 和 BACKUP_EXCLUDE_PATTERNS 各加 spec/ |
+| `src/utils/template-hash.ts` | EXCLUDE_FROM_HASH 合并 spec/frontend/ + spec/backend/ 为 spec/ |
+| `test/commands/update.integration.test.ts` | 重写 #13 #14 验证 spec 不被更新触碰 |
+| `test/utils/template-hash.test.ts` | 新增 spec 目录排除测试 |
+
+## 验证
+- 389 tests passed, lint + typecheck clean
+- Check Agent 复查 0 issues
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1beb64f` | (see git log) |
+| `a9ed34a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 62: feat: init/update 网络体验优化 — 代理+超时+进度提示
+
+**Date**: 2026-03-04
+**Task**: feat: init/update 网络体验优化 — 代理+超时+进度提示
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 概要
+优化 trellis init/update 的网络体验：添加代理支持、超时处理、进度提示和友好错误信息。
+
+## 改动
+
+| 文件 | 变更 |
+|------|------|
+| `src/utils/proxy.ts` | 新建：检测 HTTPS_PROXY/HTTP_PROXY/ALL_PROXY 环境变量，使用 undici ProxyAgent + setGlobalDispatcher 全局代理 |
+| `src/utils/template-fetcher.ts` | fetchTemplateIndex 加 AbortSignal.timeout(15s)；giget 下载用 Promise.race 30s 超时 + 目录清理；downloadTemplateById 接受预取 SpecTemplate 消除 double-fetch；错误分类（超时/网络/通用） |
+| `src/commands/init.ts` | 调用 setupProxy()、进度提示、脱敏代理 URL 日志、传预取 template、失败重试提示 |
+| `src/commands/update.ts` | 调用 setupProxy() 覆盖 npm 版本检查 fetch |
+| `package.json` | 添加 undici v6 依赖、engines.node 从 >=18.0.0 提升到 >=18.17.0 |
+
+## Review 修复
+- P1: undici v7→v6 保持 Node 18 兼容（v6 要求 >=18.17）
+- P2: ProxyAgent 构造 try/catch 防崩溃
+- P2: 超时后 rmSync 清理目录 + 注释说明 giget 不支持 abort
+- P2: maskProxyUrl 脱敏代理凭据
+- P1: 动态 import("undici") 改回静态 import（确保运行时可用）
+
+## 验证
+- 389 tests passed, lint + typecheck clean
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b7c50b6` | (see git log) |
+| `61bbba2` | (see git log) |
+| `5e831cd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 63: fix: 模板 fetch 倒计时显示 + 超时缩短
+
+**Date**: 2026-03-04
+**Task**: fix: 模板 fetch 倒计时显示 + 超时缩短
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 概要
+根据实际测试反馈优化模板 fetch 的 UX 显示。
+
+## 改动
+- 超时从 15s 缩短到 5s（拉模板列表不需要等太久）
+- 显示 GitHub 源 URL 单独一行
+- 新增实时倒计时 `Loading... 2s/5s`（setInterval + process.stdout.write 原地更新）
+- fetch 完成后清除 loading 行
+
+## 验证
+- 389 tests passed, lint + typecheck clean
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f66cd4c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 64: fix: record-session 模板去除 auto-commit 提示
+
+**Date**: 2026-03-04
+**Task**: fix: record-session 模板去除 auto-commit 提示
+
+### Summary
+
+从 8 个平台的 record-session 模板中删除 auto-commit 和 --no-commit 相关提示，避免 AI 误加 --no-commit 参数导致自动提交失效
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4c82869` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 65: Windows stdin UTF-8 fix & record-session template cleanup
+
+**Date**: 2026-03-04
+**Task**: Windows stdin UTF-8 fix & record-session template cleanup
+
+### Summary
+
+Fixed Windows stdin UTF-8 encoding bug (garbled Chinese when piping via stdin), cleaned up record-session templates, and updated spec documentation
+
+### Main Changes
+
+| Change | Description |
+|--------|-------------|
+| **Windows stdin UTF-8 fix** | Added `sys.stdin` to `_configure_stream()` in `common/__init__.py` — fixes garbled Chinese text when piping via stdin on Windows PowerShell |
+| **Centralized encoding** | Removed inline encoding code from `add_session.py` and `git_context.py` — all streams now handled by `common/__init__.py` |
+| **record-session template cleanup** | Removed auto-commit details from all 8 platform templates to prevent AI misusing `--no-commit` flag |
+| **Spec update** | Updated `backend/script-conventions.md` — documented stdin encoding issue, centralized approach, and anti-patterns |
+
+**Updated Files**:
+- `src/templates/trellis/scripts/common/__init__.py` — added stdin to encoding fix
+- `.trellis/scripts/common/__init__.py` — local copy updated
+- `src/templates/trellis/scripts/add_session.py` — removed inline encoding
+- `.trellis/scripts/add_session.py` — local copy updated
+- `src/templates/trellis/scripts/common/git_context.py` — removed inline encoding
+- `.trellis/scripts/common/git_context.py` — local copy updated
+- `.trellis/spec/backend/script-conventions.md` — documented stdin encoding
+
+**PRs**:
+- PR #66: fix(templates): remove auto-commit details from record-session prompts
+- PR #67: fix(scripts): centralize Windows stdio UTF-8 encoding
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6bd5d4d` | (see git log) |
+| `cbd6b7f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 66: Skip user-customizable files during update
+
+**Date**: 2026-03-04
+**Task**: Skip user-customizable files during update
+
+### Summary
+
+workflow.md 和 workspace/index.md 从 update 模板收集中移除，只在 init 时创建。更新了 integration 测试使用 get_context.py 作为测试目标文件。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bebf241` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 67: Fix nested Claude Code session error in multi-agent pipeline
+
+**Date**: 2026-03-04
+**Task**: Fix nested Claude Code session error in multi-agent pipeline
+
+### Summary
+
+修复 CC v2.1.39+ 引入的嵌套会话检测导致 /trellis:parallel 报错 'Claude Code cannot be launched inside another Claude Code session'。在 start.py 和 plan.py 中清除 CLAUDECODE 环境变量。同时修复了 update 跳过 workflow.md 和 workspace/index.md 的问题。
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c220785` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 68: feat: task subtask support
+
+**Date**: 2026-03-05
+**Task**: feat: task subtask support
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## Summary
+
+Implemented parent-child subtask system for Trellis task management.
+
+## Changes
+
+| Commit | Description |
+|--------|-------------|
+| `d1b4929` | Core subtask logic: children/parent/meta fields, create --parent, add-subtask/remove-subtask commands, hierarchical list display, archive cleanup |
+| `526e9de` | get_context enhancement: hierarchical task display, --mode/--json combinable flags, record JSON mode |
+| `920cbaf` | All 9 platform prompts + 3 dogfooding copies updated with subtask decomposition content |
+| `d1768e1` | tasks.md documentation fixes (7 errors), v0.3.6 parent task with 4 children |
+
+## Key Decisions
+
+- Subtasks are full tasks with identical schema, only linked via `children[]`/`parent` fields
+- `meta: {}` added for extensible integration metadata (Linear, Jira)
+- `get_context.py` CLI: `--mode` controls content scope (default/record), `--json` controls output format — independently combinable
+- Skills-based platforms (codex/qoder/kiro) reference brainstorm Step 8 instead of `/trellis:brainstorm`
+
+## Files Modified (35 files across 4 commits)
+
+**Core logic (template + live copy pairs):**
+- `src/templates/trellis/scripts/task.py` + `.trellis/scripts/task.py`
+- `src/templates/trellis/scripts/create_bootstrap.py` + `.trellis/scripts/create_bootstrap.py`
+- `src/templates/trellis/scripts/common/git_context.py` + `.trellis/scripts/common/git_context.py`
+- `src/templates/trellis/scripts/common/task_queue.py` + `.trellis/scripts/common/task_queue.py`
+- `src/commands/init.ts`, `src/commands/update.ts`
+
+**Prompts (24 files):**
+- brainstorm + start for: claude, cursor, codex, qoder, kiro, gemini, iflow, opencode, kilo
+- Dogfooding: `.claude/`, `.agents/`, `.cursor/`
+
+**Docs:**
+- `.claude/skills/trellis-meta/references/core/tasks.md`
+- `.trellis/tasks/` (5 new task directories)
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d1b4929` | (see git log) |
+| `526e9de` | (see git log) |
+| `920cbaf` | (see git log) |
+| `d1768e1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

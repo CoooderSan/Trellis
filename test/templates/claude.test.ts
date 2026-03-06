@@ -22,13 +22,64 @@ describe("settingsTemplate", () => {
 });
 
 // =============================================================================
+// settingsTemplate — SessionStart hook matchers (MIN-231)
+// =============================================================================
+
+describe("settingsTemplate SessionStart matchers", () => {
+  const settings = JSON.parse(settingsTemplate);
+  const sessionStartEntries = settings.hooks.SessionStart as {
+    matcher: string;
+    hooks: { type: string; command: string; timeout: number }[];
+  }[];
+
+  it("includes startup, clear, and compact matchers", () => {
+    const matchers = sessionStartEntries.map((e) => e.matcher);
+    expect(matchers).toContain("startup");
+    expect(matchers).toContain("clear");
+    expect(matchers).toContain("compact");
+  });
+
+  it("all SessionStart entries invoke the same session-start.py hook", () => {
+    for (const entry of sessionStartEntries) {
+      expect(entry.hooks).toHaveLength(1);
+      expect(entry.hooks[0].command).toContain("session-start.py");
+    }
+  });
+
+  it("all SessionStart entries use {{PYTHON_CMD}} placeholder", () => {
+    for (const entry of sessionStartEntries) {
+      expect(entry.hooks[0].command).toContain("{{PYTHON_CMD}}");
+    }
+  });
+});
+
+// =============================================================================
 // getAllCommands — reads command templates from filesystem
 // =============================================================================
 
+const EXPECTED_COMMAND_NAMES = [
+  "before-backend-dev",
+  "before-frontend-dev",
+  "brainstorm",
+  "break-loop",
+  "check-backend",
+  "check-cross-layer",
+  "check-frontend",
+  "create-command",
+  "finish-work",
+  "integrate-skill",
+  "onboard",
+  "parallel",
+  "record-session",
+  "start",
+  "update-spec",
+];
+
 describe("getAllCommands", () => {
-  it("returns non-empty list (templates exist)", () => {
+  it("returns the expected command set", () => {
     const commands = getAllCommands();
-    expect(commands.length).toBeGreaterThan(0);
+    const names = commands.map((cmd) => cmd.name);
+    expect(names).toEqual(EXPECTED_COMMAND_NAMES);
   });
 
   it("each command has name and content", () => {

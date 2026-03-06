@@ -7,174 +7,130 @@
 </p>
 
 <p align="center">
-<strong>一站式 AI Coding 框架</strong><br/>
-<sub>能解决以下问题</sub>
+<strong>给 AI 立规矩的开源框架</strong><br/>
+<sub>支持 Claude Code、Cursor、OpenCode、iFlow、Codex、Kilo、Kiro、Gemini CLI、Antigravity 和 Qoder。</sub>
 </p>
 
 <p align="center">
-<img src="assets/meme_zh.png" alt="AI Coding Meme" width="400" />
+<a href="./README.md">English</a> •
+<a href="https://docs.trytrellis.app/zh">文档</a> •
+<a href="https://docs.trytrellis.app/zh/guide/ch02-quick-start">快速开始</a> •
+<a href="https://docs.trytrellis.app/zh/guide/ch13-multi-platform">支持平台</a> •
+<a href="https://docs.trytrellis.app/zh/guide/ch08-real-world">使用场景</a>
 </p>
 
 <p align="center">
-<a href="https://www.npmjs.com/package/@mindfoldhq/trellis"><img src="https://img.shields.io/npm/v/@mindfoldhq/trellis.svg?style=flat-square&color=blue" alt="npm version" /></a>
-<a href="https://github.com/mindfold-ai/Trellis/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-FSL-green.svg?style=flat-square" alt="license" /></a>
-<a href="https://github.com/mindfold-ai/Trellis/stargazers"><img src="https://img.shields.io/github/stars/mindfold-ai/Trellis?style=flat-square&color=yellow" alt="stars" /></a>
-<a href="https://discord.com/invite/tWcCZ3aRHc"><img src="https://img.shields.io/badge/Discord-Join-7289DA?style=flat-square&logo=discord&logoColor=white" alt="Discord" /></a>
+<a href="https://www.npmjs.com/package/@mindfoldhq/trellis"><img src="https://img.shields.io/npm/v/@mindfoldhq/trellis.svg?style=flat-square&color=2563eb" alt="npm version" /></a>
+<a href="https://github.com/mindfold-ai/Trellis/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-16a34a.svg?style=flat-square" alt="license" /></a>
+<a href="https://github.com/mindfold-ai/Trellis/stargazers"><img src="https://img.shields.io/github/stars/mindfold-ai/Trellis?style=flat-square&color=eab308" alt="stars" /></a>
+<a href="https://docs.trytrellis.app/zh"><img src="https://img.shields.io/badge/docs-trytrellis.app-0f766e?style=flat-square" alt="docs" /></a>
+<a href="https://discord.com/invite/tWcCZ3aRHc"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
-<p align="center">
-<a href="#快速开始">快速开始</a> •
-<a href="#为什么要用-trellis">为什么要用 Trellis</a> •
-<a href="#使用场景">使用场景</a> •
-<a href="#工作原理">工作原理</a> •
-<a href="#常见问题">常见问题</a>
-</p>
+## 为什么用 Trellis？
 
-## 为什么要用 Trellis？
-
-| 功能 | 解决什么问题 |
+| 能力 | 带来的变化 |
 | --- | --- |
-| **自动注入** | 规范和工作流自动注入每次对话，写一次，永久生效 |
-| **自更新规范库** | 最佳实践存在自更新的 spec 文件中，用得越多，AI 越懂你 |
-| **并行会话** | 一个会话窗口可以在后台启动多个会话窗口,每个会话窗口都可以调用多个 Agent 同时工作，运行在各自独立的 worktree |
-| **团队共享** | 团队共享规范，团队里有一个高人搞一版本好的规范，拉高全员的ai coding水平 |
-| **会话持久化** | 工作记录持久化到仓库，AI 跨会话记住项目上下文, 不用每次再费劲告诉ai你的项目情况是什么 |
+| **自动注入 Spec** | 把规范写进 `.trellis/spec/` 之后，Trellis 会在每次会话里注入当前任务真正需要的上下文，不用反复解释。 |
+| **任务驱动工作流** | PRD、实现上下文、检查上下文和任务状态都放进 `.trellis/tasks/`，AI 开发不会越做越乱。 |
+| **并行 Agent 执行** | 用 git worktree 同时推进多个 AI 任务，不需要把一个分支挤成大杂烩。 |
+| **项目记忆** | `.trellis/workspace/` 里的 journal 会保留上一次工作的脉络，让新会话不是从空白开始。 |
+| **团队共享标准** | Spec 跟着仓库一起版本化，一个人总结出来的规则和流程，可以直接变成整个团队的基础设施。 |
+| **多平台复用** | 同一套 Trellis 结构可以带到 10 个 AI coding 平台上，而不是每换一个工具就重搭一次工作流。 |
 
 ## 快速开始
 
 ```bash
-# 1. 全局安装
+# 1. 安装 Trellis
 npm install -g @mindfoldhq/trellis@latest
 
-# 2. 在项目目录初始化
+# 2. 在仓库里初始化
 trellis init -u your-name
 
-# 或包含 iFlow CLI 支持
-trellis init --iflow -u your-name
-
-# 或包含 Codex Skills 支持
-trellis init --codex -u your-name
-
-# 3. 启动 Claude Code，开始干活
+# 3. 或者按你实际使用的平台初始化
+trellis init --cursor --opencode --codex -u your-name
 ```
 
-> `your-name` 是你的标识，会创建个人工作区 `.trellis/workspace/your-name/`
+- `-u your-name` 会创建 `.trellis/workspace/your-name/`，用来保存个人 journal 和会话连续性。
+- 平台参数可以自由组合。当前可选项包括 `--cursor`、`--opencode`、`--iflow`、`--codex`、`--kilo`、`--kiro`、`--gemini`、`--antigravity` 和 `--qoder`。
+- 更完整的安装步骤、各平台入口命令和升级方式放在文档站：
+  [快速开始](https://docs.trytrellis.app/zh/guide/ch02-quick-start) •
+  [支持平台](https://docs.trytrellis.app/zh/guide/ch13-multi-platform) •
+  [使用场景](https://docs.trytrellis.app/zh/guide/ch08-real-world)
 
-<p align="center">
-<img src="assets/info.png" alt="Trellis 初始化示例" />
-</p>
+## 使用场景
 
-## use cases
+### 把项目知识一次性交给 AI
 
-### 教会你的 AI
+把编码规范、目录规则、评审习惯和工作流偏好写进 Markdown Spec。Trellis 会自动加载相关部分，你不需要每次都从头解释这个项目怎么做事。
 
-规范写入文件里，Trellis 会帮你把项目规范,项目信息和工作流的知识自动注入给 AI ,不需要每次都给 AI 解释情况
+### 并行推进多个 AI 任务
 
-<p align="center">
-<img src="assets/usecase1.png" alt="教 AI - 教一次，永远生效" />
-</p>
+借助 git worktree 和 Trellis 的任务结构，可以把不同任务拆开并行推进。多个 Agent 同时工作时，分支和本地状态也不会互相踩来踩去。
 
-比如你定义了"组件用 TypeScript Props 接口、PascalCase 命名、函数式写法加 Hooks"，之后 AI 写新代码就会自动照做。
+### 把项目历史变成可用记忆
 
-### 并行开发
+任务 PRD、检查清单和 workspace journal 会把上一次的决策留下来。下一次进场的 Agent 不需要从零开始猜上下文。
 
-用 `/trellis:parallel` 可以同时跑多个任务，每个任务在独立的 git worktree 里由调度Agent 自动指挥多个子 agent 完成，干完自己提 PR。
+### 在不同工具之间保持同一套流程
 
-<p align="center">
-<img src="assets/usecase2.png" alt="并行开发 - 多个功能同时推进" />
-</p>
-
-本地开发时，每个 worker 运行在独立的 worktree（物理隔离的目录），互不阻塞、互不干扰。一个功能完成就可以合并，不用等其他的。
-
-### 自定义工作流
-
-定义自定义的 skill 和 slash command ，为特定任务预加载上下文。
-
-<p align="center">
-<img src="assets/usecase3.png" alt="工作流 - 一个命令加载全部上下文" />
-</p>
-
-创建类似 `/trellis:before-frontend-dev` 的短命令，一键加载组件规范、检查最近改动、拉取测试模式、查看共享 hooks。
+如果团队不会只用一个 AI coding 工具，Trellis 可以把 Spec、Task 和流程结构统一起来。平台接入方式会变，但工作流本身不需要重学。
 
 ## 工作原理
 
-### 项目结构
+Trellis 把核心工作流放在 `.trellis/` 里，再按你启用的平台生成对应的接入文件。
 
-```
+```text
 .trellis/
-├── workflow.md              # 工作流指南（启动时自动注入）
-├── worktree.yaml            # 多 Agent 配置（用于 /trellis:parallel）
-├── spec/                    # 规范库
-│   ├── frontend/            #   前端规范
-│   ├── backend/             #   后端规范
-│   └── guides/              #   决策与分析框架
-├── workspace/{name}/        # 个人工作区
-├── tasks/                   # 任务管理（进度跟踪等）
-└── scripts/                 # 工具脚本
-
-.claude/
-├── settings.json            # Hook 配置
-├── agents/                  # Agent 定义
-│   ├── dispatch.md          #   调度 Agent（纯路由，不读规范）
-│   ├── implement.md         #   实现 Agent
-│   ├── check.md             #   检查 Agent
-│   └── research.md          #   调研 Agent
-├── commands/                # 斜杠命令
-└── hooks/                   # Hook 脚本
-    ├── session-start.py     #   启动时注入上下文
-    ├── inject-subagent-context.py  #   给子 Agent 注入规范
-    └── ralph-loop.py               #   质量控制循环
-
+├── spec/                    # 项目规范、模式和指南
+├── tasks/                   # 任务 PRD、上下文文件和状态
+├── workspace/               # Journal 和开发者级连续性
+├── workflow.md              # 共享工作流规则
+└── scripts/                 # 驱动整个流程的脚本
 ```
 
-### 工作流图
+根据你启用的平台不同，Trellis 还会生成对应的接入文件，比如 `.claude/`、`.cursor/`、`AGENTS.md`、`.agents/`、`.kilocode/` 和 `.kiro/`。
 
-<p align="center">
-<img src="assets/workflow.png" alt="Trellis 工作流图" />
-</p>
+整体流程可以理解成四步：
 
-## 路线图
+1. 把标准写进 Spec。
+2. 从任务 PRD 开始组织工作。
+3. 让 Trellis 为当前任务注入正确的上下文。
+4. 用检查、journal 和 worktree 保证质量与连续性。
 
-- [ ] **更好的代码审查** — 更完善的自动化审查流程
-- [ ] **Skill 包** — 预置工作流包，即插即用
-- [ ] **更广泛的工具支持** — Cursor、OpenCode、Codex 集成
-- [ ] **更强的会话连续性** — 自动保存全会话历史
-- [ ] **可视化并行会话** — 实时查看每个 Agent 的进度
+## 最新进展
+
+- **v0.3.1**：新增 `trellis update` 的后台 watch 模式，改善已有 `.gitignore` 仓库里的初始化行为，并继续清理和更新文档。
+- **v0.3.0**：支持平台从 2 个扩展到 9 个，补齐 Windows 兼容，支持远程 Spec 模板拉取，并加入 `/trellis:brainstorm`。
+- **文档站更新**：官方文档现在已经覆盖快速开始、架构、命令、定制化、真实场景和持续更新的 changelog。
 
 ## 常见问题
 
 <details>
-<summary><strong>为什么用 Trellis 而不是 Skills？</strong></summary>
+<summary><strong>它和 <code>CLAUDE.md</code>、<code>AGENTS.md</code>、<code>.cursorrules</code> 有什么区别？</strong></summary>
 
-Skills 是可选的——AI 可能跳过，导致质量不稳定。Trellis 通过 Hook 注入**强制**执行规范：不是"可以用"而是"必须用"。把随机性关进笼子里，质量不会随时间退化。
-
-</details>
-
-<details>
-<summary><strong>spec 文件是手写还是让 AI 写？</strong></summary>
-
-大多数时候让 AI 来——你只要说"我们用 Zustand，不用 Redux"，它就会自动创建 spec 文件。但当你有 AI 自己想不到的架构洞察时，就得你来写了。能把团队踩过的坑教给 AI 并且拉高团队开发水平,这就是你不会被 AI 取代的原因。
+这些文件当然有用，但它们很容易越写越大、越写越散。Trellis 在它们之外补上了结构：分层 Spec、任务上下文、workspace 记忆，以及按平台接入的工作流。
 
 </details>
 
 <details>
-<summary><strong>这和 <code>CLAUDE.md</code> / <code>AGENTS.md</code> / <code>.cursorrules</code> 有什么区别？</strong></summary>
+<summary><strong>Trellis 只适合 Claude Code 吗？</strong></summary>
 
-那些是大一统文件——AI 每次都要读全部内容。Trellis 用**分层架构**做上下文压缩：只加载当前任务相关的规范。工程规范应该优雅分层，而不是堆成一坨。
-
-</details>
-
-<details>
-<summary><strong>多人协作会冲突吗？</strong></summary>
-
-不会。每人有自己的空间 `.trellis/workspace/{name}/`。
+不是。Trellis 目前支持 Claude Code、Cursor、OpenCode、iFlow、Codex、Kilo、Kiro、Gemini CLI 和 Antigravity。每个平台的具体接入方式和入口命令，文档站都有单独说明。
 
 </details>
 
 <details>
-<summary><strong>AI 怎么知道之前的对话内容？</strong></summary>
+<summary><strong>是不是每个 Spec 都得手写？</strong></summary>
 
-每次结束对话时用 `/trellis:record-session`，AI 会把会话摘要写入 `.trellis/workspace/{name}/journal-N.md`，并在 `index.md` 建立索引。下次 `/trellis:start` 时，AI 会自动读取最近的 journal 和 git 信息，恢复上下文。所以理论上直接扒每天的 journal 文件就能当你的工作日报提交了🤣。
+不需要。很多团队一开始会先让 AI 根据现有代码起草 Spec，再把真正关键的规则和经验手动收紧。Trellis 的价值不在于把所有文档都写满，而在于把高信号规则沉淀下来并持续复用。
+
+</details>
+
+<details>
+<summary><strong>团队一起用会不会经常冲突？</strong></summary>
+
+不会。个人 workspace journal 是按开发者隔离的；共享的 Spec 和 Task 则作为仓库内容正常走评审和迭代，和其他工程资产一样管理。
 
 </details>
 
@@ -182,26 +138,25 @@ Skills 是可选的——AI 可能跳过，导致质量不稳定。Trellis 通�
 
 [![Star History Chart](https://api.star-history.com/svg?repos=mindfold-ai/Trellis&type=Date)](https://star-history.com/#mindfold-ai/Trellis&Date)
 
-## 详细文档
+## 社区与资源
 
-- [完整使用指南](docs/guide-zh.md) — 系统架构、工作流、CLI 命令参考
-- [用 K8s 理解 Trellis](docs/use-k8s-to-know-trellis-zh.md) — 如果你熟悉 Kubernetes，这篇文章可以帮你快速理解设计思想
+- [官方文档](https://docs.trytrellis.app/zh) - 产品说明、安装指南和架构文档
+- [快速开始](https://docs.trytrellis.app/zh/guide/ch02-quick-start) - 快速在仓库里跑起来
+- [支持平台](https://docs.trytrellis.app/zh/guide/ch13-multi-platform) - 各平台的接入方式和命令差异
+- [使用场景](https://docs.trytrellis.app/zh/guide/ch08-real-world) - 看 Trellis 在真实任务里怎么落地
+- [更新日志](https://docs.trytrellis.app/zh/changelog/v0.3.1) - 跟踪当前版本变化
+- [Tech Blog](https://docs.trytrellis.app/zh/blog) - 设计思路和技术文章
+- [GitHub Issues](https://github.com/mindfold-ai/Trellis/issues) - 提 Bug 或功能建议
+- [Discord](https://discord.com/invite/tWcCZ3aRHc) - 加入社区讨论
 
-## 社区
-
-- [Discord](https://discord.com/invite/tWcCZ3aRHc) — 加入讨论
-- [GitHub Issues](https://github.com/mindfold-ai/Trellis/issues) — 报告 Bug & 提功能建议
-- 微信群 — 扫码加入
+### 微信群
 
 <p align="center">
-<img src="assets/wx_link2.jpg" alt="微信群二维码" width="200" />
+<img src="./wx-group-qr.jpg" alt="Trellis AI 框架中文社群二维码" width="260" />
 </p>
 
 <p align="center">
-<a href="https://github.com/mindfold-ai/Trellis/blob/main/LICENSE">FSL License</a> •
-Made with care by <a href="https://github.com/mindfold-ai">Mindfold</a>
-</p>
-
-<p align="center">
-<sub>觉得 Trellis 有用？欢迎点个 ⭐</sub>
+<a href="https://github.com/mindfold-ai/Trellis">官方仓库</a> •
+<a href="https://github.com/mindfold-ai/Trellis/blob/main/LICENSE">AGPL-3.0 License</a> •
+Built by <a href="https://github.com/mindfold-ai">Mindfold</a>
 </p>

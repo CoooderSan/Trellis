@@ -38,7 +38,6 @@ import {
 } from "../src/templates/iflow/index.js";
 import {
   commonInit,
-  commonGitContext,
   taskScript,
   addSessionScript,
   multiAgentPlan,
@@ -46,7 +45,12 @@ import {
   commonCliAdapter,
   getAllScripts,
 } from "../src/templates/trellis/index.js";
-import { collectPlatformTemplates, PLATFORM_IDS } from "../src/configurators/index.js";
+import {
+  collectPlatformTemplates,
+  PLATFORM_IDS,
+} from "../src/configurators/index.js";
+import { guidesIndexContent } from "../src/templates/markdown/index.js";
+import * as markdownExports from "../src/templates/markdown/index.js";
 
 afterEach(() => {
   clearManifestCache();
@@ -61,7 +65,7 @@ describe("regression: Windows encoding (beta.10, beta.11, beta.16)", () => {
     expect(commonInit).toContain("def _configure_stream");
   });
 
-  it("[beta.10] common/__init__.py has reconfigure(encoding=\"utf-8\") pattern", () => {
+  it('[beta.10] common/__init__.py has reconfigure(encoding="utf-8") pattern', () => {
     expect(commonInit).toContain('reconfigure(encoding="utf-8"');
   });
 
@@ -69,7 +73,7 @@ describe("regression: Windows encoding (beta.10, beta.11, beta.16)", () => {
     expect(commonInit).toContain("TextIOWrapper");
   });
 
-  it("[beta.10] common/__init__.py has sys.platform == \"win32\" guard", () => {
+  it('[beta.10] common/__init__.py has sys.platform == "win32" guard', () => {
     expect(commonInit).toContain('sys.platform == "win32"');
   });
 
@@ -88,28 +92,28 @@ describe("regression: Windows encoding (beta.10, beta.11, beta.16)", () => {
     // The reconfigure pattern is safe to call multiple times
     // The function should NOT use detach() unconditionally (beta.16 bug root cause)
     // It should check hasattr(stream, "reconfigure") FIRST
-    const reconfigureIndex = commonInit.indexOf('hasattr(stream, "reconfigure")');
+    const reconfigureIndex = commonInit.indexOf(
+      'hasattr(stream, "reconfigure")',
+    );
     const detachIndex = commonInit.indexOf('hasattr(stream, "detach")');
     expect(reconfigureIndex).toBeLessThan(detachIndex);
   });
 
-  it("[beta.10] task.py has inline encoding fix before imports", () => {
-    // Encoding fix must come before other imports to prevent early UnicodeEncodeError
-    const encodingFixIndex = taskScript.indexOf('sys.platform == "win32"');
-    const commonImportIndex = taskScript.indexOf("from common");
-    expect(encodingFixIndex).toBeGreaterThan(-1);
-    expect(commonImportIndex).toBeGreaterThan(-1);
-    expect(encodingFixIndex).toBeLessThan(commonImportIndex);
+  it("[beta.10] common/__init__.py has centralized encoding fix", () => {
+    // Encoding fix was centralized from individual scripts to common/__init__.py (#67)
+    expect(commonInit).toContain('sys.platform == "win32"');
+    expect(commonInit).toContain("reconfigure");
   });
 
-  it("[beta.10] add_session.py has inline encoding fix", () => {
-    expect(addSessionScript).toContain('sys.platform == "win32"');
-    expect(addSessionScript).toContain("reconfigure");
+  it("[beta.10] task.py imports from common (gets encoding fix via __init__.py)", () => {
+    expect(taskScript).toContain("from common");
   });
 
-  it("[beta.10] git_context.py has inline encoding fix", () => {
-    expect(commonGitContext).toContain('sys.platform == "win32"');
-    expect(commonGitContext).toContain("reconfigure");
+  it("[rc.2] add_session.py table separator matching tolerates formatted markdown", () => {
+    // Bug: startswith("|---") breaks when formatters add spaces: "| ---- |"
+    // Fix: use re.match(r"^\\|\\s*-", line) to allow optional whitespace
+    expect(addSessionScript).not.toContain('startswith("|---")');
+    expect(addSessionScript).toContain(String.raw`re.match(r"^\|\s*-", line)`);
   });
 });
 
@@ -174,9 +178,10 @@ describe("regression: task directory paths (0.2.14, 0.2.15, beta.13)", () => {
     for (const [name, content] of scripts) {
       // Check for hardcoded username in path patterns (workspace/taosu, /Users/taosu)
       // but allow usage examples like "python3 status.py -a taosu"
-      expect(content, `${name} should not contain hardcoded username in paths`).not.toMatch(
-        /workspace\/taosu|\/Users\/taosu/,
-      );
+      expect(
+        content,
+        `${name} should not contain hardcoded username in paths`,
+      ).not.toMatch(/workspace\/taosu|\/Users\/taosu/);
     }
   });
 });
@@ -240,7 +245,9 @@ describe("regression: semver prerelease handling (beta.5)", () => {
     // Should not include beta.0 itself (only > fromVersion)
     const versions = getAllMigrationVersions();
     if (versions.includes("0.3.0-beta.1")) {
-      expect(hasPendingMigrations("0.3.0-beta.0", "0.3.0-beta.2")).toBeDefined();
+      expect(
+        hasPendingMigrations("0.3.0-beta.0", "0.3.0-beta.2"),
+      ).toBeDefined();
     }
   });
 });
@@ -249,7 +256,10 @@ describe("regression: migration data integrity (beta.14)", () => {
   it("[beta.14] all migrations have non-undefined 'from' field", () => {
     const allMigrations = getAllMigrations();
     for (const m of allMigrations) {
-      expect(m.from, `migration should have 'from' field defined`).toBeDefined();
+      expect(
+        m.from,
+        `migration should have 'from' field defined`,
+      ).toBeDefined();
       expect(typeof m.from).toBe("string");
       expect(m.from.length).toBeGreaterThan(0);
     }
@@ -269,7 +279,10 @@ describe("regression: migration data integrity (beta.14)", () => {
       (m) => m.type === "rename" || m.type === "rename-dir",
     );
     for (const m of renames) {
-      expect(m.to, `rename migration from '${m.from}' should have 'to'`).toBeDefined();
+      expect(
+        m.to,
+        `rename migration from '${m.from}' should have 'to'`,
+      ).toBeDefined();
       expect(typeof m.to).toBe("string");
       expect((m.to as string).length).toBeGreaterThan(0);
     }
@@ -291,7 +304,17 @@ describe("regression: update only configured platforms (beta.16)", () => {
   });
 
   it("[beta.16] collectPlatformTemplates returns Map for platforms with tracking", () => {
-    const withTracking = ["claude-code", "cursor", "iflow", "codex"] as const;
+    const withTracking = [
+      "claude-code",
+      "cursor",
+      "iflow",
+      "codex",
+      "kilo",
+      "kiro",
+      "gemini",
+      "antigravity",
+      "qoder",
+    ] as const;
     for (const id of withTracking) {
       const result = collectPlatformTemplates(id);
       expect(result, `${id} should have template tracking`).toBeInstanceOf(Map);
@@ -307,7 +330,9 @@ describe("regression: shell to Python migration (beta.0)", () => {
   it("[beta.0] no .sh scripts remain in trellis templates", () => {
     const scripts = getAllScripts();
     for (const [name] of scripts) {
-      expect(name.endsWith(".sh"), `${name} should not end with .sh`).toBe(false);
+      expect(name.endsWith(".sh"), `${name} should not end with .sh`).toBe(
+        false,
+      );
     }
   });
 
@@ -376,12 +401,51 @@ describe("regression: hook JSON format (beta.7)", () => {
 
   it("[beta.7] iFlow hook commands use {{PYTHON_CMD}} placeholder", () => {
     const settings = JSON.parse(iflowSettingsTemplate);
-    const hookTypes = Object.values(settings.hooks) as { hooks: { command: string }[] }[][];
+    const hookTypes = Object.values(settings.hooks) as {
+      hooks: { command: string }[];
+    }[][];
     for (const entries of hookTypes) {
       for (const entry of entries) {
         for (const hook of entry.hooks) {
           expect(hook.command).toContain("{{PYTHON_CMD}}");
         }
+      }
+    }
+  });
+});
+
+describe("regression: SessionStart reinject on clear/compact (MIN-231)", () => {
+  it("[MIN-231] Claude SessionStart hooks cover startup, clear, and compact", () => {
+    const settings = JSON.parse(claudeSettingsTemplate);
+    const matchers = settings.hooks.SessionStart.map(
+      (e: { matcher: string }) => e.matcher,
+    );
+    expect(matchers).toEqual(
+      expect.arrayContaining(["startup", "clear", "compact"]),
+    );
+  });
+
+  it("[MIN-231] iFlow SessionStart hooks cover startup, clear, and compact", () => {
+    const settings = JSON.parse(iflowSettingsTemplate);
+    const matchers = settings.hooks.SessionStart.map(
+      (e: { matcher: string }) => e.matcher,
+    );
+    expect(matchers).toEqual(
+      expect.arrayContaining(["startup", "clear", "compact"]),
+    );
+  });
+
+  it("[MIN-231] all SessionStart matchers invoke session-start.py", () => {
+    for (const [label, template] of [
+      ["claude", claudeSettingsTemplate],
+      ["iflow", iflowSettingsTemplate],
+    ] as const) {
+      const settings = JSON.parse(template);
+      for (const entry of settings.hooks.SessionStart) {
+        expect(
+          entry.hooks[0].command,
+          `${label} ${entry.matcher} should invoke session-start.py`,
+        ).toContain("session-start.py");
       }
     }
   });
@@ -446,6 +510,26 @@ describe("regression: platform additions (beta.9, beta.13, beta.16)", () => {
     expect(AI_TOOLS.codex.configDir).toBe(".agents/skills");
   });
 
+  it("[kiro] Kiro platform is registered", () => {
+    expect(AI_TOOLS).toHaveProperty("kiro");
+    expect(AI_TOOLS.kiro.configDir).toBe(".kiro/skills");
+  });
+
+  it("[gemini] Gemini CLI platform is registered", () => {
+    expect(AI_TOOLS).toHaveProperty("gemini");
+    expect(AI_TOOLS.gemini.configDir).toBe(".gemini");
+  });
+
+  it("[antigravity] Antigravity platform is registered", () => {
+    expect(AI_TOOLS).toHaveProperty("antigravity");
+    expect(AI_TOOLS.antigravity.configDir).toBe(".agent/workflows");
+  });
+
+  it("[qoder] Qoder platform is registered", () => {
+    expect(AI_TOOLS).toHaveProperty("qoder");
+    expect(AI_TOOLS.qoder.configDir).toBe(".qoder");
+  });
+
   it("[beta.9] all platforms have consistent required fields", () => {
     for (const id of PLATFORM_IDS) {
       const tool = AI_TOOLS[id];
@@ -481,6 +565,26 @@ describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", 
     expect(commonCliAdapter).toContain(".agents");
   });
 
+  it("[kiro] cli_adapter.py supports kiro platform", () => {
+    expect(commonCliAdapter).toContain('"kiro"');
+    expect(commonCliAdapter).toContain(".kiro");
+  });
+
+  it("[gemini] cli_adapter.py supports gemini platform", () => {
+    expect(commonCliAdapter).toContain('"gemini"');
+    expect(commonCliAdapter).toContain(".gemini");
+  });
+
+  it("[antigravity] cli_adapter.py supports antigravity platform", () => {
+    expect(commonCliAdapter).toContain('"antigravity"');
+    expect(commonCliAdapter).toContain(".agent");
+  });
+
+  it("[qoder] cli_adapter.py supports qoder platform", () => {
+    expect(commonCliAdapter).toContain('"qoder"');
+    expect(commonCliAdapter).toContain(".qoder");
+  });
+
   it("[beta.9] cli_adapter.py has detect_platform function", () => {
     expect(commonCliAdapter).toContain("def detect_platform");
   });
@@ -498,12 +602,37 @@ describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", 
     expect(commonCliAdapter).toContain(".opencode");
     expect(commonCliAdapter).toContain(".iflow");
     expect(commonCliAdapter).toContain(".agents");
+    expect(commonCliAdapter).toContain(".kiro");
+    expect(commonCliAdapter).toContain(".gemini");
+    expect(commonCliAdapter).toContain(".agent");
+    expect(commonCliAdapter).toContain(".qoder");
   });
 });
 
 // =============================================================================
 // 6. Cross-version Migration Consistency
 // =============================================================================
+
+describe("regression: prerelease→stable version stamp (rc.6→0.3.0)", () => {
+  it("[0.3.0] rc→stable upgrade returns no migrations (all already applied)", () => {
+    const migrations = getMigrationsForVersion("0.3.0-rc.6", "0.3.0");
+    expect(migrations).toEqual([]);
+  });
+
+  it("[0.3.0] 0.3.0 manifest exists and is well-formed", () => {
+    const versions = getAllMigrationVersions();
+    expect(versions).toContain("0.3.0");
+  });
+
+  it("[0.3.0] prerelease sorts before stable in version ordering", () => {
+    const versions = getAllMigrationVersions();
+    const rcIdx = versions.indexOf("0.3.0-rc.6");
+    const stableIdx = versions.indexOf("0.3.0");
+    expect(rcIdx).not.toBe(-1);
+    expect(stableIdx).not.toBe(-1);
+    expect(rcIdx).toBeLessThan(stableIdx);
+  });
+});
 
 describe("regression: migration manifest consistency", () => {
   it("all manifest JSON files are loaded", () => {
@@ -541,17 +670,55 @@ describe("regression: migration manifest consistency", () => {
       expect(idx, `${knownOrder[i]} should be in versions`).not.toBe(-1);
       if (i > 0) {
         const prevIdx = versions.indexOf(knownOrder[i - 1]);
-        expect(idx, `${knownOrder[i]} should come after ${knownOrder[i - 1]}`).toBeGreaterThan(prevIdx);
+        expect(
+          idx,
+          `${knownOrder[i]} should come after ${knownOrder[i - 1]}`,
+        ).toBeGreaterThan(prevIdx);
       }
     }
   });
 
-  it("[beta.0] shell-to-python migration has both renames and deletes", () => {
+  it("[beta.0] shell-to-python migration uses only renames (no deletes)", () => {
     const migrations = getMigrationsForVersion("0.2.15", "0.3.0-beta.0");
     const renames = migrations.filter((m) => m.type === "rename");
     const deletes = migrations.filter((m) => m.type === "delete");
     expect(renames.length).toBeGreaterThan(0);
-    expect(deletes.length).toBeGreaterThan(0);
+    expect(deletes.length).toBe(0);
+  });
+
+  it("[#57] shell archive migrations use rename type with correct from/to paths", () => {
+    const migrations = getMigrationsForVersion("0.2.15", "0.3.0-beta.0");
+    const shellArchives = migrations.filter(
+      (m) => m.to?.includes("scripts-shell-archive"),
+    );
+    // 19 shell scripts should be archived
+    expect(shellArchives.length).toBe(19);
+    for (const m of shellArchives) {
+      expect(m.type).toBe("rename");
+      expect(m.from).toMatch(/\.trellis\/scripts\/.*\.sh$/);
+      expect(m.to).toMatch(/\.trellis\/scripts-shell-archive\/.*\.sh$/);
+      // The filename should be preserved
+      const fromFile = m.from.split("/").pop();
+      const toFile = (m.to as string).split("/").pop();
+      expect(toFile).toBe(fromFile);
+    }
+  });
+
+  it("[#57] shell archive covers all three subdirectories", () => {
+    const migrations = getMigrationsForVersion("0.2.15", "0.3.0-beta.0");
+    const shellArchives = migrations.filter(
+      (m) => m.to?.includes("scripts-shell-archive"),
+    );
+    const topLevel = shellArchives.filter(
+      (m) => !m.from.includes("/common/") && !m.from.includes("/multi-agent/"),
+    );
+    const common = shellArchives.filter((m) => m.from.includes("/common/"));
+    const multiAgent = shellArchives.filter((m) =>
+      m.from.includes("/multi-agent/"),
+    );
+    expect(topLevel.length).toBe(6);
+    expect(common.length).toBe(8);
+    expect(multiAgent.length).toBe(5);
   });
 
   it("[0.2.14] command namespace migration renames exist", () => {
@@ -562,5 +729,74 @@ describe("regression: migration manifest consistency", () => {
       (m) => m.type === "rename" && m.from.startsWith(".claude/commands/"),
     );
     expect(claudeRenames.length).toBeGreaterThan(0);
+  });
+});
+
+// =============================================================================
+// 7. collectTemplates Path Consistency
+// =============================================================================
+
+describe("regression: collectTemplates paths match init directory structure (0.3.1)", () => {
+  it("[0.3.1] iflow collectTemplates uses commands/trellis/ subdirectory", () => {
+    const templates = collectPlatformTemplates("iflow");
+    expect(templates).toBeInstanceOf(Map);
+    const commandKeys = [...(templates as Map<string, string>).keys()].filter(
+      (k) => k.includes("/commands/"),
+    );
+    for (const key of commandKeys) {
+      expect(
+        key,
+        `iflow command path should include trellis/ subdirectory: ${key}`,
+      ).toMatch(/\.iflow\/commands\/trellis\//);
+    }
+  });
+
+  it("[0.3.1] all platforms with commands use consistent trellis/ subdirectory", () => {
+    const platformsWithCommands = ["claude-code", "iflow", "gemini"] as const;
+    for (const id of platformsWithCommands) {
+      const templates = collectPlatformTemplates(id);
+      if (!templates) continue;
+      const commandKeys = [...templates.keys()].filter(
+        (k) => k.includes("/commands/"),
+      );
+      for (const key of commandKeys) {
+        expect(
+          key,
+          `${id} command path should include trellis/ subdirectory: ${key}`,
+        ).toContain("/commands/trellis/");
+      }
+    }
+  });
+
+  it("[0.3.4] kilo uses workflows/ instead of commands/trellis/", () => {
+    const templates = collectPlatformTemplates("kilo");
+    expect(templates).toBeInstanceOf(Map);
+    if (!templates) return;
+    const keys = [...templates.keys()];
+    for (const key of keys) {
+      expect(key, `kilo path should use workflows/: ${key}`).toContain(
+        ".kilocode/workflows/",
+      );
+      expect(key, `kilo should not use commands/: ${key}`).not.toContain(
+        "/commands/",
+      );
+    }
+  });
+});
+
+// =============================================================================
+// 8. Dead Code / Template Content Regressions
+// =============================================================================
+
+describe("regression: cross-platform-thinking-guide dead code removed (0.3.1)", () => {
+  it("[0.3.1] guidesCrossPlatformThinkingGuideContent is not exported from markdown/index", () => {
+    expect(markdownExports).not.toHaveProperty(
+      "guidesCrossPlatformThinkingGuideContent",
+    );
+  });
+
+  it("[0.3.1] guides index.md does not reference cross-platform-thinking-guide", () => {
+    expect(guidesIndexContent).not.toContain("cross-platform-thinking-guide");
+    expect(guidesIndexContent).not.toContain("Cross-Platform Thinking Guide");
   });
 });

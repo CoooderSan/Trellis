@@ -10,6 +10,10 @@ import {
 import { AI_TOOLS } from "../../src/types/ai-tools.js";
 import { setWriteMode } from "../../src/utils/file-writer.js";
 import { getAllSkills } from "../../src/templates/codex/index.js";
+import { getAllWorkflows as getAllAntigravityWorkflows } from "../../src/templates/antigravity/index.js";
+import { getAllSkills as getAllKiroSkills } from "../../src/templates/kiro/index.js";
+import { getAllCommands as getAllGeminiCommands } from "../../src/templates/gemini/index.js";
+import { getAllSkills as getAllQoderSkills } from "../../src/templates/qoder/index.js";
 
 // =============================================================================
 // getConfiguredPlatforms — detects existing platform directories
@@ -59,6 +63,32 @@ describe("getConfiguredPlatforms", () => {
     fs.mkdirSync(path.join(tmpDir, ".agents", "skills"), { recursive: true });
     const result = getConfiguredPlatforms(tmpDir);
     expect(result.has("codex")).toBe(true);
+  });
+
+  it("detects .agent/workflows directory as antigravity", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agent", "workflows"), {
+      recursive: true,
+    });
+    const result = getConfiguredPlatforms(tmpDir);
+    expect(result.has("antigravity")).toBe(true);
+  });
+
+  it("detects .kiro/skills directory as kiro", () => {
+    fs.mkdirSync(path.join(tmpDir, ".kiro", "skills"), { recursive: true });
+    const result = getConfiguredPlatforms(tmpDir);
+    expect(result.has("kiro")).toBe(true);
+  });
+
+  it("detects .gemini directory as gemini", () => {
+    fs.mkdirSync(path.join(tmpDir, ".gemini"), { recursive: true });
+    const result = getConfiguredPlatforms(tmpDir);
+    expect(result.has("gemini")).toBe(true);
+  });
+
+  it("detects .qoder directory as qoder", () => {
+    fs.mkdirSync(path.join(tmpDir, ".qoder"), { recursive: true });
+    const result = getConfiguredPlatforms(tmpDir);
+    expect(result.has("qoder")).toBe(true);
   });
 
   it("detects multiple platforms simultaneously", () => {
@@ -145,6 +175,165 @@ describe("configurePlatform", () => {
       const skillPath = path.join(skillsRoot, skill.name, "SKILL.md");
       expect(fs.existsSync(skillPath)).toBe(true);
       expect(fs.readFileSync(skillPath, "utf-8")).toBe(skill.content);
+    }
+  });
+
+  it("configurePlatform('kiro') creates .kiro/skills directory", async () => {
+    await configurePlatform("kiro", tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, ".kiro", "skills"))).toBe(true);
+  });
+
+  it("configurePlatform('kiro') writes all skill templates", async () => {
+    await configurePlatform("kiro", tmpDir);
+
+    const expectedSkills = getAllKiroSkills();
+    const expectedNames = expectedSkills.map((skill) => skill.name).sort();
+
+    const skillsRoot = path.join(tmpDir, ".kiro", "skills");
+    const actualNames = fs
+      .readdirSync(skillsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+
+    expect(actualNames).toEqual(expectedNames);
+    expect(actualNames).not.toContain("parallel");
+
+    for (const skill of expectedSkills) {
+      const skillPath = path.join(skillsRoot, skill.name, "SKILL.md");
+      expect(fs.existsSync(skillPath)).toBe(true);
+      expect(fs.readFileSync(skillPath, "utf-8")).toBe(skill.content);
+    }
+  });
+
+  it("configurePlatform('gemini') creates .gemini directory", async () => {
+    await configurePlatform("gemini", tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, ".gemini"))).toBe(true);
+  });
+
+  it("configurePlatform('gemini') writes all command templates as .toml", async () => {
+    await configurePlatform("gemini", tmpDir);
+
+    const expectedCommands = getAllGeminiCommands();
+    const expectedNames = expectedCommands.map((cmd) => cmd.name).sort();
+
+    const commandsDir = path.join(tmpDir, ".gemini", "commands", "trellis");
+    expect(fs.existsSync(commandsDir)).toBe(true);
+
+    const actualFiles = fs.readdirSync(commandsDir).sort();
+    const actualNames = actualFiles.map((f) => f.replace(".toml", "")).sort();
+
+    expect(actualNames).toEqual(expectedNames);
+
+    for (const cmd of expectedCommands) {
+      const filePath = path.join(commandsDir, `${cmd.name}.toml`);
+      expect(fs.existsSync(filePath)).toBe(true);
+      expect(fs.readFileSync(filePath, "utf-8")).toBe(cmd.content);
+    }
+  });
+
+  it("configurePlatform('gemini') does not include compiled artifacts", async () => {
+    await configurePlatform("gemini", tmpDir);
+
+    const walk = (dir: string): string[] => {
+      const files: string[] = [];
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) files.push(...walk(full));
+        else files.push(entry.name);
+      }
+      return files;
+    };
+
+    const allFiles = walk(path.join(tmpDir, ".gemini"));
+    for (const file of allFiles) {
+      expect(file).not.toMatch(/\.js$/);
+      expect(file).not.toMatch(/\.d\.ts$/);
+      expect(file).not.toMatch(/\.js\.map$/);
+      expect(file).not.toMatch(/\.d\.ts\.map$/);
+    }
+  });
+
+  it("configurePlatform('antigravity') creates .agent/workflows directory", async () => {
+    await configurePlatform("antigravity", tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, ".agent", "workflows"))).toBe(
+      true,
+    );
+  });
+
+  it("configurePlatform('antigravity') writes all workflow templates", async () => {
+    await configurePlatform("antigravity", tmpDir);
+
+    const expectedWorkflows = getAllAntigravityWorkflows();
+    const expectedNames = expectedWorkflows
+      .map((workflow) => workflow.name)
+      .sort();
+
+    const workflowsRoot = path.join(tmpDir, ".agent", "workflows");
+    const actualNames = fs
+      .readdirSync(workflowsRoot, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name.replace(/\.md$/, ""))
+      .sort();
+
+    expect(actualNames).toEqual(expectedNames);
+    expect(actualNames).not.toContain("parallel");
+
+    for (const workflow of expectedWorkflows) {
+      const workflowPath = path.join(workflowsRoot, `${workflow.name}.md`);
+      expect(fs.existsSync(workflowPath)).toBe(true);
+      expect(fs.readFileSync(workflowPath, "utf-8")).toBe(workflow.content);
+    }
+  });
+
+  it("configurePlatform('qoder') creates .qoder directory", async () => {
+    await configurePlatform("qoder", tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, ".qoder"))).toBe(true);
+  });
+
+  it("configurePlatform('qoder') writes all skill templates", async () => {
+    await configurePlatform("qoder", tmpDir);
+
+    const expectedSkills = getAllQoderSkills();
+    const expectedNames = expectedSkills.map((s) => s.name).sort();
+
+    const skillsDir = path.join(tmpDir, ".qoder", "skills");
+    expect(fs.existsSync(skillsDir)).toBe(true);
+
+    const actualDirs = fs
+      .readdirSync(skillsDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+
+    expect(actualDirs).toEqual(expectedNames);
+
+    for (const skill of expectedSkills) {
+      const filePath = path.join(skillsDir, skill.name, "SKILL.md");
+      expect(fs.existsSync(filePath)).toBe(true);
+      expect(fs.readFileSync(filePath, "utf-8")).toBe(skill.content);
+    }
+  });
+
+  it("configurePlatform('qoder') does not include compiled artifacts", async () => {
+    await configurePlatform("qoder", tmpDir);
+
+    const walk = (dir: string): string[] => {
+      const files: string[] = [];
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) files.push(...walk(full));
+        else files.push(entry.name);
+      }
+      return files;
+    };
+
+    const allFiles = walk(path.join(tmpDir, ".qoder"));
+    for (const file of allFiles) {
+      expect(file).not.toMatch(/\.js$/);
+      expect(file).not.toMatch(/\.d\.ts$/);
+      expect(file).not.toMatch(/\.js\.map$/);
+      expect(file).not.toMatch(/\.d\.ts\.map$/);
     }
   });
 

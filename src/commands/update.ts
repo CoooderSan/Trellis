@@ -27,6 +27,7 @@ import {
   computeHash,
 } from "../utils/template-hash.js";
 import { compareVersions } from "../utils/compare-versions.js";
+import { setupProxy } from "../utils/proxy.js";
 
 // Import templates for comparison
 import {
@@ -43,6 +44,7 @@ import {
   commonPhase,
   commonRegistry,
   commonCliAdapter,
+  commonConfig,
   // Python scripts - multi_agent
   multiAgentInit,
   multiAgentStart,
@@ -58,33 +60,10 @@ import {
   addSessionScript,
   createBootstrapScript,
   // Configuration
+  configYamlTemplate,
   worktreeYamlTemplate,
-  workflowMdTemplate,
   gitignoreTemplate,
 } from "../templates/trellis/index.js";
-
-import {
-  guidesIndexContent,
-  guidesCrossLayerThinkingGuideContent,
-  guidesCodeReuseThinkingGuideContent,
-  // Backend structure (multi-doc)
-  backendIndexContent,
-  backendDirectoryStructureContent,
-  backendDatabaseGuidelinesContent,
-  backendLoggingGuidelinesContent,
-  backendQualityGuidelinesContent,
-  backendErrorHandlingContent,
-  // Frontend structure (multi-doc)
-  frontendIndexContent,
-  frontendDirectoryStructureContent,
-  frontendTypeSafetyContent,
-  frontendHookGuidelinesContent,
-  frontendComponentGuidelinesContent,
-  frontendQualityGuidelinesContent,
-  frontendStateManagementContent,
-  // Workspace
-  workspaceIndexContent,
-} from "../templates/markdown/index.js";
 
 import {
   ALL_MANAGED_DIRS,
@@ -121,11 +100,11 @@ interface ChangeAnalysis {
 type ConflictAction = "overwrite" | "skip" | "create-new";
 
 // Paths that should never be touched (true user data)
-// Note: frontend/backend spec dirs removed - they should be created if missing,
-// and existing files are protected by hash-based modification tracking
+// spec/ is user-customized content created during init; update should never modify it
 const PROTECTED_PATHS = [
   `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.WORKSPACE}`, // workspace/
   `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.TASKS}`, // tasks/
+  `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.SPEC}`, // spec/
   `${DIR_NAMES.WORKFLOW}/.developer`,
   `${DIR_NAMES.WORKFLOW}/.current-task`,
 ];
@@ -152,6 +131,7 @@ function collectTemplateFiles(cwd: string): Map<string, string> {
   files.set(`${PATHS.SCRIPTS}/common/phase.py`, commonPhase);
   files.set(`${PATHS.SCRIPTS}/common/registry.py`, commonRegistry);
   files.set(`${PATHS.SCRIPTS}/common/cli_adapter.py`, commonCliAdapter);
+  files.set(`${PATHS.SCRIPTS}/common/config.py`, commonConfig);
 
   // Python scripts - multi_agent
   files.set(`${PATHS.SCRIPTS}/multi_agent/__init__.py`, multiAgentInit);
@@ -170,70 +150,10 @@ function collectTemplateFiles(cwd: string): Map<string, string> {
   files.set(`${PATHS.SCRIPTS}/create_bootstrap.py`, createBootstrapScript);
 
   // Configuration
+  files.set(`${DIR_NAMES.WORKFLOW}/config.yaml`, configYamlTemplate);
   files.set(`${DIR_NAMES.WORKFLOW}/worktree.yaml`, worktreeYamlTemplate);
   files.set(`${DIR_NAMES.WORKFLOW}/.gitignore`, gitignoreTemplate);
-  files.set(PATHS.WORKFLOW_GUIDE_FILE, workflowMdTemplate);
-
-  // Workspace index (template file, not user data)
-  files.set(`${PATHS.WORKSPACE}/index.md`, workspaceIndexContent);
-
-  // Spec - guides
-  files.set(`${PATHS.SPEC}/guides/index.md`, guidesIndexContent);
-  files.set(
-    `${PATHS.SPEC}/guides/cross-layer-thinking-guide.md`,
-    guidesCrossLayerThinkingGuideContent,
-  );
-  files.set(
-    `${PATHS.SPEC}/guides/code-reuse-thinking-guide.md`,
-    guidesCodeReuseThinkingGuideContent,
-  );
-
-  // Spec - backend (created if missing, protected by hash tracking if modified)
-  files.set(`${PATHS.SPEC}/backend/index.md`, backendIndexContent);
-  files.set(
-    `${PATHS.SPEC}/backend/directory-structure.md`,
-    backendDirectoryStructureContent,
-  );
-  files.set(
-    `${PATHS.SPEC}/backend/database-guidelines.md`,
-    backendDatabaseGuidelinesContent,
-  );
-  files.set(
-    `${PATHS.SPEC}/backend/logging-guidelines.md`,
-    backendLoggingGuidelinesContent,
-  );
-  files.set(
-    `${PATHS.SPEC}/backend/quality-guidelines.md`,
-    backendQualityGuidelinesContent,
-  );
-  files.set(
-    `${PATHS.SPEC}/backend/error-handling.md`,
-    backendErrorHandlingContent,
-  );
-
-  // Spec - frontend (created if missing, protected by hash tracking if modified)
-  files.set(`${PATHS.SPEC}/frontend/index.md`, frontendIndexContent);
-  files.set(
-    `${PATHS.SPEC}/frontend/directory-structure.md`,
-    frontendDirectoryStructureContent,
-  );
-  files.set(`${PATHS.SPEC}/frontend/type-safety.md`, frontendTypeSafetyContent);
-  files.set(
-    `${PATHS.SPEC}/frontend/hook-guidelines.md`,
-    frontendHookGuidelinesContent,
-  );
-  files.set(
-    `${PATHS.SPEC}/frontend/component-guidelines.md`,
-    frontendComponentGuidelinesContent,
-  );
-  files.set(
-    `${PATHS.SPEC}/frontend/quality-guidelines.md`,
-    frontendQualityGuidelinesContent,
-  );
-  files.set(
-    `${PATHS.SPEC}/frontend/state-management.md`,
-    frontendStateManagementContent,
-  );
+  // workflow.md and workspace/index.md are user-customizable; only created during init
 
   // Platform-specific templates (only for configured platforms)
   for (const platformId of platforms) {
@@ -470,6 +390,7 @@ const BACKUP_EXCLUDE_PATTERNS = [
   ".backup-", // Previous backups
   "/workspace/", // Developer workspace (user data)
   "/tasks/", // Task data (user data)
+  "/spec/", // Spec files (user-customized content)
   "/backlog/", // Backlog data (user data)
   "/agent-traces/", // Agent traces (user data, legacy name)
 ];
@@ -488,7 +409,7 @@ function shouldExcludeFromBackup(relativePath: string): boolean {
 
 /**
  * Create complete snapshot backup of all managed directories
- * Backs up .trellis, .claude, .cursor, .iflow, .opencode directories entirely
+ * Backs up all managed platform/workflow directories entirely
  * (excluding user data like workspace/, tasks/, backlog/)
  */
 function createFullBackup(cwd: string): string | null {
@@ -862,11 +783,7 @@ export function cleanupEmptyDirs(cwd: string, dirPath: string): void {
       fs.rmdirSync(fullPath);
       // Recursively check parent (but stop at root directories)
       const parent = path.dirname(dirPath);
-      if (
-        parent !== "." &&
-        parent !== dirPath &&
-        !isManagedRootDir(parent)
-      ) {
+      if (parent !== "." && parent !== dirPath && !isManagedRootDir(parent)) {
         cleanupEmptyDirs(cwd, parent);
       }
     }
@@ -1094,6 +1011,9 @@ export async function update(options: UpdateOptions): Promise<void> {
   console.log(chalk.cyan("\nTrellis Update"));
   console.log(chalk.cyan("══════════════\n"));
 
+  // Set up proxy before any network calls (npm version check)
+  setupProxy();
+
   // Get versions
   const projectVersion = getInstalledVersion(cwd);
   const cliVersion = VERSION;
@@ -1296,12 +1216,22 @@ export async function update(options: UpdateOptions): Promise<void> {
   ) {
     if (isSameVersion) {
       console.log(chalk.green("✓ Already up to date!"));
-    } else if (isUpgrade) {
-      console.log(
-        chalk.green(
-          `✓ No file changes needed for ${projectVersion} → ${cliVersion}`,
-        ),
-      );
+    } else {
+      // Version changed but no file changes needed — still update the version stamp
+      updateVersionFile(cwd);
+      if (isUpgrade) {
+        console.log(
+          chalk.green(
+            `✓ No file changes needed for ${projectVersion} → ${cliVersion}`,
+          ),
+        );
+      } else if (isDowngrade) {
+        console.log(
+          chalk.green(
+            `✓ No file changes needed for ${projectVersion} → ${cliVersion} (downgrade)`,
+          ),
+        );
+      }
     }
     return;
   }
@@ -1324,7 +1254,7 @@ export async function update(options: UpdateOptions): Promise<void> {
       console.log(chalk.cyan("═".repeat(60)));
       console.log(
         chalk.bgRed.white.bold(" ⚠️  BREAKING CHANGES ") +
-          chalk.red.bold(" Review the changes above carefully!")
+          chalk.red.bold(" Review the changes above carefully!"),
       );
       if (preConfirmMetadata.changelog.length > 0) {
         console.log("");
@@ -1334,7 +1264,7 @@ export async function update(options: UpdateOptions): Promise<void> {
         console.log("");
         console.log(
           chalk.bgGreen.black.bold(" 💡 RECOMMENDED ") +
-            chalk.green.bold(" Run with --migrate to complete the migration")
+            chalk.green.bold(" Run with --migrate to complete the migration"),
         );
       }
       console.log(chalk.cyan("═".repeat(60)));
@@ -1363,7 +1293,7 @@ export async function update(options: UpdateOptions): Promise<void> {
     return;
   }
 
-  // Create complete backup of .trellis, .claude, .cursor, .iflow, .opencode directories
+  // Create complete backup of all managed platform/workflow directories
   const backupDir = createFullBackup(cwd);
 
   if (backupDir) {
@@ -1428,7 +1358,10 @@ export async function update(options: UpdateOptions): Promise<void> {
       fs.writeFileSync(file.path, file.newContent);
 
       // Make scripts executable
-      if (file.relativePath.endsWith(".sh") || file.relativePath.endsWith(".py")) {
+      if (
+        file.relativePath.endsWith(".sh") ||
+        file.relativePath.endsWith(".py")
+      ) {
         fs.chmodSync(file.path, "755");
       }
 
@@ -1444,7 +1377,10 @@ export async function update(options: UpdateOptions): Promise<void> {
       fs.writeFileSync(file.path, file.newContent);
 
       // Make scripts executable
-      if (file.relativePath.endsWith(".sh") || file.relativePath.endsWith(".py")) {
+      if (
+        file.relativePath.endsWith(".sh") ||
+        file.relativePath.endsWith(".py")
+      ) {
         fs.chmodSync(file.path, "755");
       }
 
@@ -1464,7 +1400,10 @@ export async function update(options: UpdateOptions): Promise<void> {
 
       if (action === "overwrite") {
         fs.writeFileSync(file.path, file.newContent);
-        if (file.relativePath.endsWith(".sh") || file.relativePath.endsWith(".py")) {
+        if (
+          file.relativePath.endsWith(".sh") ||
+          file.relativePath.endsWith(".py")
+        ) {
           fs.chmodSync(file.path, "755");
         }
         console.log(chalk.yellow(`  ✓ Overwritten: ${file.relativePath}`));
@@ -1594,6 +1533,9 @@ export async function update(options: UpdateOptions): Promise<void> {
           commit: null,
           pr_url: null,
           subtasks: [],
+          children: [],
+          parent: null,
+          meta: {},
         };
 
         // Write task.json
@@ -1608,7 +1550,11 @@ export async function update(options: UpdateOptions): Promise<void> {
         prdContent += `**Assignee**: ${currentDeveloper}\n\n`;
         prdContent += `## Status\n\n- [ ] Review migration guide\n- [ ] Update custom files\n- [ ] Run \`trellis update --migrate\`\n- [ ] Test workflows\n\n`;
 
-        for (const { version, guide, aiInstructions } of metadata.migrationGuides) {
+        for (const {
+          version,
+          guide,
+          aiInstructions,
+        } of metadata.migrationGuides) {
           prdContent += `---\n\n## v${version} Migration Guide\n\n`;
           prdContent += guide;
           prdContent += "\n\n";
@@ -1629,15 +1575,19 @@ export async function update(options: UpdateOptions): Promise<void> {
         console.log(chalk.bgCyan.black.bold(" 📋 MIGRATION TASK CREATED "));
         console.log(
           chalk.cyan(
-            `A task has been created to help you complete the migration:`
-          )
+            `A task has been created to help you complete the migration:`,
+          ),
         );
-        console.log(chalk.white(`   ${DIR_NAMES.WORKFLOW}/${DIR_NAMES.TASKS}/${taskDirName}/`));
+        console.log(
+          chalk.white(
+            `   ${DIR_NAMES.WORKFLOW}/${DIR_NAMES.TASKS}/${taskDirName}/`,
+          ),
+        );
         console.log("");
         console.log(
           chalk.gray(
-            "Use AI to help: Ask Claude/Cursor to read the task and fix your custom files."
-          )
+            "Use AI to help: Ask Claude/Cursor to read the task and fix your custom files.",
+          ),
         );
       }
     }
@@ -1654,7 +1604,7 @@ export async function update(options: UpdateOptions): Promise<void> {
       if (finalMetadata.breaking) {
         console.log(
           chalk.bgRed.white.bold(" ⚠️  BREAKING CHANGES ") +
-            chalk.red.bold(" This update contains breaking changes!")
+            chalk.red.bold(" This update contains breaking changes!"),
         );
         console.log("");
       }
@@ -1670,10 +1620,10 @@ export async function update(options: UpdateOptions): Promise<void> {
       if (finalMetadata.recommendMigrate && !options.migrate) {
         console.log(
           chalk.bgGreen.black.bold(" 💡 RECOMMENDED ") +
-            chalk.green.bold(" Run with --migrate to complete the migration")
+            chalk.green.bold(" Run with --migrate to complete the migration"),
         );
         console.log(
-          chalk.gray("   This will remove legacy files and apply all changes.")
+          chalk.gray("   This will remove legacy files and apply all changes."),
         );
         console.log("");
       }

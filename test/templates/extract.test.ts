@@ -6,11 +6,19 @@ import {
   getClaudeTemplatePath,
   getOpenCodeTemplatePath,
   getIflowTemplatePath,
+  getKiloTemplatePath,
+  getKiroTemplatePath,
+  getGeminiTemplatePath,
+  getAntigravityTemplatePath,
+  getQoderTemplatePath,
   getTrellisSourcePath,
   getCursorSourcePath,
   getClaudeSourcePath,
   getIflowSourcePath,
   getOpenCodeSourcePath,
+  getKiroSourcePath,
+  getGeminiSourcePath,
+  getAntigravitySourcePath,
   readTrellisFile,
   readTemplate,
   readScript,
@@ -18,6 +26,8 @@ import {
   readCursorFile,
   readClaudeFile,
   readOpenCodeFile,
+  readKiloFile,
+  readGeminiFile,
 } from "../../src/templates/extract.js";
 
 // =============================================================================
@@ -54,6 +64,36 @@ describe("template path functions", () => {
     expect(fs.existsSync(p)).toBe(true);
     expect(fs.statSync(p).isDirectory()).toBe(true);
   });
+
+  it("getKiloTemplatePath returns existing directory", () => {
+    const p = getKiloTemplatePath();
+    expect(fs.existsSync(p)).toBe(true);
+    expect(fs.statSync(p).isDirectory()).toBe(true);
+  });
+
+  it("getKiroTemplatePath returns existing directory", () => {
+    const p = getKiroTemplatePath();
+    expect(fs.existsSync(p)).toBe(true);
+    expect(fs.statSync(p).isDirectory()).toBe(true);
+  });
+
+  it("getGeminiTemplatePath returns existing directory", () => {
+    const p = getGeminiTemplatePath();
+    expect(fs.existsSync(p)).toBe(true);
+    expect(fs.statSync(p).isDirectory()).toBe(true);
+  });
+
+  it("getAntigravityTemplatePath returns existing directory", () => {
+    const p = getAntigravityTemplatePath();
+    expect(fs.existsSync(p)).toBe(true);
+    expect(fs.statSync(p).isDirectory()).toBe(true);
+  });
+
+  it("getQoderTemplatePath returns existing directory", () => {
+    const p = getQoderTemplatePath();
+    expect(fs.existsSync(p)).toBe(true);
+    expect(fs.statSync(p).isDirectory()).toBe(true);
+  });
 });
 
 // =============================================================================
@@ -79,6 +119,18 @@ describe("deprecated source path aliases", () => {
 
   it("getOpenCodeSourcePath equals getOpenCodeTemplatePath", () => {
     expect(getOpenCodeSourcePath()).toBe(getOpenCodeTemplatePath());
+  });
+
+  it("getKiroSourcePath equals getKiroTemplatePath", () => {
+    expect(getKiroSourcePath()).toBe(getKiroTemplatePath());
+  });
+
+  it("getGeminiSourcePath equals getGeminiTemplatePath", () => {
+    expect(getGeminiSourcePath()).toBe(getGeminiTemplatePath());
+  });
+
+  it("getAntigravitySourcePath equals getAntigravityTemplatePath", () => {
+    expect(getAntigravitySourcePath()).toBe(getAntigravityTemplatePath());
   });
 });
 
@@ -186,5 +238,31 @@ describe("readOpenCodeFile", () => {
         }
       }
     }
+  });
+});
+
+describe("readKiloFile", () => {
+  it("can read a file from kilo templates", () => {
+    const kiloPath = getKiloTemplatePath();
+    const entries = fs.readdirSync(kiloPath);
+    if (entries.length > 0) {
+      for (const entry of entries) {
+        const fullPath = `${kiloPath}/${entry}`;
+        if (fs.statSync(fullPath).isFile()) {
+          const content = readKiloFile(entry);
+          expect(typeof content).toBe("string");
+          return;
+        }
+      }
+    }
+  });
+});
+
+describe("readGeminiFile", () => {
+  it("reads a toml file from gemini templates", () => {
+    const content = readGeminiFile("commands/trellis/start.toml");
+    expect(typeof content).toBe("string");
+    expect(content.length).toBeGreaterThan(0);
+    expect(content).toContain("description = ");
   });
 });

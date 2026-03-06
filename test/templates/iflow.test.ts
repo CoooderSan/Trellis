@@ -22,16 +22,73 @@ describe("iflow settingsTemplate", () => {
 });
 
 // =============================================================================
+// settingsTemplate — SessionStart hook matchers (MIN-231)
+// =============================================================================
+
+describe("iflow settingsTemplate SessionStart matchers", () => {
+  const settings = JSON.parse(settingsTemplate);
+  const sessionStartEntries = settings.hooks.SessionStart as {
+    matcher: string;
+    hooks: { type: string; command: string; timeout: number }[];
+  }[];
+
+  it("includes startup, clear, and compact matchers", () => {
+    const matchers = sessionStartEntries.map((e) => e.matcher);
+    expect(matchers).toContain("startup");
+    expect(matchers).toContain("clear");
+    expect(matchers).toContain("compact");
+  });
+
+  it("all SessionStart entries invoke the same session-start.py hook", () => {
+    for (const entry of sessionStartEntries) {
+      expect(entry.hooks).toHaveLength(1);
+      expect(entry.hooks[0].command).toContain("session-start.py");
+    }
+  });
+
+  it("all SessionStart entries use {{PYTHON_CMD}} placeholder", () => {
+    for (const entry of sessionStartEntries) {
+      expect(entry.hooks[0].command).toContain("{{PYTHON_CMD}}");
+    }
+  });
+});
+
+// =============================================================================
 // getAllCommands — reads iflow command templates
 // =============================================================================
 
+const EXPECTED_COMMAND_NAMES = [
+  "before-backend-dev",
+  "before-frontend-dev",
+  "brainstorm",
+  "break-loop",
+  "check-backend",
+  "check-cross-layer",
+  "check-frontend",
+  "create-command",
+  "finish-work",
+  "integrate-skill",
+  "onboard",
+  "parallel",
+  "record-session",
+  "start",
+  "update-spec",
+];
+
 describe("iflow getAllCommands", () => {
-  it("returns empty list (commands are in trellis/ subdirectory, not listed by getAllCommands)", () => {
-    // iflow getAllCommands lists commands/ top-level only, but actual .md files are in commands/trellis/
+  it("returns the expected command set", () => {
     const commands = getAllCommands();
-    expect(commands.length).toBe(0);
+    const names = commands.map((c) => c.name);
+    expect(names).toEqual(EXPECTED_COMMAND_NAMES);
   });
 
+  it("each command has name and content", () => {
+    const commands = getAllCommands();
+    for (const command of commands) {
+      expect(command.name.length).toBeGreaterThan(0);
+      expect(command.content.length).toBeGreaterThan(0);
+    }
+  });
 });
 
 // =============================================================================

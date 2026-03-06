@@ -64,6 +64,12 @@ describe("init() integration", () => {
     expect(fs.existsSync(path.join(tmpDir, ".cursor"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".agent", "workflows"))).toBe(
+      false,
+    );
+    expect(fs.existsSync(path.join(tmpDir, ".kiro", "skills"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".gemini"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".qoder"))).toBe(false);
 
     // Root files
     expect(fs.existsSync(path.join(tmpDir, "AGENTS.md"))).toBe(true);
@@ -77,6 +83,12 @@ describe("init() integration", () => {
     expect(fs.existsSync(path.join(tmpDir, ".iflow"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".opencode"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".agent", "workflows"))).toBe(
+      false,
+    );
+    expect(fs.existsSync(path.join(tmpDir, ".kiro", "skills"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".gemini"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".qoder"))).toBe(false);
   });
 
   it("#3 multi platform creates all selected platform directories", async () => {
@@ -87,14 +99,83 @@ describe("init() integration", () => {
     expect(fs.existsSync(path.join(tmpDir, ".opencode"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".iflow"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".agent", "workflows"))).toBe(
+      false,
+    );
+    expect(fs.existsSync(path.join(tmpDir, ".kiro", "skills"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".gemini"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".qoder"))).toBe(false);
   });
 
   it("#3b codex platform creates .agents/skills", async () => {
     await init({ yes: true, codex: true });
 
     expect(fs.existsSync(path.join(tmpDir, ".agents", "skills"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "skills", "start", "SKILL.md"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".agents", "skills", "parallel"))).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, ".agents", "skills", "start", "SKILL.md"),
+      ),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(tmpDir, ".agents", "skills", "parallel")),
+    ).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".cursor"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".gemini"))).toBe(false);
+  });
+
+  it("#3c kiro platform creates .kiro/skills", async () => {
+    await init({ yes: true, kiro: true });
+
+    expect(fs.existsSync(path.join(tmpDir, ".kiro", "skills"))).toBe(true);
+    expect(
+      fs.existsSync(path.join(tmpDir, ".kiro", "skills", "start", "SKILL.md")),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(tmpDir, ".kiro", "skills", "parallel")),
+    ).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".cursor"))).toBe(false);
+  });
+
+  it("#3d antigravity platform creates .agent/workflows", async () => {
+    await init({ yes: true, antigravity: true });
+
+    expect(fs.existsSync(path.join(tmpDir, ".agent", "workflows"))).toBe(
+      true,
+    );
+    expect(
+      fs.existsSync(path.join(tmpDir, ".agent", "workflows", "start.md")),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, ".agent", "workflows", "parallel.md"),
+      ),
+    ).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".cursor"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".gemini"))).toBe(false);
+  });
+
+  it("#3g qoder platform creates .qoder/skills", async () => {
+    await init({ yes: true, qoder: true });
+
+    expect(
+      fs.existsSync(path.join(tmpDir, ".qoder", "skills")),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, ".qoder", "skills", "start", "SKILL.md"),
+      ),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".cursor"))).toBe(false);
+  });
+
+  it("#3e gemini platform creates .gemini/commands/trellis", async () => {
+    await init({ yes: true, gemini: true });
+    expect(fs.existsSync(path.join(tmpDir, ".gemini", "commands", "trellis"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".gemini", "commands", "trellis", "start.toml"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".cursor"))).toBe(false);
   });
@@ -183,12 +264,39 @@ describe("init() integration", () => {
     await init({ yes: true });
 
     const specDir = path.join(tmpDir, PATHS.SPEC);
-    expect(fs.existsSync(path.join(specDir, "backend", "index.md"))).toBe(
-      true,
-    );
+    expect(fs.existsSync(path.join(specDir, "backend", "index.md"))).toBe(true);
     expect(fs.existsSync(path.join(specDir, "frontend", "index.md"))).toBe(
       true,
     );
+    expect(fs.existsSync(path.join(specDir, "guides", "index.md"))).toBe(true);
+  });
+
+  it("#11 backend project init skips frontend spec templates", async () => {
+    // go.mod triggers detectProjectType → "backend"
+    fs.writeFileSync(path.join(tmpDir, "go.mod"), "module example.com/app\n");
+
+    await init({ yes: true });
+
+    const specDir = path.join(tmpDir, PATHS.SPEC);
+    expect(fs.existsSync(path.join(specDir, "backend", "index.md"))).toBe(true);
+    expect(fs.existsSync(path.join(specDir, "frontend"))).toBe(false);
+    expect(fs.existsSync(path.join(specDir, "guides", "index.md"))).toBe(true);
+  });
+
+  it("#12 frontend project init skips backend spec templates", async () => {
+    // vite.config.ts triggers detectProjectType → "frontend"
+    fs.writeFileSync(
+      path.join(tmpDir, "vite.config.ts"),
+      "export default {}\n",
+    );
+
+    await init({ yes: true });
+
+    const specDir = path.join(tmpDir, PATHS.SPEC);
+    expect(fs.existsSync(path.join(specDir, "frontend", "index.md"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(specDir, "backend"))).toBe(false);
     expect(fs.existsSync(path.join(specDir, "guides", "index.md"))).toBe(true);
   });
 });

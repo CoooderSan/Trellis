@@ -124,6 +124,88 @@ export function getIflowSourcePath(): string {
 }
 
 /**
+ * Get the path to the kilo templates directory.
+ *
+ * This reads from src/templates/kilo/ (development) or dist/templates/kilo/ (production).
+ * These are GENERIC templates, not the Trellis project's own .kilo/ configuration.
+ */
+export function getKiloTemplatePath(): string {
+  const templatePath = path.join(__dirname, "kilo");
+  if (fs.existsSync(templatePath)) {
+    return templatePath;
+  }
+
+  throw new Error(
+    "Could not find kilo templates directory. Expected at templates/kilo/",
+  );
+}
+
+/**
+ * Get the path to the kiro templates directory.
+ *
+ * This reads from src/templates/kiro/ (development) or dist/templates/kiro/ (production).
+ * These are GENERIC templates, not the Trellis project's own .kiro/ configuration.
+ */
+export function getKiroTemplatePath(): string {
+  const templatePath = path.join(__dirname, "kiro");
+  if (fs.existsSync(templatePath)) {
+    return templatePath;
+  }
+
+  throw new Error(
+    "Could not find kiro templates directory. Expected at templates/kiro/",
+  );
+}
+
+/**
+ * @deprecated Use getKiroTemplatePath() instead.
+ */
+export function getKiroSourcePath(): string {
+  return getKiroTemplatePath();
+}
+
+/**
+ * Get the path to the antigravity templates directory.
+ *
+ * This reads from src/templates/antigravity/ (development) or dist/templates/antigravity/ (production).
+ * These are GENERIC templates, not the Trellis project's own .agent/workflows configuration.
+ */
+export function getAntigravityTemplatePath(): string {
+  const templatePath = path.join(__dirname, "antigravity");
+  if (fs.existsSync(templatePath)) {
+    return templatePath;
+  }
+
+  throw new Error(
+    "Could not find antigravity templates directory. Expected at templates/antigravity/",
+  );
+}
+
+/**
+ * @deprecated Use getAntigravityTemplatePath() instead.
+ */
+export function getAntigravitySourcePath(): string {
+  return getAntigravityTemplatePath();
+}
+
+/**
+ * Get the path to the qoder templates directory.
+ *
+ * This reads from src/templates/qoder/ (development) or dist/templates/qoder/ (production).
+ * These are GENERIC templates, not the Trellis project's own .qoder/ configuration.
+ */
+export function getQoderTemplatePath(): string {
+  const templatePath = path.join(__dirname, "qoder");
+  if (fs.existsSync(templatePath)) {
+    return templatePath;
+  }
+
+  throw new Error(
+    "Could not find qoder templates directory. Expected at templates/qoder/",
+  );
+}
+
+/**
  * Read a file from the .trellis directory
  * @param relativePath - Path relative to .trellis/ (e.g., 'scripts/task.py')
  * @returns File content as string
@@ -208,6 +290,52 @@ export function getOpenCodeSourcePath(): string {
 export function readOpenCodeFile(relativePath: string): string {
   const opencodePath = getOpenCodeSourcePath();
   const filePath = path.join(opencodePath, relativePath);
+  return fs.readFileSync(filePath, "utf-8");
+}
+
+/**
+ * Read a file from the .kilo directory (dogfooding)
+ * @param relativePath - Path relative to .kilo/ (e.g., 'commands/start.md')
+ * @returns File content as string
+ */
+export function readKiloFile(relativePath: string): string {
+  const kiloPath = getKiloTemplatePath();
+  const filePath = path.join(kiloPath, relativePath);
+  return fs.readFileSync(filePath, "utf-8");
+}
+
+/**
+ * Get the path to the gemini templates directory.
+ *
+ * This reads from src/templates/gemini/ (development) or dist/templates/gemini/ (production).
+ * These are GENERIC templates, not the Trellis project's own .gemini/ configuration.
+ */
+export function getGeminiTemplatePath(): string {
+  const templatePath = path.join(__dirname, "gemini");
+  if (fs.existsSync(templatePath)) {
+    return templatePath;
+  }
+
+  throw new Error(
+    "Could not find gemini templates directory. Expected at templates/gemini/",
+  );
+}
+
+/**
+ * @deprecated Use getGeminiTemplatePath() instead.
+ */
+export function getGeminiSourcePath(): string {
+  return getGeminiTemplatePath();
+}
+
+/**
+ * Read a file from the .gemini directory (dogfooding)
+ * @param relativePath - Path relative to .gemini/ (e.g., 'commands/trellis/start.toml')
+ * @returns File content as string
+ */
+export function readGeminiFile(relativePath: string): string {
+  const geminiPath = getGeminiTemplatePath();
+  const filePath = path.join(geminiPath, relativePath);
   return fs.readFileSync(filePath, "utf-8");
 }
 

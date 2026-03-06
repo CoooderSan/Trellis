@@ -7,7 +7,17 @@
 /**
  * Supported AI coding tools
  */
-export type AITool = "claude-code" | "cursor" | "opencode" | "iflow" | "codex";
+export type AITool =
+  | "claude-code"
+  | "cursor"
+  | "opencode"
+  | "iflow"
+  | "codex"
+  | "kilo"
+  | "kiro"
+  | "gemini"
+  | "antigravity"
+  | "qoder";
 
 /**
  * Template directory categories
@@ -18,13 +28,28 @@ export type TemplateDir =
   | "cursor"
   | "opencode"
   | "iflow"
-  | "codex";
+  | "codex"
+  | "kilo"
+  | "kiro"
+  | "gemini"
+  | "antigravity"
+  | "qoder";
 
 /**
- * CLI flag names for platform selection (e.g., --claude, --cursor)
+ * CLI flag names for platform selection (e.g., --claude, --cursor, --kilo, --kiro, --gemini, --antigravity)
  * Must match keys in InitOptions (src/commands/init.ts)
  */
-export type CliFlag = "claude" | "cursor" | "opencode" | "iflow" | "codex";
+export type CliFlag =
+  | "claude"
+  | "cursor"
+  | "opencode"
+  | "iflow"
+  | "codex"
+  | "kilo"
+  | "kiro"
+  | "gemini"
+  | "antigravity"
+  | "qoder";
 
 /**
  * Configuration for an AI tool
@@ -93,6 +118,46 @@ export const AI_TOOLS: Record<AITool, AIToolConfig> = {
     templateDirs: ["common", "codex"],
     configDir: ".agents/skills",
     cliFlag: "codex",
+    defaultChecked: false,
+    hasPythonHooks: false,
+  },
+  kilo: {
+    name: "Kilo CLI",
+    templateDirs: ["common", "kilo"],
+    configDir: ".kilocode",
+    cliFlag: "kilo",
+    defaultChecked: false,
+    hasPythonHooks: false,
+  },
+  kiro: {
+    name: "Kiro Code",
+    templateDirs: ["common", "kiro"],
+    configDir: ".kiro/skills",
+    cliFlag: "kiro",
+    defaultChecked: false,
+    hasPythonHooks: false,
+  },
+  gemini: {
+    name: "Gemini CLI",
+    templateDirs: ["common", "gemini"],
+    configDir: ".gemini",
+    cliFlag: "gemini",
+    defaultChecked: false,
+    hasPythonHooks: false,
+  },
+  antigravity: {
+    name: "Antigravity",
+    templateDirs: ["common", "antigravity"],
+    configDir: ".agent/workflows",
+    cliFlag: "antigravity",
+    defaultChecked: false,
+    hasPythonHooks: false,
+  },
+  qoder: {
+    name: "Qoder",
+    templateDirs: ["common", "qoder"],
+    configDir: ".qoder",
+    cliFlag: "qoder",
     defaultChecked: false,
     hasPythonHooks: false,
   },

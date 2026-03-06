@@ -18,6 +18,11 @@ import { configureCursor } from "./cursor.js";
 import { configureIflow } from "./iflow.js";
 import { configureOpenCode } from "./opencode.js";
 import { configureCodex } from "./codex.js";
+import { configureKilo } from "./kilo.js";
+import { configureKiro } from "./kiro.js";
+import { configureGemini } from "./gemini.js";
+import { configureAntigravity } from "./antigravity.js";
+import { configureQoder } from "./qoder.js";
 
 // Shared utilities
 import { resolvePlaceholders } from "./shared.js";
@@ -29,9 +34,7 @@ import {
   getAllHooks as getClaudeHooks,
   getSettingsTemplate as getClaudeSettings,
 } from "../templates/claude/index.js";
-import {
-  getAllCommands as getCursorCommands,
-} from "../templates/cursor/index.js";
+import { getAllCommands as getCursorCommands } from "../templates/cursor/index.js";
 import {
   getAllAgents as getIflowAgents,
   getAllCommands as getIflowCommands,
@@ -39,6 +42,11 @@ import {
   getSettingsTemplate as getIflowSettings,
 } from "../templates/iflow/index.js";
 import { getAllSkills as getCodexSkills } from "../templates/codex/index.js";
+import { getAllWorkflows as getKiloWorkflows } from "../templates/kilo/index.js";
+import { getAllSkills as getKiroSkills } from "../templates/kiro/index.js";
+import { getAllCommands as getGeminiCommands } from "../templates/gemini/index.js";
+import { getAllWorkflows as getAntigravityWorkflows } from "../templates/antigravity/index.js";
+import { getAllSkills as getQoderSkills } from "../templates/qoder/index.js";
 
 // =============================================================================
 // Platform Functions Registry
@@ -102,7 +110,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       const files = new Map<string, string>();
       // Commands
       for (const cmd of getIflowCommands()) {
-        files.set(`.iflow/commands/${cmd.name}.md`, cmd.content);
+        files.set(`.iflow/commands/trellis/${cmd.name}.md`, cmd.content);
       }
       // Agents
       for (const agent of getIflowAgents()) {
@@ -127,6 +135,56 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       const files = new Map<string, string>();
       for (const skill of getCodexSkills()) {
         files.set(`.agents/skills/${skill.name}/SKILL.md`, skill.content);
+      }
+      return files;
+    },
+  },
+  kilo: {
+    configure: configureKilo,
+    collectTemplates: () => {
+      const files = new Map<string, string>();
+      for (const wf of getKiloWorkflows()) {
+        files.set(`.kilocode/workflows/${wf.name}.md`, wf.content);
+      }
+      return files;
+    },
+  },
+  kiro: {
+    configure: configureKiro,
+    collectTemplates: () => {
+      const files = new Map<string, string>();
+      for (const skill of getKiroSkills()) {
+        files.set(`.kiro/skills/${skill.name}/SKILL.md`, skill.content);
+      }
+      return files;
+    },
+  },
+  gemini: {
+    configure: configureGemini,
+    collectTemplates: () => {
+      const files = new Map<string, string>();
+      for (const cmd of getGeminiCommands()) {
+        files.set(`.gemini/commands/trellis/${cmd.name}.toml`, cmd.content);
+      }
+      return files;
+    },
+  },
+  antigravity: {
+    configure: configureAntigravity,
+    collectTemplates: () => {
+      const files = new Map<string, string>();
+      for (const workflow of getAntigravityWorkflows()) {
+        files.set(`.agent/workflows/${workflow.name}.md`, workflow.content);
+      }
+      return files;
+    },
+  },
+  qoder: {
+    configure: configureQoder,
+    collectTemplates: () => {
+      const files = new Map<string, string>();
+      for (const skill of getQoderSkills()) {
+        files.set(`.qoder/skills/${skill.name}/SKILL.md`, skill.content);
       }
       return files;
     },

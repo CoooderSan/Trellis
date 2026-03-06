@@ -40,6 +40,13 @@
 | New migration manifest JSON | `registry-invariants.test.ts` auto-validates format |
 | CLI flag description text | Display-only |
 
+### Must update existing tests
+
+| Change Type | What to Update |
+|-------------|----------------|
+| New command/skill added to a platform | Add to `EXPECTED_COMMAND_NAMES` / `EXPECTED_SKILL_NAMES` in that platform's test file |
+| New command added to ANY platform | Add to ALL platform test files (claude, cursor, iflow, codex) — see platform-integration spec for required command list |
+
 ### Decision flow
 
 ```
@@ -244,6 +251,24 @@ it("is valid non-empty JSON", () => {
   expect(parsed).toBeTruthy();
 });
 ```
+
+### Stale Regression Tests After Refactoring
+
+```typescript
+// Bad: regression test checks old location after code was moved
+it("[beta.10] git_context.py has inline encoding fix", () => {
+  expect(commonGitContext).toContain('sys.platform == "win32"');  // Moved to __init__.py!
+});
+
+// Good: updated to check new location
+it("[beta.10] common/__init__.py has centralized encoding fix", () => {
+  expect(commonInit).toContain('sys.platform == "win32"');
+});
+```
+
+**Why**: When refactoring moves code between files (e.g., centralizing encoding from individual scripts to `common/__init__.py`), regression tests that check specific strings in specific files will break. The regression is still prevented — just in a different file.
+
+**Prevention**: When refactoring code across files, search `test/regression.test.ts` for references to the affected files and update assertions to match the new location.
 
 ### Decision Rule
 

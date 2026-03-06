@@ -63,6 +63,8 @@ describe("isManagedPath", () => {
     expect(isManagedPath(".iflow/hooks/test.py")).toBe(true);
     expect(isManagedPath(".opencode/config.json")).toBe(true);
     expect(isManagedPath(".agents/skills/start/SKILL.md")).toBe(true);
+    expect(isManagedPath(".agent/workflows/start.md")).toBe(true);
+    expect(isManagedPath(".kiro/skills/start/SKILL.md")).toBe(true);
   });
 
   // Positive: exact match (startsWith(d + "/") = false, === d = true)
@@ -72,6 +74,8 @@ describe("isManagedPath", () => {
     expect(isManagedPath(".iflow")).toBe(true);
     expect(isManagedPath(".opencode")).toBe(true);
     expect(isManagedPath(".agents/skills")).toBe(true);
+    expect(isManagedPath(".agent/workflows")).toBe(true);
+    expect(isManagedPath(".kiro/skills")).toBe(true);
     expect(isManagedPath(".trellis")).toBe(true);
   });
 
@@ -88,6 +92,8 @@ describe("isManagedPath", () => {
     expect(isManagedPath(".cursorignore")).toBe(false);
     expect(isManagedPath(".opencode-v2")).toBe(false);
     expect(isManagedPath(".agents/skills-backup")).toBe(false);
+    expect(isManagedPath(".agent/workflows-backup")).toBe(false);
+    expect(isManagedPath(".kiro/skills-backup")).toBe(false);
   });
 
   // Boundary: empty string
@@ -115,6 +121,8 @@ describe("isManagedPath", () => {
     expect(isManagedPath(".trellis\\spec\\backend")).toBe(true);
     expect(isManagedPath(".iflow\\hooks\\test.py")).toBe(true);
     expect(isManagedPath(".agents\\skills\\start\\SKILL.md")).toBe(true);
+    expect(isManagedPath(".agent\\workflows\\start.md")).toBe(true);
+    expect(isManagedPath(".kiro\\skills\\start\\SKILL.md")).toBe(true);
   });
 
   // Mixed separators
@@ -238,9 +246,7 @@ describe("getPlatformsWithPythonHooks", () => {
   });
 
   it("includes all platforms with hasPythonHooks: true", () => {
-    const expected = PLATFORM_IDS.filter(
-      (id) => AI_TOOLS[id].hasPythonHooks,
-    );
+    const expected = PLATFORM_IDS.filter((id) => AI_TOOLS[id].hasPythonHooks);
     expect(result).toEqual(expected);
   });
 
@@ -265,9 +271,7 @@ describe("collectPlatformTemplates", () => {
   it("returns Map or undefined for each platform", () => {
     for (const id of PLATFORM_IDS) {
       const result = collectPlatformTemplates(id);
-      expect(
-        result === undefined || result instanceof Map,
-      ).toBe(true);
+      expect(result === undefined || result instanceof Map).toBe(true);
     }
   });
 

@@ -3,9 +3,16 @@
  * Create migration manifest for a new version.
  *
  * Usage:
- *   node scripts/create-manifest.js
+ *   node scripts/create-manifest.js                          # interactive
  *   node scripts/create-manifest.js --breaking
  *   node scripts/create-manifest.js --version 0.3.0-rc.0
+ *   node scripts/create-manifest.js -y --description "..." --changelog "..."  # non-interactive
+ *
+ * Non-interactive mode (-y):
+ *   When -y is passed, all values are taken from CLI flags (no prompts).
+ *   --version defaults to next prerelease from package.json.
+ *   --description and --changelog are required in -y mode.
+ *   --notes overrides the auto-generated notes field.
  *
  * Interactive prompts will ask for:
  *   - Version (default: next prerelease from package.json)
@@ -59,6 +66,21 @@ function getNextVersion(currentVersion) {
   return { suggested: currentVersion, hint: null };
 }
 
+function getArgValue(args, flag) {
+  const idx = args.indexOf(flag);
+  return idx !== -1 && idx + 1 < args.length ? args[idx + 1] : null;
+}
+
+/**
+ * Unescape literal \n and \t sequences in a string.
+ * When passing multi-line text via CLI flags (e.g. --changelog "line1\nline2"),
+ * the shell delivers literal backslash + n characters. This function converts
+ * them to real newlines so JSON.stringify produces correct \n escapes.
+ */
+function unescapeLiterals(str) {
+  return str.replace(/\\n/g, "\n").replace(/\\t/g, "\t");
+}
+
 function askQuestion(rl, question, defaultValue = "") {
   const prompt = defaultValue ? `${question} [${defaultValue}]: ` : `${question}: `;
   return new Promise((resolve) => {
@@ -70,12 +92,46 @@ function askQuestion(rl, question, defaultValue = "") {
 
 async function main() {
   const args = process.argv.slice(2);
+  const nonInteractive = args.includes("-y");
   const isBreaking = args.includes("--breaking");
-  const versionArgIndex = args.indexOf("--version");
-  const versionArg = versionArgIndex !== -1 ? args[versionArgIndex + 1] : null;
+  const versionArg = getArgValue(args, "--version");
+  const descriptionArg = getArgValue(args, "--description");
+  const changelogArg = getArgValue(args, "--changelog");
+  const notesArg = getArgValue(args, "--notes");
 
   const currentVersion = readPackageVersion();
   const { suggested, hint } = getNextVersion(currentVersion);
+
+  // --- Non-interactive mode ---
+  if (nonInteractive) {
+    if (!descriptionArg || !changelogArg) {
+      console.error("Error: -y mode requires --description and --changelog");
+      process.exit(1);
+    }
+    const version = versionArg || suggested;
+    const manifestPath = path.join(MANIFESTS_DIR, `${version}.json`);
+
+    const manifest = {
+      version,
+      description: unescapeLiterals(descriptionArg),
+      breaking: isBreaking,
+      recommendMigrate: isBreaking,
+      changelog: unescapeLiterals(changelogArg),
+      migrations: [],
+      notes: notesArg
+        ? unescapeLiterals(notesArg)
+        : (isBreaking
+          ? "Review changelog and run with --migrate if needed."
+          : "No migration required."),
+    };
+
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+    console.log(`✅ Created: ${manifestPath}`);
+    console.log(JSON.stringify(manifest, null, 2));
+    return;
+  }
+
+  // --- Interactive mode ---
   const suggestedVersion = versionArg || suggested;
 
   const rl = readline.createInterface({
@@ -107,10 +163,10 @@ async function main() {
     }
 
     // Get description
-    const description = await askQuestion(rl, "Description (short)");
+    const description = descriptionArg || await askQuestion(rl, "Description (short)");
 
     // Get changelog
-    const changelog = await askQuestion(rl, "Changelog (one line summary)");
+    const changelog = changelogArg || await askQuestion(rl, "Changelog (one line summary)");
 
     // Get breaking status
     let breaking = isBreaking;
@@ -134,9 +190,9 @@ async function main() {
       recommendMigrate,
       changelog,
       migrations: [],
-      notes: breaking
+      notes: notesArg || (breaking
         ? "Review changelog and run with --migrate if needed."
-        : "No migration required.",
+        : "No migration required."),
     };
 
     // Write manifest

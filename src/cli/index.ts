@@ -65,6 +65,11 @@ program
   .option("--iflow", "Include iFlow CLI commands")
   .option("--opencode", "Include OpenCode commands")
   .option("--codex", "Include Codex skills")
+  .option("--kilo", "Include Kilo CLI commands")
+  .option("--kiro", "Include Kiro Code skills")
+  .option("--gemini", "Include Gemini CLI commands")
+  .option("--antigravity", "Include Antigravity workflows")
+  .option("--qoder", "Include Qoder commands")
   .option("-y, --yes", "Skip prompts and use defaults")
   .option(
     "-u, --user <name>",
@@ -76,11 +81,14 @@ program
     "-t, --template <name>",
     "Use a remote spec template (e.g., electron-fullstack)",
   )
-  .option("--overwrite", "Overwrite existing spec directory when using template")
+  .option(
+    "--overwrite",
+    "Overwrite existing spec directory when using template",
+  )
   .option("--append", "Only add missing files when using template")
   .option(
-    "--governance-repo <url>",
-    "Git URL of governance constraints repo to clone into .trellis/spec/governance/",
+    "-r, --registry <source>",
+    "Use a custom template registry (e.g., gh:myorg/myrepo/specs)",
   )
   .action(async (options: Record<string, unknown>) => {
     try {

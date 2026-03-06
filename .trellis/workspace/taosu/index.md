@@ -7,9 +7,9 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-2.md`
-- **Total Sessions**: 49
-- **Last Active**: 2026-02-09
+- **Active File**: `journal-3.md`
+- **Total Sessions**: 72
+- **Last Active**: 2026-03-06
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1011 | Active |
+| `journal-3.md` | ~228 | Active |
+| `journal-2.md` | ~1963 | Archived |
 | `journal-1.md` | ~1998 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +31,29 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits |
 |---|------|-------|---------|
+| 72 | 2026-03-06 | feat: --registry flag for custom spec template sources | `3208d64`, `d174493`, `ba66fe1` |
+| 71 | 2026-03-05 | Record-session prompt fix: archive before PR | `44f14af` |
+| 70 | 2026-03-05 | Task lifecycle hooks + Linear sync | `695a26d`, `086483a`, `9595d85`, `aab2113`, `8a5ed63` |
+| 69 | 2026-03-05 | docs: improve record-session archive guidance | `b9a475f` |
+| 68 | 2026-03-05 | feat: task subtask support | `d1b4929`, `526e9de`, `920cbaf`, `d1768e1` |
+| 67 | 2026-03-04 | Fix nested Claude Code session error in multi-agent pipeline | `c220785` |
+| 66 | 2026-03-04 | Skip user-customizable files during update | `bebf241` |
+| 65 | 2026-03-04 | Windows stdin UTF-8 fix & record-session template cleanup | `6bd5d4d`, `cbd6b7f` |
+| 64 | 2026-03-04 | fix: record-session 模板去除 auto-commit 提示 | `4c82869` |
+| 63 | 2026-03-04 | fix: 模板 fetch 倒计时显示 + 超时缩短 | `f66cd4c` |
+| 62 | 2026-03-04 | feat: init/update 网络体验优化 — 代理+超时+进度提示 | `b7c50b6`, `61bbba2`, `5e831cd` |
+| 61 | 2026-03-04 | feat: update 跳过 spec 目录 | `1beb64f`, `a9ed34a` |
+| 60 | 2026-03-03 | feat: record-session auto-commit + config.yaml | `d5ac365`, `8fa5771`, `7c4a829`, `f2370fe`, `1d5a84a` |
+| 59 | 2026-03-03 | feat: record-session auto-commit workspace changes | `d5ac365`, `8fa5771` |
+| 58 | 2026-03-02 | 0.3.1 manifest + create-manifest slash command | `de50b03`, `044d4c8` |
+| 57 | 2026-02-28 | fix: spec templates respect project type + dead code cleanup | `8f15f36` |
+| 56 | 2026-02-28 | 0.3.0 Release & Post-release Fixes | `e4b7227`, `c2e9118`, `d18137d`, `54798d7`, `be49762` |
+| 55 | 2026-02-28 | 0.3.0 Release Prep: Bug Fix, Manifest, Tests, Promote Script | `e4b7227` |
+| 54 | 2026-02-26 | feat: Gemini CLI platform support (complete) | `4b59007`, `f6e9eb1`, `653e86d`, `5f00905`, `94295c0`, `7b9699a` |
+| 53 | 2026-02-26 | feat: Gemini CLI platform support (Cursor-level) | `ec6114a`, `698a77b`, `9758468`, `927856a`, `3c39d08` |
+| 52 | 2026-02-26 | Restructure Task Workflow into 3 Phases | `6bfc0dc` |
+| 51 | 2026-02-24 | Fix init-context phantom paths & bootstrap task enhancement | `20fe241` |
+| 50 | 2026-02-24 | PR Review: Kilo #40 + Kiro #43 Platform Integration | `af9cd7d`, `57edf20` |
 | 49 | 2026-02-09 | Codex platform integration + UT workflow alignment | `bb9fcea`, `3f2cb2f`, `c3a3306`, `8b13a15` |
 | 48 | 2026-02-06 | fix: compareVersions prerelease bug + rc.0/rc.1 release | `f98a085`, `7affd33`, `72ef5fc`, `00c4793` |
 | 47 | 2026-02-06 | RC manifest + fragile test audit & cleanup (339→312) | `7ee4c69` |
