@@ -1,5 +1,5 @@
 ---
-name: trellis:sync-yuque
+name: ecochain:governance-sync-yuque
 description: Sync Yuque (语雀) documentation to local cache. Use this skill when the user wants to sync, update, or download Yuque documentation. This is an operational task, not a development task.
 user-invocable: true
 ---
@@ -41,11 +41,11 @@ The user must have configured in `~/.claude/settings.json`:
 When this skill is triggered:
 
 1. Check if `yuque-dl` is installed globally: `which yuque-dl`
-2. **If not installed, automatically install it**: `npm install -g yuque-dl`
+2. If not installed, install it: `npm install -g yuque-dl`
 3. Read `yuqueToken` and `yuqueRepo` from `~/.claude/settings.json`
 4. Execute: `npx yuque-dl --token <token> --repo <repo> --output ~/.cache/yuque/`
 
-**Note**: The skill will automatically install `yuque-dl` if it's not found. No manual installation required.
+**Note**: The skill should handle the sync process automatically without requiring manual path navigation.
 
 ## Success Response
 
