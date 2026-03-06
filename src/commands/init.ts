@@ -861,6 +861,50 @@ export async function init(options: InitOptions): Promise<void> {
   const versionPath = path.join(cwd, DIR_NAMES.WORKFLOW, ".version");
   fs.writeFileSync(versionPath, VERSION);
 
+  // ==========================================================================
+  // Governance Repository Configuration
+  // ==========================================================================
+
+  if (!options.yes) {
+    const governanceAnswer = await inquirer.prompt<{
+      configureGovernance: boolean;
+    }>([
+      {
+        type: "confirm",
+        name: "configureGovernance",
+        message: "Configure governance repository for team constraints?",
+        default: false,
+      },
+    ]);
+
+    if (governanceAnswer.configureGovernance) {
+      const governanceRepoAnswer = await inquirer.prompt<{
+        governanceRepo: string;
+      }>([
+        {
+          type: "input",
+          name: "governanceRepo",
+          message: "Enter governance repository URL:",
+          default:
+            "https://codeup.aliyun.com/63b637070a96c30780aae039/ecochain/ai-governance/ai-governance.git",
+        },
+      ]);
+
+      if (governanceRepoAnswer.governanceRepo) {
+        const governanceConfigPath = path.join(
+          cwd,
+          DIR_NAMES.WORKFLOW,
+          ".governance-repo",
+        );
+        fs.writeFileSync(
+          governanceConfigPath,
+          governanceRepoAnswer.governanceRepo,
+        );
+        console.log(chalk.green("✓ Governance repository configured"));
+      }
+    }
+  }
+
   // Configure selected tools by copying entire directories (dogfooding)
   for (const tool of tools) {
     const platformId = resolveCliFlag(tool);

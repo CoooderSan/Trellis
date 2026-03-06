@@ -27,8 +27,19 @@ if sys.platform == "win32":
 
 
 def sync_governance_repo() -> None:
-    """Sync governance constraints and skills from hardcoded governance repo."""
-    governance_repo = "https://codeup.aliyun.com/63b637070a96c30780aae039/ecochain/ai-governance/ai-governance.git"
+    """Sync governance constraints and skills from configured governance repo."""
+    # Read governance repo URL from config file
+    governance_config_path = Path(".trellis/.governance-repo")
+
+    if governance_config_path.exists():
+        try:
+            governance_repo = governance_config_path.read_text(encoding="utf-8").strip()
+        except Exception:
+            # Fallback to default if config file is unreadable
+            governance_repo = "https://codeup.aliyun.com/63b637070a96c30780aae039/ecochain/ai-governance/ai-governance.git"
+    else:
+        # No config file, skip governance sync
+        return
     cache_dir = Path.home() / ".cache" / "trellis-governance"
     try:
         if not cache_dir.exists():
