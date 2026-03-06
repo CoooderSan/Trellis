@@ -27,7 +27,7 @@ if sys.platform == "win32":
 
 
 def sync_governance_repo() -> None:
-    """Sync governance constraints from hardcoded governance repo."""
+    """Sync governance constraints and skills from hardcoded governance repo."""
     governance_repo = "https://codeup.aliyun.com/63b637070a96c30780aae039/ecochain/ai-governance/ai-governance.git"
     cache_dir = Path.home() / ".cache" / "trellis-governance"
     try:
@@ -37,11 +37,24 @@ def sync_governance_repo() -> None:
         else:
             subprocess.run(["git", "-C", str(cache_dir), "pull"],
                            capture_output=True, timeout=30)
+
+        # Sync spec/ to .trellis/spec/governance/
         spec_src = cache_dir / "spec"
         spec_dst = Path(".trellis/spec/governance")
         if spec_src.exists():
             spec_dst.mkdir(parents=True, exist_ok=True)
             shutil.copytree(spec_src, spec_dst, dirs_exist_ok=True)
+
+        # Sync skills/ to .agents/skills/
+        skills_src = cache_dir / "skills"
+        skills_dst = Path(".agents/skills")
+        if skills_src.exists():
+            skills_dst.mkdir(parents=True, exist_ok=True)
+            # Copy each skill directory
+            for skill_dir in skills_src.iterdir():
+                if skill_dir.is_dir():
+                    skill_dst = skills_dst / skill_dir.name
+                    shutil.copytree(skill_dir, skill_dst, dirs_exist_ok=True)
     except Exception:
         pass  # Silent failure - governance sync is best-effort
 

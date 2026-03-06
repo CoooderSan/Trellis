@@ -9,23 +9,57 @@ AI 在开发时应主动搜索相关文档，作为理解需求的上下文。
 
 ## 前置配置要求
 
-用户需要自行配置语雀文档同步，有两种方式：
-
-### 方式 1：使用 yuque-dl（推荐）
+### 1. 安装 yuque-dl
 
 ```bash
-# 安装
 npm install -g yuque-dl
-
-# 同步文档到本地
-yuque-dl <repo-url> -t <token> -d ~/.cache/yuque --incremental
 ```
 
-### 方式 2：使用 yuque-ecosystem MCP
+### 2. 配置个人 Token
 
-参考：https://github.com/yuque/yuque-ecosystem
+在 `~/.claude/settings.json` 中配置：
 
-配置后，文档会自动同步到 `~/.cache/yuque/` 目录。
+```json
+{
+  "yuque": {
+    "token": "your-personal-token",
+    "repo": "https://www.yuque.com/org/repo",
+    "cacheDir": "~/.cache/yuque"
+  }
+}
+```
+
+**获取 Token**：https://www.yuque.com/settings/tokens
+
+**重要**：
+- ⚠️ 使用你自己的 token，不要共享
+- ⚠️ 不要把 token 提交到 Git
+- ⚠️ Token 继承你的所有权限
+
+### 3. 同步文档
+
+**方式 1：使用 Skill（推荐）**
+
+直接告诉 AI：
+```
+"同步语雀文档"
+或
+"/trellis:sync-yuque"
+```
+
+AI 会自动调用 `yuque-dl` 同步文档。
+
+**方式 2：手动同步**
+
+```bash
+npx yuque-dl <repo-url> -t <token> -d ~/.cache/yuque --incremental
+```
+
+**方式 3：使用脚本**
+
+```bash
+node .agents/skills/sync-yuque/scripts/sync-yuque.js
+```
 
 ---
 
