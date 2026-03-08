@@ -73,9 +73,18 @@ def find_repo_root(start_path: str) -> str | None:
     """
     Find git repo root from start_path upwards
 
+    First checks TRELLIS_ROOT environment variable.
+    If not set, searches for .git directory upwards.
+
     Returns:
         Repo root path, or None if not found
     """
+    # Check environment variable first
+    trellis_root = os.environ.get("TRELLIS_ROOT")
+    if trellis_root and os.path.exists(trellis_root):
+        return str(Path(trellis_root).resolve())
+
+    # Fallback to git root search
     current = Path(start_path).resolve()
     while current != current.parent:
         if (current / ".git").exists():
@@ -337,10 +346,10 @@ def get_check_context(repo_root: str, task_dir: str) -> str:
     else:
         # Fallback: use hardcoded check files + spec.jsonl
         check_files = [
-            (".iflow/commands/trellis/finish-work.md", "Finish work checklist"),
-            (".iflow/commands/trellis/check-cross-layer.md", "Cross-layer check spec"),
-            (".iflow/commands/trellis/check-backend.md", "Backend check spec"),
-            (".iflow/commands/trellis/check-frontend.md", "Frontend check spec"),
+            (".claude/commands/trellis/finish-work.md", "Finish work checklist"),
+            (".claude/commands/trellis/check-cross-layer.md", "Cross-layer check spec"),
+            (".claude/commands/trellis/check-backend.md", "Backend check spec"),
+            (".claude/commands/trellis/check-frontend.md", "Frontend check spec"),
         ]
         for file_path, description in check_files:
             content = read_file_content(repo_root, file_path)
@@ -383,20 +392,20 @@ def get_finish_context(repo_root: str, task_dir: str) -> str:
     else:
         # Fallback: only finish-work.md (lightweight)
         finish_work = read_file_content(
-            repo_root, ".iflow/commands/trellis/finish-work.md"
+            repo_root, ".claude/commands/trellis/finish-work.md"
         )
         if finish_work:
             context_parts.append(
-                f"=== .iflow/commands/trellis/finish-work.md (Finish checklist) ===\n{finish_work}"
+                f"=== .claude/commands/trellis/finish-work.md (Finish checklist) ===\n{finish_work}"
             )
 
     # 2. Spec update process (for active spec sync)
     update_spec = read_file_content(
-        repo_root, ".iflow/commands/trellis/update-spec.md"
+        repo_root, ".claude/commands/trellis/update-spec.md"
     )
     if update_spec:
         context_parts.append(
-            f"=== .iflow/commands/trellis/update-spec.md (Spec update process) ===\n{update_spec}"
+            f"=== .claude/commands/trellis/update-spec.md (Spec update process) ===\n{update_spec}"
         )
 
     # 3. Requirements document (for verifying requirements are met)
@@ -432,9 +441,9 @@ def get_debug_context(repo_root: str, task_dir: str) -> str:
             context_parts.append(f"=== {file_path} (Dev spec) ===\n{content}")
 
         check_files = [
-            (".iflow/commands/trellis/check-backend.md", "Backend check spec"),
-            (".iflow/commands/trellis/check-frontend.md", "Frontend check spec"),
-            (".iflow/commands/trellis/check-cross-layer.md", "Cross-layer check spec"),
+            (".claude/commands/trellis/check-backend.md", "Backend check spec"),
+            (".claude/commands/trellis/check-frontend.md", "Frontend check spec"),
+            (".claude/commands/trellis/check-cross-layer.md", "Cross-layer check spec"),
         ]
         for file_path, description in check_files:
             content = read_file_content(repo_root, file_path)
@@ -771,7 +780,7 @@ def main():
     if not context:
         sys.exit(0)
 
-    # Return updated input with correct iFlow PreToolUse format
+    # Return updated input with correct Claude Code PreToolUse format
     output = {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",

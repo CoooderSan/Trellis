@@ -73,9 +73,18 @@ def find_repo_root(start_path: str) -> str | None:
     """
     Find git repo root from start_path upwards
 
+    First checks TRELLIS_ROOT environment variable.
+    If not set, searches for .git directory upwards.
+
     Returns:
         Repo root path, or None if not found
     """
+    # Check environment variable first
+    trellis_root = os.environ.get("TRELLIS_ROOT")
+    if trellis_root and os.path.exists(trellis_root):
+        return str(Path(trellis_root).resolve())
+
+    # Fallback to git root search
     current = Path(start_path).resolve()
     while current != current.parent:
         if (current / ".git").exists():
