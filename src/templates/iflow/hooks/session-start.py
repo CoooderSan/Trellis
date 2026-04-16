@@ -15,6 +15,10 @@ import sys
 from io import StringIO
 from pathlib import Path
 
+MAX_SPEC_FILES = 40
+MAX_SPEC_CHARS = 24_000
+PREFERRED_SPEC_DIRS = ("frontend", "backend", "guides")
+
 # IMPORTANT: Force stdout to use UTF-8 on Windows
 # This fixes UnicodeEncodeError when outputting non-ASCII characters
 if sys.platform == "win32":
@@ -66,11 +70,130 @@ def run_script(script_path: Path) -> str:
         return "No context available"
 
 
+def format_section_name(name: str) -> str:
+    if name == "__root__":
+        return "Specs"
+    return " ".join(
+        part.capitalize() for part in name.replace("-", " ").replace("_", " ").split()
+    )
+
+
+def section_dir_sort_key(section_dir: Path) -> tuple[int, int, str]:
+    if section_dir.name in PREFERRED_SPEC_DIRS:
+        return (0, PREFERRED_SPEC_DIRS.index(section_dir.name), "")
+    return (1, len(PREFERRED_SPEC_DIRS), section_dir.name)
+
+
+def iter_markdown_files(directory: Path):
+    try:
+        entries = [entry for entry in directory.iterdir() if not entry.name.startswith(".")]
+    except (FileNotFoundError, PermissionError):
+        return
+
+    index_file = next(
+        (
+            entry
+            for entry in entries
+            if entry.is_file() and entry.suffix == ".md" and entry.name == "index.md"
+        ),
+        None,
+    )
+    if index_file is not None:
+        yield index_file
+
+    other_files = sorted(
+        (
+            entry
+            for entry in entries
+            if entry.is_file() and entry.suffix == ".md" and entry.name != "index.md"
+        ),
+        key=lambda path: path.name,
+    )
+    for spec_file in other_files:
+        yield spec_file
+
+    child_dirs = sorted(
+        (entry for entry in entries if entry.is_dir()),
+        key=lambda path: path.name,
+    )
+    for child_dir in child_dirs:
+        yield from iter_markdown_files(child_dir)
+
+
+def iter_spec_sections(spec_root: Path):
+    try:
+        entries = [entry for entry in spec_root.iterdir() if not entry.name.startswith(".")]
+    except (FileNotFoundError, PermissionError):
+        return
+
+    root_files = sorted(
+        (entry for entry in entries if entry.is_file() and entry.suffix == ".md"),
+        key=lambda path: (path.name != "index.md", path.name),
+    )
+    if root_files:
+        yield (format_section_name("__root__"), root_files)
+
+    section_dirs = sorted(
+        (entry for entry in entries if entry.is_dir()),
+        key=section_dir_sort_key,
+    )
+    for section_dir in section_dirs:
+        files = list(iter_markdown_files(section_dir))
+        if files:
+            yield (format_section_name(section_dir.name), files)
+
+
+def write_spec_context(output: StringIO, spec_root: Path) -> None:
+    files_written = 0
+    chars_written = 0
+    has_content = False
+    truncated = False
+
+    for section_name, section_files in iter_spec_sections(spec_root) or []:
+        section_started = False
+
+        for spec_file in section_files:
+            content = read_file(spec_file)
+            if not content:
+                continue
+
+            relative_path = spec_file.relative_to(spec_root).as_posix()
+            entry_parts = []
+            if not section_started:
+                entry_parts.append(f"## {section_name}")
+            entry_parts.append(f"### {relative_path}")
+            entry_parts.append(content)
+            entry_text = "\n\n".join(entry_parts)
+
+            if files_written >= MAX_SPEC_FILES or chars_written + len(entry_text) > MAX_SPEC_CHARS:
+                truncated = True
+                break
+
+            if has_content:
+                output.write("\n\n")
+            output.write(entry_text)
+
+            has_content = True
+            section_started = True
+            files_written += 1
+            chars_written += len(entry_text)
+
+        if truncated:
+            break
+
+    if not has_content:
+        output.write("Not configured")
+    elif truncated:
+        output.write(
+            f"\n\n[Spec context truncated after {files_written} files / {chars_written} chars. Read additional spec files on demand.]"
+        )
+
+
 def main():
     if should_skip_injection():
         sys.exit(0)
 
-    # iFlow don't have an env for project, use `.` instead
+    # iFlow doesn't have an env for project, use `.` instead
     project_dir = Path(".").resolve()
     trellis_dir = project_dir / ".trellis"
     iflow_dir = project_dir / ".iflow"
@@ -95,27 +218,7 @@ Read and follow all instructions below carefully.
     output.write("\n</workflow>\n\n")
 
     output.write("<guidelines>\n")
-
-    output.write("## Frontend\n")
-    frontend_index = read_file(
-        trellis_dir / "spec" / "frontend" / "index.md", "Not configured"
-    )
-    output.write(frontend_index)
-    output.write("\n\n")
-
-    output.write("## Backend\n")
-    backend_index = read_file(
-        trellis_dir / "spec" / "backend" / "index.md", "Not configured"
-    )
-    output.write(backend_index)
-    output.write("\n\n")
-
-    output.write("## Guides\n")
-    guides_index = read_file(
-        trellis_dir / "spec" / "guides" / "index.md", "Not configured"
-    )
-    output.write(guides_index)
-
+    write_spec_context(output, trellis_dir / "spec")
     output.write("\n</guidelines>\n\n")
 
     output.write("<instructions>\n")

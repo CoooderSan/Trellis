@@ -10,9 +10,171 @@
  * - Otherwise, this plugin handles injection
  */
 
-import { existsSync } from "fs"
-import { join } from "path"
+import { existsSync, readdirSync } from "fs"
+import { join, relative } from "path"
 import { TrellisContext, contextCollector, debugLog } from "../lib/trellis-context.js"
+
+const MAX_SPEC_FILES = 40
+const MAX_SPEC_CHARS = 24_000
+const PREFERRED_SPEC_DIRS = ["frontend", "backend", "guides"]
+
+function formatSectionName(name) {
+  if (name === "__root__") {
+    return "Specs"
+  }
+  return name
+    .replace(/[-_]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map(part => part[0].toUpperCase() + part.slice(1))
+    .join(" ")
+}
+
+function sectionDirSort(a, b) {
+  const aIndex = PREFERRED_SPEC_DIRS.indexOf(a)
+  const bIndex = PREFERRED_SPEC_DIRS.indexOf(b)
+
+  if (aIndex !== -1 && bIndex !== -1) {
+    return aIndex - bIndex
+  }
+  if (aIndex !== -1) {
+    return -1
+  }
+  if (bIndex !== -1) {
+    return 1
+  }
+  return a.localeCompare(b)
+}
+
+function collectMarkdownFiles(directory) {
+  if (!existsSync(directory)) {
+    return []
+  }
+
+  let entries
+  try {
+    entries = readdirSync(directory, { withFileTypes: true })
+      .filter(entry => !entry.name.startsWith("."))
+  } catch {
+    return []
+  }
+
+  const files = []
+  const indexEntry = entries.find(entry => entry.isFile() && entry.name === "index.md")
+  if (indexEntry) {
+    files.push(join(directory, indexEntry.name))
+  }
+
+  const otherFiles = entries
+    .filter(entry => entry.isFile() && entry.name.endsWith(".md") && entry.name !== "index.md")
+    .sort((a, b) => a.name.localeCompare(b.name))
+  for (const entry of otherFiles) {
+    files.push(join(directory, entry.name))
+  }
+
+  const childDirs = entries
+    .filter(entry => entry.isDirectory())
+    .sort((a, b) => a.name.localeCompare(b.name))
+  for (const entry of childDirs) {
+    files.push(...collectMarkdownFiles(join(directory, entry.name)))
+  }
+
+  return files
+}
+
+function collectSpecSections(specRoot) {
+  if (!existsSync(specRoot)) {
+    return []
+  }
+
+  let entries
+  try {
+    entries = readdirSync(specRoot, { withFileTypes: true })
+      .filter(entry => !entry.name.startsWith("."))
+  } catch {
+    return []
+  }
+
+  const sections = []
+
+  const rootFiles = entries
+    .filter(entry => entry.isFile() && entry.name.endsWith(".md"))
+    .sort((a, b) => {
+      if (a.name === "index.md") return -1
+      if (b.name === "index.md") return 1
+      return a.name.localeCompare(b.name)
+    })
+    .map(entry => join(specRoot, entry.name))
+  if (rootFiles.length > 0) {
+    sections.push({ name: formatSectionName("__root__"), files: rootFiles })
+  }
+
+  const sectionDirs = entries
+    .filter(entry => entry.isDirectory())
+    .sort((a, b) => sectionDirSort(a.name, b.name))
+
+  for (const entry of sectionDirs) {
+    const files = collectMarkdownFiles(join(specRoot, entry.name))
+    if (files.length > 0) {
+      sections.push({ name: formatSectionName(entry.name), files })
+    }
+  }
+
+  return sections
+}
+
+function appendSpecContext(parts, ctx) {
+  const specRoot = join(ctx.directory, ".trellis", "spec")
+  const sections = collectSpecSections(specRoot)
+
+  let filesWritten = 0
+  let charsWritten = 0
+  let hasContent = false
+  let truncated = false
+
+  for (const section of sections) {
+    let sectionStarted = false
+
+    for (const filePath of section.files) {
+      const content = ctx.readFile(filePath)
+      if (!content) {
+        continue
+      }
+
+      const relativePath = relative(specRoot, filePath).replace(/\\/g, "/")
+      const entryParts = []
+      if (!sectionStarted) {
+        entryParts.push(`## ${section.name}`)
+      }
+      entryParts.push(`### ${relativePath}`)
+      entryParts.push(content)
+      const entryText = entryParts.join("\n\n")
+
+      if (filesWritten >= MAX_SPEC_FILES || charsWritten + entryText.length > MAX_SPEC_CHARS) {
+        truncated = true
+        break
+      }
+
+      parts.push(entryText)
+      hasContent = true
+      sectionStarted = true
+      filesWritten += 1
+      charsWritten += entryText.length
+    }
+
+    if (truncated) {
+      break
+    }
+  }
+
+  if (!hasContent) {
+    parts.push("Not configured")
+  } else if (truncated) {
+    parts.push(
+      `[Spec context truncated after ${filesWritten} files / ${charsWritten} chars. Read additional spec files on demand.]`
+    )
+  }
+}
 
 /**
  * Build session context for injection
@@ -50,21 +212,9 @@ Read and follow all instructions below carefully.
     parts.push("</workflow>")
   }
 
-  // 4. Guidelines Index
+  // 4. Guidelines
   parts.push("<guidelines>")
-
-  parts.push("## Frontend")
-  const frontendIndex = ctx.readProjectFile(".trellis/spec/frontend/index.md")
-  parts.push(frontendIndex || "Not configured")
-
-  parts.push("\n## Backend")
-  const backendIndex = ctx.readProjectFile(".trellis/spec/backend/index.md")
-  parts.push(backendIndex || "Not configured")
-
-  parts.push("\n## Guides")
-  const guidesIndex = ctx.readProjectFile(".trellis/spec/guides/index.md")
-  parts.push(guidesIndex || "Not configured")
-
+  appendSpecContext(parts, ctx)
   parts.push("</guidelines>")
 
   // 5. Session Instructions - try both .claude and .opencode
