@@ -175,6 +175,19 @@ export function parseRegistrySource(source: string): RegistrySource {
     host,
   });
 
+  const providerWrappedUrlMatch = source.match(
+    /^([a-z0-9_-]+):(https?:\/\/.+)$/i,
+  );
+  if (providerWrappedUrlMatch) {
+    const [, wrappedProvider, wrappedUrl] = providerWrappedUrlMatch;
+    if (
+      RAW_URL_PATTERNS[wrappedProvider] ||
+      GIGET_PROVIDER_ALIASES[wrappedProvider]
+    ) {
+      return parseRegistrySource(wrappedUrl);
+    }
+  }
+
   // --- Self-hosted URL detection (SSH + unknown HTTPS) ---
   let normalizedInput: string | undefined;
 

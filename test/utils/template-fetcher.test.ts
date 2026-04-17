@@ -168,6 +168,25 @@ describe("parseRegistrySource", () => {
     );
   });
 
+  it("parses provider-wrapped Codeup tree URL", () => {
+    const result = parseRegistrySource(
+      "codeup:https://codeup.aliyun.com/63b637070a96c30780aae039/ecochain/ai-governance/ai-governance/-/tree/master/spec",
+    );
+    expect(result.provider).toBe("gitlab");
+    expect(result.repo).toBe(
+      "63b637070a96c30780aae039/ecochain/ai-governance/ai-governance",
+    );
+    expect(result.subdir).toBe("spec");
+    expect(result.ref).toBe("master");
+    expect(result.host).toBe("codeup.aliyun.com");
+    expect(result.rawBaseUrl).toBe(
+      "https://codeup.aliyun.com/63b637070a96c30780aae039/ecochain/ai-governance/ai-governance/-/raw/master/spec",
+    );
+    expect(result.gigetSource).toBe(
+      "gitlab:63b637070a96c30780aae039/ecochain/ai-governance/ai-governance/spec#master",
+    );
+  });
+
   // -------------------------------------------------------------------------
   // Error cases
   // -------------------------------------------------------------------------

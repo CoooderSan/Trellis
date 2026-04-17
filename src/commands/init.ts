@@ -1025,7 +1025,7 @@ export async function init(options: InitOptions): Promise<void> {
         if (templateAnswer.template === "__custom__") {
           // Prompt for custom registry source (empty → back to picker)
           const customSource = await askInput(
-            "Enter registry source (e.g., gh:myorg/myrepo/specs), or press Enter to go back: ",
+            "Enter registry source (e.g., gh:myorg/myrepo/specs or https://host/group/repo/-/tree/main/spec), or press Enter to go back: ",
           );
           if (!customSource) {
             continue; // Back to picker
