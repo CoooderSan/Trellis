@@ -46,9 +46,20 @@ Triggered from `/trellis:start` when the user describes a development task, espe
 
 ---
 
-## Step 0: Ensure Task Exists (ALWAYS)
+## Step 0: Require Passed Team Governance Preflight
 
-Before any Q&A, ensure a task exists. If none exists, create one immediately.
+Before any task creation or PRD seeding, confirm Team Governance Preflight has already passed.
+
+If preflight has not passed, stop and return to `/trellis:start` behavior:
+
+- summarize the blocking team rules
+- tell the user what must be completed first
+- do not create a task directory
+- do not seed `prd.md`
+
+Only when preflight is passed may you create a task and continue brainstorm.
+
+Once preflight is passed, create the task immediately:
 
 * Use a **temporary working title** derived from the user's message.
 * It's OK if the title is imperfect — refine later in PRD.
@@ -58,9 +69,6 @@ TASK_DIR=$(python3 ./.trellis/scripts/task.py create "brainstorm: <short goal>" 
 ```
 
 Create/seed `prd.md` immediately with what you know:
-
-```markdown
-# brainstorm: <short goal>
 
 ## Goal
 
@@ -138,7 +146,7 @@ Write findings into PRD:
 | **Moderate** | Multiple files, some ambiguity                         | Light brainstorm (2–3 high-value questions) |
 | **Complex**  | Vague goal, architectural choices, multiple approaches | Full brainstorm                             |
 
-> Note: Task already exists from Step 0. Classification only affects depth of brainstorming.
+> Note: Task creation only happens after Team Governance Preflight passes. Classification only affects depth of brainstorming.
 
 ---
 
@@ -460,7 +468,7 @@ After brainstorm completes (Step 8 confirmation approved), the flow continues to
 
 ```text
 Brainstorm
-  Step 0: Create task directory + seed PRD
+  Step 0: confirm Team Governance Preflight passed, then create task directory + seed PRD
   Step 1–7: Discover requirements, research, converge
   Step 8: Final confirmation → user approves
   ↓

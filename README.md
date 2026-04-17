@@ -100,6 +100,8 @@ At a high level, the workflow is simple:
 
 Session-start spec loading recursively walks `.trellis/spec/**/*.md`. When present, the official default sections (`frontend`, `backend`, `guides`) are prioritized first; additional top-level directories are loaded afterward in stable order. Within each directory, `index.md` is loaded before other files, hidden files/directories are skipped, and injection is capped to prevent runaway context growth.
 
+If your project installs team governance under a namespace such as `.trellis/spec/ecochain/**`, `/trellis:start` should run Team Governance Preflight before task classification, brainstorm, task creation, or implementation. Team rules act as the upper-layer policy; Trellis continues as the execution workflow only after hard gates pass.
+
 ## What's New
 
 - **v0.3.1**: adds background watch mode for `trellis update`, improves behavior in repos with existing `.gitignore`, and refreshes the docs set.

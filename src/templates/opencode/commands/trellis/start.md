@@ -45,13 +45,46 @@ Session start already injects relevant Markdown specs from `.trellis/spec/**/*.m
 - Additional sections such as `testing/`, `governance/`, or team-specific directories are also loaded recursively.
 - Read individual spec files manually only when the task needs more detail than the injected context.
 
-### Step 4: Report and Ask
+### Step 4: Team Governance Preflight
+
+Before task classification, run a visible Team Governance Preflight.
+
+Required behavior:
+
+1. Check whether `.trellis/spec/ecochain/common/start-session.md` exists.
+2. Classify the request first:
+   - Question / explanation / read-only investigation / ops sync
+   - Development task
+   - Development + testing task
+3. Build the applicable team rule set:
+   - Always include: `ecochain/common/*`
+   - Add for development tasks: `ecochain/develop/*`
+   - Add for testing or quality-gated tasks: `ecochain/testing/*`
+4. Summarize the preflight result explicitly to the user:
+   - task type
+   - applicable rule files
+   - satisfied items
+   - missing or blocking items
+   - next allowed action
+5. If any hard gate is missing, stop immediately.
+
+Hard-stop rules:
+- Do not create a task directory
+- Do not write `prd.md`
+- Do not enter brainstorm, task workflow, or implementation
+- First tell the user exactly what must be completed
+
+If the team entry file is missing or incomplete, report that the Team Governance Preflight cannot be completed and stop instead of silently falling back to the default Trellis workflow.
+
+### Step 5: Report and Ask
 
 Report what you learned and ask: "What would you like to work on?"
 
 ---
 
 ## Task Classification
+
+Only classify the task after Team Governance Preflight passes.
 
 When user describes a task, classify it:
 
@@ -82,7 +115,7 @@ For questions or trivial fixes, work directly:
 
 ## Complex Task - Brainstorm First
 
-For complex or vague tasks, use the brainstorm process to clarify requirements.
+For complex or vague development tasks, use the brainstorm process to clarify requirements.
 
 See `/trellis:brainstorm` for the full process. Summary:
 
@@ -138,6 +171,8 @@ Quick confirm:
 - Any specific requirements or constraints?
 
 **Step 2: Create Task Directory** `[AI]`
+
+Only after Team Governance Preflight has passed:
 
 ```bash
 TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<title>" --slug <name>)

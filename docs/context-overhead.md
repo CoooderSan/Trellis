@@ -54,7 +54,7 @@ Injected at session start via `SessionStart` hook:
 | guides/index.md | ~586 | 0.06% | 0.29% |
 | **Total** | **~6,530** | **0.65%** | **3.27%** |
 
-These numbers reflect the default baseline with the standard top-level spec entry files. Current session-start hooks recursively load `.trellis/spec/**/*.md`, prioritize `frontend/`, `backend/`, and `guides/` when present, then walk additional top-level directories in stable order, with guardrails of `40` files and `24,000` characters total for spec injection.
+These numbers reflect the default baseline with the standard top-level spec entry files. Current session-start hooks recursively load `.trellis/spec/**/*.md`, prioritize `frontend/`, `backend/`, and `guides/` when present, then walk additional top-level directories in stable order, with guardrails of `40` files and `24,000` characters total for spec injection. Team namespaces such as `.trellis/spec/ecochain/**` participate in the same recursive loading path; they do not require a second injector.
 
 ### Research Agent
 

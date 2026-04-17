@@ -54,7 +54,7 @@ Main Agent (持久)            Subagent (临时)
 | guides/index.md | ~586 | 0.06% | 0.29% |
 | **合计** | **~6,530** | **0.65%** | **3.27%** |
 
-以上数字对应默认基线，也就是标准顶层 spec 入口文件的注入成本。当前 `session-start` hook 会递归加载 `.trellis/spec/**/*.md`，在存在时优先处理 `frontend/`、`backend/`、`guides/`，随后按稳定顺序处理其他顶层目录，并通过 `40` 个文件、`24,000` 个字符的上限控制注入规模。
+以上数字对应默认基线，也就是标准顶层 spec 入口文件的注入成本。当前 `session-start` hook 会递归加载 `.trellis/spec/**/*.md`，在存在时优先处理 `frontend/`、`backend/`、`guides/`，随后按稳定顺序处理其他顶层目录，并通过 `40` 个文件、`24,000` 个字符的上限控制注入规模。像 `.trellis/spec/ecochain/**` 这样的团队命名空间也复用同一条递归注入链路，不需要第二套注入器。
 
 ### Research Agent
 

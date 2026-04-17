@@ -165,6 +165,38 @@ describe("session-start spec context injection", () => {
     expect(context).not.toContain("### frontend/spec-40.md");
   });
 
+  it("Claude and iFlow hooks include namespaced ecochain specs through the same recursive injection path", () => {
+    const projectDir = createProject({
+      "frontend/index.md": "# Frontend\n",
+      "ecochain/common/start-session.md": "# Team Preflight\n",
+      "ecochain/common/intent-gate.md": "# Intent Gate\n",
+      "ecochain/develop/branch-governance.md": "# Branch Governance\n",
+      "ecochain/testing/test-entry-gate.md": "# Test Entry Gate\n",
+    });
+
+    for (const [scriptPath, env] of [
+      [CLAUDE_HOOK, { ...process.env, CLAUDE_PROJECT_DIR: projectDir }],
+      [IFLOW_HOOK, { ...process.env }],
+    ] as const) {
+      const context = runPythonSessionStart(scriptPath, projectDir, env);
+      expect(context).toContain("## Ecochain");
+      expect(context).toContain("### ecochain/common/start-session.md");
+      expect(context).toContain("### ecochain/common/intent-gate.md");
+      expect(context).toContain("### ecochain/develop/branch-governance.md");
+      expect(context).toContain("### ecochain/testing/test-entry-gate.md");
+
+      expectInOrder(context, [
+        "## Frontend",
+        "### frontend/index.md",
+        "## Ecochain",
+        "### ecochain/common/intent-gate.md",
+        "### ecochain/common/start-session.md",
+        "### ecochain/develop/branch-governance.md",
+        "### ecochain/testing/test-entry-gate.md",
+      ]);
+    }
+  });
+
   it("OpenCode plugin prepends recursively loaded spec context to the first user message", async () => {
     const projectDir = createProject({
       "frontend/index.md": "# Frontend\n",
