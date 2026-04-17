@@ -149,6 +149,25 @@ describe("parseRegistrySource", () => {
     expect(result.gigetSource).toBe("gitlab:mygroup/myrepo/specs");
   });
 
+  it("parses self-hosted Git URL as full repository path", () => {
+    const result = parseRegistrySource(
+      "https://codeup.aliyun.com/63b637070a96c30780aae039/ecochain/ai-governance/ai-governance.git",
+    );
+    expect(result.provider).toBe("gitlab");
+    expect(result.repo).toBe(
+      "63b637070a96c30780aae039/ecochain/ai-governance/ai-governance",
+    );
+    expect(result.subdir).toBe("");
+    expect(result.ref).toBe("main");
+    expect(result.host).toBe("codeup.aliyun.com");
+    expect(result.rawBaseUrl).toBe(
+      "https://codeup.aliyun.com/63b637070a96c30780aae039/ecochain/ai-governance/ai-governance/-/raw/main/",
+    );
+    expect(result.gigetSource).toBe(
+      "gitlab:63b637070a96c30780aae039/ecochain/ai-governance/ai-governance#main",
+    );
+  });
+
   // -------------------------------------------------------------------------
   // Error cases
   // -------------------------------------------------------------------------

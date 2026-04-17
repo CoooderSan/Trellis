@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { downloadTemplate } from "giget";
 
 // =============================================================================
@@ -159,8 +160,22 @@ const PUBLIC_DOMAIN_TO_PREFIX: Record<string, string> = {
  * @throws Error if provider is unsupported
  */
 export function parseRegistrySource(source: string): RegistrySource {
+  const buildSelfHostedGitLabSource = (
+    host: string,
+    repo: string,
+    subdir: string,
+    ref: string,
+  ): RegistrySource => ({
+    provider: "gitlab",
+    repo,
+    subdir,
+    ref,
+    rawBaseUrl: `https://${host}/${repo}/-/raw/${ref}/${subdir}`,
+    gigetSource: `gitlab:${repo}${subdir ? `/${subdir}` : ""}#${ref}`,
+    host,
+  });
+
   // --- Self-hosted URL detection (SSH + unknown HTTPS) ---
-  let host: string | undefined;
   let normalizedInput: string | undefined;
 
   // SSH URL: git@host:org/repo[.git] or ssh://git@host[:port]/org/repo[.git]
@@ -175,31 +190,33 @@ export function parseRegistrySource(source: string): RegistrySource {
       // Public provider SSH (e.g., git@github.com:org/repo) — use native prefix, no host
       normalizedInput = `${publicPrefix}:${sshPath}`;
     } else {
-      // Self-hosted SSH — default to gitlab provider with host
-      host = sshDomain;
-      normalizedInput = `gitlab:${sshPath}`;
+      // Self-hosted SSH — treat the full path as the repository path.
+      return buildSelfHostedGitLabSource(sshDomain, sshPath, "", "main");
     }
   }
 
   // HTTPS URL to unknown domain (not github.com/gitlab.com/bitbucket.org)
-  if (!host) {
-    const httpsMatch = source.match(/^https?:\/\/([^/]+)\/(.+?)(?:\.git)?\/?$/);
-    if (httpsMatch) {
-      const domain = httpsMatch[1];
-      if (!KNOWN_PUBLIC_DOMAINS.includes(domain)) {
-        host = domain;
-        const pathPart = httpsMatch[2];
-        // Handle GitLab browse URLs: /org/repo/-/tree/branch/path
-        const treeMatch = pathPart.match(
-          /^([^/]+\/[^/]+)(?:\/-)?\/tree\/([^/]+)(?:\/(.+?))?$/,
+  const httpsMatch = source.match(/^https?:\/\/([^/]+)\/(.+?)(?:\.git)?\/?$/);
+  if (httpsMatch) {
+    const domain = httpsMatch[1];
+    if (!KNOWN_PUBLIC_DOMAINS.includes(domain)) {
+      const pathPart = httpsMatch[2];
+      const treeMarker = pathPart.indexOf("/-/tree/");
+      if (treeMarker !== -1) {
+        const repoPath = pathPart.slice(0, treeMarker);
+        const treePath = pathPart.slice(treeMarker + "/-/tree/".length);
+        const [ref = "main", ...subdirParts] = treePath
+          .split("/")
+          .filter(Boolean);
+        return buildSelfHostedGitLabSource(
+          domain,
+          repoPath,
+          subdirParts.join("/"),
+          ref,
         );
-        if (treeMatch) {
-          const [, repoPath, ref, subdir] = treeMatch;
-          normalizedInput = `gitlab:${repoPath}${subdir ? `/${subdir}` : ""}#${ref}`;
-        } else {
-          normalizedInput = `gitlab:${pathPart}`;
-        }
       }
+
+      return buildSelfHostedGitLabSource(domain, pathPart, "", "main");
     }
   }
 
@@ -218,7 +235,7 @@ export function parseRegistrySource(source: string): RegistrySource {
   const rest = normalized.slice(colonIndex + 1);
   const providerAlias = GIGET_PROVIDER_ALIASES[inputProvider];
   const provider = providerAlias?.provider ?? inputProvider;
-  host ??= providerAlias?.host;
+  const host = providerAlias?.host;
 
   // Check supported provider
   const pattern = RAW_URL_PATTERNS[inputProvider] ?? RAW_URL_PATTERNS[provider];
@@ -355,6 +372,10 @@ export async function probeRegistryIndex(indexUrl: string): Promise<{
   templates: SpecTemplate[];
   isNotFound: boolean;
 }> {
+  if (indexUrl.includes("codeup.aliyun.com")) {
+    return { templates: [], isNotFound: true };
+  }
+
   try {
     const res = await fetch(indexUrl, {
       signal: AbortSignal.timeout(TIMEOUTS.INDEX_FETCH_MS),
@@ -490,6 +511,46 @@ export async function downloadWithStrategy(
     throw error;
   }
   return true;
+}
+
+async function cloneSelfHostedSubdir(
+  registry: RegistrySource,
+  destDir: string,
+  strategy: TemplateStrategy,
+): Promise<boolean> {
+  const repoUrl = `https://${registry.host}/${registry.repo}.git`;
+  const tempRepoDir = path.join(os.tmpdir(), `trellis-registry-${Date.now()}`);
+
+  const exists = fs.existsSync(destDir);
+  if (strategy === "skip" && exists) {
+    return false;
+  }
+  if (strategy === "overwrite" && exists) {
+    await fs.promises.rm(destDir, { recursive: true, force: true });
+  }
+
+  try {
+    execFileSync(
+      "git",
+      ["clone", "--depth", "1", "--branch", registry.ref, repoUrl, tempRepoDir],
+      { stdio: "ignore" },
+    );
+
+    const sourceDir = path.join(tempRepoDir, registry.subdir);
+    if (!fs.existsSync(sourceDir)) {
+      throw new Error(`Subdirectory not found: ${registry.subdir}`);
+    }
+
+    if (strategy === "append" && fs.existsSync(destDir)) {
+      await copyMissing(sourceDir, destDir);
+    } else {
+      await fs.promises.mkdir(path.dirname(destDir), { recursive: true });
+      await fs.promises.cp(sourceDir, destDir, { recursive: true });
+    }
+    return true;
+  } finally {
+    await fs.promises.rm(tempRepoDir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -655,14 +716,18 @@ export async function downloadRegistryDirect(
   }
 
   try {
-    await withGigetHost(registry.host, () =>
-      downloadWithStrategy(
-        registry.gigetSource,
-        destDir,
-        strategy,
-        null, // null = templatePath is already a full giget source
-      ),
-    );
+    if (registry.host && registry.provider === "gitlab") {
+      await cloneSelfHostedSubdir(registry, destDir, strategy);
+    } else {
+      await withGigetHost(registry.host, () =>
+        downloadWithStrategy(
+          registry.gigetSource,
+          destDir,
+          strategy,
+          null, // null = templatePath is already a full giget source
+        ),
+      );
+    }
     return {
       success: true,
       message: `Downloaded spec from ${registry.gigetSource} to ${destDir}`,
