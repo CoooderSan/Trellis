@@ -136,6 +136,19 @@ describe("parseRegistrySource", () => {
     );
   });
 
+  it("parses codeup: source using Codeup raw host and gitlab giget provider", () => {
+    const result = parseRegistrySource("codeup:mygroup/myrepo/specs");
+    expect(result.provider).toBe("gitlab");
+    expect(result.repo).toBe("mygroup/myrepo");
+    expect(result.subdir).toBe("specs");
+    expect(result.ref).toBe("main");
+    expect(result.host).toBe("codeup.aliyun.com");
+    expect(result.rawBaseUrl).toBe(
+      "https://codeup.aliyun.com/mygroup/myrepo/raw/main/specs",
+    );
+    expect(result.gigetSource).toBe("gitlab:mygroup/myrepo/specs");
+  });
+
   // -------------------------------------------------------------------------
   // Error cases
   // -------------------------------------------------------------------------

@@ -31,7 +31,7 @@
 
 | Capability | What it changes |
 | --- | --- |
-| **Auto-injected specs** | Write conventions once in `.trellis/spec/`, then let Trellis inject the relevant context into each session instead of repeating yourself. |
+| **Auto-injected specs** | Write conventions once in `.trellis/spec/`, then let Trellis inject the relevant context from `.trellis/spec/**/*.md` into each session instead of repeating yourself, including custom top-level sections and nested Markdown specs. |
 | **Task-centered workflow** | Keep PRDs, implementation context, review context, and task status in `.trellis/tasks/` so AI work stays structured. |
 | **Parallel agent execution** | Run multiple AI tasks side by side with git worktrees instead of turning one branch into a traffic jam. |
 | **Project memory** | Journals in `.trellis/workspace/` preserve what happened last time, so each new session starts with real context. |
@@ -97,6 +97,8 @@ At a high level, the workflow is simple:
 2. Start or refine work from a task PRD.
 3. Let Trellis inject the right context for the current task.
 4. Use checks, journals, and worktrees to keep quality and continuity intact.
+
+Session-start spec loading recursively walks `.trellis/spec/**/*.md`. When present, the official default sections (`frontend`, `backend`, `guides`) are prioritized first; additional top-level directories are loaded afterward in stable order. Within each directory, `index.md` is loaded before other files, hidden files/directories are skipped, and injection is capped to prevent runaway context growth.
 
 ## What's New
 

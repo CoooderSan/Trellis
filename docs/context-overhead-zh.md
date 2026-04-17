@@ -27,7 +27,7 @@ Main Agent (持久)            Subagent (临时)
 ─────────────────────────   ─────────────────────
 │ ~6,500 tokens          │  │ ~4,100 tokens    │
 │ ├─ workflow.md         │  │ ├─ agent prompt  │
-│ ├─ index 文件          │  │ ├─ jsonl 规范    │
+│ ├─ spec 文件           │  │ ├─ jsonl 规范    │
 │ └─ start 命令          │──│ └─ prd.md        │
 │                        │  └─────────────────────
 │ + subagent 输出结果    │       (结束后丢弃)
@@ -53,6 +53,8 @@ Main Agent (持久)            Subagent (临时)
 | backend/index.md | ~352 | 0.04% | 0.18% |
 | guides/index.md | ~586 | 0.06% | 0.29% |
 | **合计** | **~6,530** | **0.65%** | **3.27%** |
+
+以上数字对应默认基线，也就是标准顶层 spec 入口文件的注入成本。当前 `session-start` hook 会递归加载 `.trellis/spec/**/*.md`，在存在时优先处理 `frontend/`、`backend/`、`guides/`，随后按稳定顺序处理其他顶层目录，并通过 `40` 个文件、`24,000` 个字符的上限控制注入规模。
 
 ### Research Agent
 

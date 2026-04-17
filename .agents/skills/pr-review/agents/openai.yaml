@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR Review (Legacy)"
+  short_description: "Legacy compatibility entry for old PR review flow"
+  default_prompt: "Use $codeup-pr-create for author-side self-review before creating your own MR, or use $codeup-pr-review for reviewer-side review of someone else's Codeup MR. Keep $pr-review only for legacy compatibility."

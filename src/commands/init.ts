@@ -10,6 +10,7 @@ import {
   getInitToolChoices,
   resolveCliFlag,
   configurePlatform,
+  getConfiguredPlatforms,
   getPlatformsWithPythonHooks,
 } from "../configurators/index.js";
 import { AI_TOOLS, type CliFlag } from "../types/ai-tools.js";
@@ -23,7 +24,10 @@ import {
 } from "../utils/file-writer.js";
 import {
   detectProjectType,
+  detectMonorepo,
+  sanitizePkgName,
   type ProjectType,
+  type DetectedPackage,
 } from "../utils/project-detector.js";
 import { initializeHashes } from "../utils/template-hash.js";
 import {
@@ -41,23 +45,54 @@ import {
 import { setupProxy, maskProxyUrl } from "../utils/proxy.js";
 
 /**
- * Detect available Python command (python3 or python)
+ * Detect available Python command (python3 or python) and verify version >= 3.10
  */
 function getPythonCommand(): string {
-  // Try python3 first (preferred on macOS/Linux)
-  try {
-    execSync("python3 --version", { stdio: "pipe" });
-    return "python3";
-  } catch {
-    // Fall back to python (common on Windows)
+  const MIN_MAJOR = 3;
+  const MIN_MINOR = 10;
+
+  function checkVersion(cmd: string): boolean {
     try {
-      execSync("python --version", { stdio: "pipe" });
-      return "python";
+      const output = execSync(`${cmd} --version`, { stdio: "pipe" })
+        .toString()
+        .trim();
+      const match = output.match(/Python (\d+)\.(\d+)/);
+      if (!match) return false;
+      const [, major, minor] = match.map(Number);
+      return major > MIN_MAJOR || (major === MIN_MAJOR && minor >= MIN_MINOR);
     } catch {
-      // Default to python3, let it fail with a clear error
-      return "python3";
+      return false;
     }
   }
+
+  if (checkVersion("python3")) return "python3";
+  if (checkVersion("python")) return "python";
+
+  // Check if Python exists but is too old
+  try {
+    const output = execSync("python3 --version", { stdio: "pipe" })
+      .toString()
+      .trim();
+    console.warn(
+      chalk.yellow(
+        `⚠️  ${output} detected, but Trellis requires Python ≥ 3.10`,
+      ),
+    );
+  } catch {
+    try {
+      const output = execSync("python --version", { stdio: "pipe" })
+        .toString()
+        .trim();
+      console.warn(
+        chalk.yellow(
+          `⚠️  ${output} detected, but Trellis requires Python ≥ 3.10`,
+        ),
+      );
+    } catch {
+      // No Python at all
+    }
+  }
+  return "python3";
 }
 
 // =============================================================================
@@ -66,7 +101,10 @@ function getPythonCommand(): string {
 
 const BOOTSTRAP_TASK_NAME = "00-bootstrap-guidelines";
 
-function getBootstrapPrdContent(projectType: ProjectType): string {
+function getBootstrapPrdContent(
+  projectType: ProjectType,
+  packages?: DetectedPackage[],
+): string {
   const header = `# Bootstrap: Fill Project Development Guidelines
 
 ## Purpose
@@ -74,7 +112,7 @@ function getBootstrapPrdContent(projectType: ProjectType): string {
 Welcome to Trellis! This is your first task.
 
 AI agents use \`.trellis/spec/\` to understand YOUR project's coding conventions.
-**Empty templates = AI writes generic code that doesn't match your project style.**
+**Starting from scratch = AI writes generic code that doesn't match your project style.**
 
 Filling these guidelines is a one-time setup that pays off for every future AI session.
 
@@ -130,7 +168,7 @@ Many projects already have coding conventions documented. **Check these first** 
 | File / Directory | Tool |
 |------|------|
 | \`CLAUDE.md\` / \`CLAUDE.local.md\` | Claude Code |
-| \`AGENTS.md\` | Claude Code |
+| \`AGENTS.md\` | Codex / Claude Code / agent-compatible tools |
 | \`.cursorrules\` | Cursor |
 | \`.cursor/rules/*.mdc\` | Cursor (rules directory) |
 | \`.windsurfrules\` | Windsurf |
@@ -189,7 +227,21 @@ After completing this task:
 `;
 
   let content = header;
-  if (projectType === "frontend") {
+
+  if (packages && packages.length > 0) {
+    // Monorepo: generate per-package sections
+    for (const pkg of packages) {
+      const pkgType = pkg.type === "unknown" ? "fullstack" : pkg.type;
+      const specName = sanitizePkgName(pkg.name);
+      content += `\n### Package: ${pkg.name} (\`spec/${specName}/\`)\n`;
+      if (pkgType !== "frontend") {
+        content += `\n- Backend guidelines: \`.trellis/spec/${specName}/backend/\`\n`;
+      }
+      if (pkgType !== "backend") {
+        content += `\n- Frontend guidelines: \`.trellis/spec/${specName}/frontend/\`\n`;
+      }
+    }
+  } else if (projectType === "frontend") {
     content += frontendSection;
   } else if (projectType === "backend") {
     content += backendSection;
@@ -226,13 +278,24 @@ interface TaskJson {
 function getBootstrapTaskJson(
   developer: string,
   projectType: ProjectType,
+  packages?: DetectedPackage[],
 ): TaskJson {
   const today = new Date().toISOString().split("T")[0];
 
   let subtasks: { name: string; status: string }[];
   let relatedFiles: string[];
 
-  if (projectType === "frontend") {
+  if (packages && packages.length > 0) {
+    // Monorepo: subtask per package
+    subtasks = packages.map((pkg) => ({
+      name: `Fill guidelines for ${pkg.name}`,
+      status: "pending",
+    }));
+    subtasks.push({ name: "Add code examples", status: "pending" });
+    relatedFiles = packages.map(
+      (pkg) => `.trellis/spec/${sanitizePkgName(pkg.name)}/`,
+    );
+  } else if (projectType === "frontend") {
     subtasks = [
       { name: "Fill frontend guidelines", status: "pending" },
       { name: "Add code examples", status: "pending" },
@@ -282,6 +345,7 @@ function createBootstrapTask(
   cwd: string,
   developer: string,
   projectType: ProjectType,
+  packages?: DetectedPackage[],
 ): boolean {
   const taskDir = path.join(cwd, PATHS.TASKS, BOOTSTRAP_TASK_NAME);
   const taskRelativePath = `${PATHS.TASKS}/${BOOTSTRAP_TASK_NAME}`;
@@ -296,7 +360,7 @@ function createBootstrapTask(
     fs.mkdirSync(taskDir, { recursive: true });
 
     // Write task.json
-    const taskJson = getBootstrapTaskJson(developer, projectType);
+    const taskJson = getBootstrapTaskJson(developer, projectType, packages);
     fs.writeFileSync(
       path.join(taskDir, FILE_NAMES.TASK_JSON),
       JSON.stringify(taskJson, null, 2),
@@ -304,7 +368,7 @@ function createBootstrapTask(
     );
 
     // Write prd.md
-    const prdContent = getBootstrapPrdContent(projectType);
+    const prdContent = getBootstrapPrdContent(projectType, packages);
     fs.writeFileSync(path.join(taskDir, FILE_NAMES.PRD), prdContent, "utf-8");
 
     // Set as current task
@@ -317,6 +381,157 @@ function createBootstrapTask(
   }
 }
 
+/**
+ * Handle re-init when .trellis/ already exists.
+ * Returns true if handled (caller should return), false if user chose full re-init.
+ */
+async function handleReinit(
+  cwd: string,
+  options: InitOptions,
+  developerName: string | undefined,
+): Promise<boolean> {
+  const TOOLS = getInitToolChoices();
+  const configuredPlatforms = getConfiguredPlatforms(cwd);
+  const configuredNames = [...configuredPlatforms]
+    .map((id) => AI_TOOLS[id].name)
+    .join(", ");
+
+  // Determine explicit platform flags
+  const explicitTools = TOOLS.filter(
+    (t) => options[t.key as keyof InitOptions],
+  ).map((t) => t.key);
+
+  let doAddPlatforms = explicitTools.length > 0;
+  let doAddDeveloper = !!options.user;
+  let platformsToAdd: string[] = explicitTools;
+
+  // No explicit flags → show menu
+  if (!doAddPlatforms && !doAddDeveloper) {
+    if (options.yes) {
+      console.log(chalk.gray(`Already initialized with: ${configuredNames}`));
+      console.log(
+        chalk.gray(
+          "Use platform flags (e.g., --codex) or -u <name> to add platforms/developer.",
+        ),
+      );
+      return true;
+    }
+
+    console.log(
+      chalk.gray(`\n   Already initialized with: ${configuredNames}\n`),
+    );
+
+    const { action } = await inquirer.prompt<{ action: string }>([
+      {
+        type: "list",
+        name: "action",
+        message: "Trellis is already initialized. What would you like to do?",
+        choices: [
+          { name: "Add AI platform(s)", value: "add-platform" },
+          {
+            name: "Set up developer identity on this device",
+            value: "add-developer",
+          },
+          { name: "Full re-initialize", value: "full" },
+        ],
+      },
+    ]);
+
+    if (action === "full") {
+      return false; // Fall through to full init
+    }
+    if (action === "add-platform") doAddPlatforms = true;
+    if (action === "add-developer") doAddDeveloper = true;
+  }
+
+  // --- Add platforms ---
+  if (doAddPlatforms) {
+    if (platformsToAdd.length === 0) {
+      // Interactive: show only unconfigured platforms
+      const unconfigured = TOOLS.filter((t) => {
+        const pid = resolveCliFlag(t.key);
+        return pid && !configuredPlatforms.has(pid);
+      });
+
+      if (unconfigured.length === 0) {
+        console.log(
+          chalk.green("✓ All available platforms are already configured."),
+        );
+      } else {
+        const answers = await inquirer.prompt<{ tools: string[] }>([
+          {
+            type: "checkbox",
+            name: "tools",
+            message: "Select platforms to add:",
+            choices: unconfigured.map((t) => ({
+              name: t.name,
+              value: t.key,
+            })),
+          },
+        ]);
+        platformsToAdd = answers.tools;
+      }
+    }
+
+    for (const tool of platformsToAdd) {
+      const platformId = resolveCliFlag(tool as CliFlag);
+      if (platformId) {
+        if (configuredPlatforms.has(platformId)) {
+          console.log(
+            chalk.gray(
+              `  ○ ${AI_TOOLS[platformId].name} already configured, skipping`,
+            ),
+          );
+        } else {
+          console.log(
+            chalk.blue(`📝 Configuring ${AI_TOOLS[platformId].name}...`),
+          );
+          await configurePlatform(platformId, cwd);
+        }
+      }
+    }
+
+    // Update template hashes
+    const hashedCount = initializeHashes(cwd);
+    if (hashedCount > 0) {
+      console.log(
+        chalk.gray(`📋 Tracking ${hashedCount} template files for updates`),
+      );
+    }
+  }
+
+  // --- Add developer ---
+  if (doAddDeveloper) {
+    let devName = developerName;
+    if (!devName) {
+      devName = await askInput("Your name: ");
+      while (!devName) {
+        console.log(chalk.yellow("Name is required"));
+        devName = await askInput("Your name: ");
+      }
+    }
+
+    try {
+      const pythonCmd = getPythonCommand();
+      const scriptPath = path.join(cwd, PATHS.SCRIPTS, "init_developer.py");
+      execSync(`${pythonCmd} "${scriptPath}" "${devName}"`, {
+        cwd,
+        stdio: "pipe",
+      });
+      console.log(chalk.green(`✓ Developer "${devName}" initialized`));
+    } catch {
+      console.log(
+        chalk.yellow("⚠ Could not initialize developer. Run manually:"),
+      );
+      console.log(
+        chalk.gray(`  python3 .trellis/scripts/init_developer.py ${devName}`),
+      );
+    }
+  }
+
+  return true;
+}
+
 interface InitOptions {
   cursor?: boolean;
   claude?: boolean;
@@ -327,7 +542,11 @@ interface InitOptions {
   kiro?: boolean;
   gemini?: boolean;
   antigravity?: boolean;
+  windsurf?: boolean;
   qoder?: boolean;
+  codebuddy?: boolean;
+  copilot?: boolean;
+  droid?: boolean;
   yes?: boolean;
   user?: string;
   force?: boolean;
@@ -336,6 +555,7 @@ interface InitOptions {
   overwrite?: boolean;
   append?: boolean;
   registry?: string;
+  monorepo?: boolean;
 }
 
 // Compile-time check: every CliFlag must be a key of InitOptions.
@@ -346,6 +566,49 @@ type _AssertCliFlagsInOptions = [CliFlag] extends [keyof InitOptions]
   : "ERROR: CliFlag has values not present in InitOptions";
 const _cliFlagCheck: _AssertCliFlagsInOptions = true;
 
+/**
+ * Write monorepo package configuration to config.yaml (non-destructive patch).
+ * Appends packages: and default_package: without disturbing existing config.
+ */
+function writeMonorepoConfig(cwd: string, packages: DetectedPackage[]): void {
+  const configPath = path.join(cwd, DIR_NAMES.WORKFLOW, "config.yaml");
+  let content = "";
+
+  try {
+    content = fs.readFileSync(configPath, "utf-8");
+  } catch {
+    // Config not created yet; will be created by createWorkflowStructure
+    return;
+  }
+
+  // Don't overwrite if packages: already exists (re-init case)
+  if (/^packages\s*:/m.test(content)) {
+    return;
+  }
+
+  const lines = ["\n# Auto-detected monorepo packages", "packages:"];
+  for (const pkg of packages) {
+    lines.push(`  ${sanitizePkgName(pkg.name)}:`);
+    lines.push(`    path: ${pkg.path}`);
+    if (pkg.isSubmodule) {
+      lines.push("    type: submodule");
+    }
+  }
+
+  // Use first non-submodule package as default, fallback to first package
+  const defaultPkg =
+    packages.find((p) => !p.isSubmodule)?.name ?? packages[0]?.name;
+  if (defaultPkg) {
+    lines.push(`default_package: ${defaultPkg}`);
+  }
+
+  fs.writeFileSync(
+    configPath,
+    content.trimEnd() + "\n" + lines.join("\n") + "\n",
+    "utf-8",
+  );
+}
+
 interface InitAnswers {
   tools: string[];
   template?: string;
@@ -354,6 +617,7 @@ interface InitAnswers {
 
 export async function init(options: InitOptions): Promise<void> {
   const cwd = process.cwd();
+  const isFirstInit = !fs.existsSync(path.join(cwd, DIR_NAMES.WORKFLOW));
 
   // Generate ASCII art banner dynamically using FIGlet "Rebel" font
   const banner = figlet.textSync("Trellis", { font: "Rebel" });
@@ -400,7 +664,19 @@ export async function init(options: InitOptions): Promise<void> {
 
   if (developerName) {
     console.log(chalk.blue("👤 Developer:"), chalk.gray(developerName));
-  } else if (!options.yes) {
+  }
+
+  // ==========================================================================
+  // Re-init fast path: skip full flow when .trellis/ already exists
+  // ==========================================================================
+
+  if (!isFirstInit && !options.force && !options.skipExisting) {
+    const reinitDone = await handleReinit(cwd, options, developerName);
+    if (reinitDone) return;
+    // reinitDone === false means user chose "full re-initialize" → fall through
+  }
+
+  if (!developerName && !options.yes) {
     // Ask for developer name if not detected and not in yes mode
     console.log(
       chalk.gray(
@@ -419,6 +695,180 @@ export async function init(options: InitOptions): Promise<void> {
 
   // Detect project type (silent - no output)
   const detectedType = detectProjectType(cwd);
+
+  // Parse custom registry source early (needed by both monorepo + single-repo flows)
+  let registry: RegistrySource | undefined;
+  if (options.registry) {
+    try {
+      registry = parseRegistrySource(options.registry);
+    } catch (error) {
+      console.log(
+        chalk.red(
+          error instanceof Error ? error.message : "Invalid registry source",
+        ),
+      );
+      return;
+    }
+  }
+
+  // Determine template strategy from flags (needed before monorepo template downloads)
+  let templateStrategy: TemplateStrategy = "skip";
+  if (options.overwrite) {
+    templateStrategy = "overwrite";
+  } else if (options.append) {
+    templateStrategy = "append";
+  }
+
+  // ==========================================================================
+  // Monorepo Detection
+  // ==========================================================================
+
+  let monorepoPackages: DetectedPackage[] | undefined;
+  let remoteSpecPackages: Set<string> | undefined;
+
+  if (options.monorepo !== false) {
+    // options.monorepo: true = --monorepo, false = --no-monorepo, undefined = auto
+    const detected = detectMonorepo(cwd);
+
+    if (options.monorepo === true && !detected) {
+      console.log(
+        chalk.red(
+          "Error: --monorepo specified but no monorepo configuration found.",
+        ),
+      );
+      return;
+    }
+
+    if (detected && detected.length > 0) {
+      let enableMonorepo = false;
+
+      if (options.monorepo === true || options.yes) {
+        enableMonorepo = true;
+      } else {
+        // Show detected packages and ask
+        console.log(chalk.blue("\n🔍 Detected monorepo packages:"));
+        for (const pkg of detected) {
+          const sub = pkg.isSubmodule ? chalk.gray(" (submodule)") : "";
+          console.log(
+            chalk.gray(`   - ${pkg.name}`) +
+              chalk.gray(` (${pkg.path})`) +
+              chalk.gray(` [${pkg.type}]`) +
+              sub,
+          );
+        }
+        console.log("");
+
+        const { useMonorepo } = await inquirer.prompt<{
+          useMonorepo: boolean;
+        }>([
+          {
+            type: "confirm",
+            name: "useMonorepo",
+            message: "Enable monorepo mode?",
+            default: true,
+          },
+        ]);
+        enableMonorepo = useMonorepo;
+      }
+
+      if (enableMonorepo) {
+        monorepoPackages = detected;
+        remoteSpecPackages = new Set<string>();
+
+        // Per-package template selection (unless -y mode: all use blank spec)
+        if (!options.yes && !options.template) {
+          for (const pkg of detected) {
+            const { specSource } = await inquirer.prompt<{
+              specSource: string;
+            }>([
+              {
+                type: "list",
+                name: "specSource",
+                message: `Spec source for ${pkg.name} (${pkg.path}):`,
+                choices: [
+                  { name: "From scratch (Trellis default)", value: "blank" },
+                  { name: "Download remote template", value: "remote" },
+                ],
+                default: "blank",
+              },
+            ]);
+
+            if (specSource === "remote") {
+              // Use existing template download flow, targeting spec/<name>/
+              const destDir = path.join(
+                cwd,
+                PATHS.SPEC,
+                sanitizePkgName(pkg.name),
+              );
+              console.log(chalk.blue(`📦 Select template for ${pkg.name}...`));
+              // Fetch templates if not already done
+              const templates = await fetchTemplateIndex();
+              const specTemplates = templates
+                .filter((t) => t.type === "spec")
+                .map((t) => ({
+                  name: `${t.id} (${t.name})`,
+                  value: t.id,
+                }));
+
+              if (specTemplates.length > 0) {
+                const { templateId } = await inquirer.prompt<{
+                  templateId: string;
+                }>([
+                  {
+                    type: "list",
+                    name: "templateId",
+                    message: `Select template for ${pkg.name}:`,
+                    choices: specTemplates,
+                  },
+                ]);
+
+                const result = await downloadTemplateById(
+                  cwd,
+                  templateId,
+                  templateStrategy,
+                  templates.find((t) => t.id === templateId),
+                  undefined,
+                  destDir,
+                );
+
+                if (result.success) {
+                  console.log(chalk.green(`   ${result.message}`));
+                  remoteSpecPackages.add(sanitizePkgName(pkg.name));
+                } else {
+                  console.log(chalk.yellow(`   ${result.message}`));
+                  console.log(chalk.gray("   Falling back to blank spec..."));
+                }
+              } else {
+                console.log(
+                  chalk.gray("   No templates available. Using blank spec."),
+                );
+              }
+            }
+          }
+        } else if (options.template) {
+          // --template as default for all packages
+          for (const pkg of detected) {
+            const destDir = path.join(
+              cwd,
+              PATHS.SPEC,
+              sanitizePkgName(pkg.name),
+            );
+            const result = await downloadTemplateById(
+              cwd,
+              options.template,
+              templateStrategy,
+              undefined,
+              registry,
+              destDir,
+            );
+            if (result.success && !result.skipped) {
+              remoteSpecPackages.add(sanitizePkgName(pkg.name));
+            }
+          }
+        }
+      }
+    }
+  }
 
   // Tool definitions derived from platform registry
   const TOOLS = getInitToolChoices();
@@ -465,33 +915,10 @@ export async function init(options: InitOptions): Promise<void> {
   }
 
   // ==========================================================================
-  // Template Selection
+  // Template Selection (single-repo only; monorepo handles templates above)
   // ==========================================================================
 
   let selectedTemplate: string | null = null;
-  let templateStrategy: TemplateStrategy = "skip";
-
-  // Determine template strategy from flags
-  if (options.overwrite) {
-    templateStrategy = "overwrite";
-  } else if (options.append) {
-    templateStrategy = "append";
-  }
-
-  // Parse custom registry source if provided
-  let registry: RegistrySource | undefined;
-  if (options.registry) {
-    try {
-      registry = parseRegistrySource(options.registry);
-    } catch (error) {
-      console.log(
-        chalk.red(
-          error instanceof Error ? error.message : "Invalid registry source",
-        ),
-      );
-      return;
-    }
-  }
 
   // Pre-fetched templates list (used to pass selected SpecTemplate to downloadTemplateById)
   let fetchedTemplates: SpecTemplate[] = [];
@@ -501,7 +928,9 @@ export async function init(options: InitOptions): Promise<void> {
     ? `${registry.rawBaseUrl}/index.json`
     : TEMPLATE_INDEX_URL;
 
-  if (options.template) {
+  if (monorepoPackages) {
+    // Monorepo: template selection already handled above
+  } else if (options.template) {
     // Template specified via --template flag
     selectedTemplate = options.template;
   } else if (!options.yes) {
@@ -570,7 +999,7 @@ export async function init(options: InitOptions): Promise<void> {
         ? specTemplates
         : [
             {
-              name: "blank (default - empty templates)",
+              name: "from scratch (default)",
               value: "blank",
             },
             ...specTemplates,
@@ -727,7 +1156,8 @@ export async function init(options: InitOptions): Promise<void> {
     }
   }
   // -y mode with --registry (no --template): probe index.json to detect mode
-  if (options.yes && registry && !selectedTemplate) {
+  // Skip when monorepo mode already handled templates above
+  if (options.yes && registry && !selectedTemplate && !monorepoPackages) {
     const probeResult = await probeRegistryIndex(
       `${registry.rawBaseUrl}/index.json`,
     );
@@ -855,55 +1285,19 @@ export async function init(options: InitOptions): Promise<void> {
     projectType,
     multiAgent: true,
     skipSpecTemplates: useRemoteTemplate,
+    packages: monorepoPackages,
+    remoteSpecPackages,
   });
+
+  // Write monorepo packages to config.yaml (non-destructive patch)
+  if (monorepoPackages) {
+    writeMonorepoConfig(cwd, monorepoPackages);
+    console.log(chalk.blue("📦 Monorepo packages written to config.yaml"));
+  }
 
   // Write version file for update tracking
   const versionPath = path.join(cwd, DIR_NAMES.WORKFLOW, ".version");
   fs.writeFileSync(versionPath, VERSION);
-
-  // ==========================================================================
-  // Governance Repository Configuration
-  // ==========================================================================
-
-  if (!options.yes) {
-    const governanceAnswer = await inquirer.prompt<{
-      configureGovernance: boolean;
-    }>([
-      {
-        type: "confirm",
-        name: "configureGovernance",
-        message: "Configure governance repository for team constraints?",
-        default: false,
-      },
-    ]);
-
-    if (governanceAnswer.configureGovernance) {
-      const governanceRepoAnswer = await inquirer.prompt<{
-        governanceRepo: string;
-      }>([
-        {
-          type: "input",
-          name: "governanceRepo",
-          message: "Enter governance repository URL:",
-          default:
-            "https://codeup.aliyun.com/63b637070a96c30780aae039/ecochain/ai-governance/ai-governance.git",
-        },
-      ]);
-
-      if (governanceRepoAnswer.governanceRepo) {
-        const governanceConfigPath = path.join(
-          cwd,
-          DIR_NAMES.WORKFLOW,
-          ".governance-repo",
-        );
-        fs.writeFileSync(
-          governanceConfigPath,
-          governanceRepoAnswer.governanceRepo,
-        );
-        console.log(chalk.green("✓ Governance repository configured"));
-      }
-    }
-  }
 
   // Configure selected tools by copying entire directories (dogfooding)
   for (const tool of tools) {
@@ -948,8 +1342,10 @@ export async function init(options: InitOptions): Promise<void> {
         stdio: "pipe", // Silent
       });
 
-      // Create bootstrap task to guide user through filling guidelines
-      createBootstrapTask(cwd, developerName, projectType);
+      // Create bootstrap task only on first init (not re-init for new platforms/devices)
+      if (isFirstInit) {
+        createBootstrapTask(cwd, developerName, projectType, monorepoPackages);
+      }
     } catch {
       // Silent failure - user can run init_developer.py manually
     }

@@ -1,11 +1,10 @@
 /**
  * Remote template fetcher for Trellis CLI
  *
- * Fetches spec templates from the official docs repository:
- * https://github.com/mindfold-ai/docs/tree/main/marketplace
+ * Fetches spec templates from the official marketplace:
+ * https://github.com/mindfold-ai/marketplace
  */
 
-import { execSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,9 +15,9 @@ import { downloadTemplate } from "giget";
 // =============================================================================
 
 export const TEMPLATE_INDEX_URL =
-  "https://raw.githubusercontent.com/mindfold-ai/docs/main/marketplace/index.json";
+  "https://raw.githubusercontent.com/mindfold-ai/marketplace/main/index.json";
 
-const TEMPLATE_REPO = "gh:mindfold-ai/docs";
+const TEMPLATE_REPO = "gh:mindfold-ai/marketplace";
 
 /** Map template type to installation path */
 const INSTALL_PATHS: Record<string, string> = {
@@ -69,11 +68,15 @@ export interface RegistrySource {
   rawBaseUrl: string;
   /** Full giget source string for downloading */
   gigetSource: string;
+  /** Custom host for self-hosted instances (e.g., "git.company.com"). Undefined for public providers. */
+  host?: string;
 }
 
 // =============================================================================
 // Registry Source Parsing
 // =============================================================================
+
+const CODEUP_HOST = "codeup.aliyun.com";
 
 /** Maps provider prefixes to raw file URL patterns */
 const RAW_URL_PATTERNS: Record<string, string> = {
@@ -81,38 +84,148 @@ const RAW_URL_PATTERNS: Record<string, string> = {
   github: "https://raw.githubusercontent.com/{repo}/{ref}/{subdir}",
   gitlab: "https://gitlab.com/{repo}/-/raw/{ref}/{subdir}",
   bitbucket: "https://bitbucket.org/{repo}/raw/{ref}/{subdir}",
-  aliyun: "https://codeup.aliyun.com/{repo}/raw/{ref}/{subdir}",
-  codeup: "https://codeup.aliyun.com/{repo}/raw/{ref}/{subdir}",
+  codeup: `https://${CODEUP_HOST}/{repo}/raw/{ref}/{subdir}`,
+};
+
+const GIGET_PROVIDER_ALIASES: Record<
+  string,
+  { provider: string; host: string }
+> = {
+  codeup: { provider: "gitlab", host: CODEUP_HOST },
 };
 
 export const SUPPORTED_PROVIDERS = Object.keys(RAW_URL_PATTERNS);
 
 /**
+ * Convert an HTTPS URL to giget-style source format.
+ * e.g. "https://github.com/user/repo" → "gh:user/repo"
+ *      "https://github.com/user/repo/tree/branch/path" → "gh:user/repo/path#branch"
+ * Returns the original string if it's not a recognized HTTPS URL.
+ */
+export function normalizeRegistrySource(source: string): string {
+  const patterns: { re: RegExp; prefix: string }[] = [
+    { re: /^https?:\/\/github\.com\//, prefix: "gh:" },
+    { re: /^https?:\/\/gitlab\.com\//, prefix: "gitlab:" },
+    { re: /^https?:\/\/bitbucket\.org\//, prefix: "bitbucket:" },
+  ];
+
+  for (const { re, prefix } of patterns) {
+    if (!re.test(source)) continue;
+    const path = source.replace(re, "");
+    // Handle /tree/<branch>/<subdir> format (GitHub browse URLs)
+    const treeMatch = path.match(
+      /^([^/]+\/[^/]+)\/tree\/([^/]+)(?:\/(.+?))?(?:\.git)?\/?$/,
+    );
+    if (treeMatch) {
+      const [, repo, ref, subdir] = treeMatch;
+      return `${prefix}${repo}${subdir ? `/${subdir}` : ""}#${ref}`;
+    }
+    // Plain URL: strip trailing .git and /
+    const cleaned = path.replace(/\.git\/?$/, "").replace(/\/$/, "");
+    return `${prefix}${cleaned}`;
+  }
+
+  return source;
+}
+
+/** Known public domains that have dedicated giget provider prefixes */
+const KNOWN_PUBLIC_DOMAINS = ["github.com", "gitlab.com", "bitbucket.org"];
+
+/** Maps SSH/HTTPS domains of public providers to their giget prefix */
+const PUBLIC_DOMAIN_TO_PREFIX: Record<string, string> = {
+  "github.com": "gh",
+  "gitlab.com": "gitlab",
+  "bitbucket.org": "bitbucket",
+};
+
+/**
  * Parse a giget-style registry source into its components.
  *
- * Supports: gh:user/repo/subdir#ref, gitlab:user/repo/subdir, bitbucket:user/repo/subdir, aliyun:user/repo/subdir
+ * Supported input formats:
+ * | Format                              | Example                                      | Provider  | Host?     |
+ * |-------------------------------------|----------------------------------------------|-----------|-----------|
+ * | giget prefix                        | gh:org/repo, gitlab:org/repo#ref             | native    | no        |
+ * | Public HTTPS                        | https://github.com/org/repo                  | native    | no        |
+ * | Public SSH                          | git@github.com:org/repo                      | native    | no        |
+ * | Self-hosted HTTPS                   | https://git.corp.com/org/repo                | gitlab    | yes       |
+ * | Self-hosted SSH                     | git@git.corp.com:org/repo                    | gitlab    | yes       |
+ * | ssh:// protocol (with/without port) | ssh://git@host:2222/org/repo                 | gitlab    | yes       |
+ * | HTTPS with port                     | https://host:8443/org/repo                   | gitlab    | yes       |
+ * | GitLab browse URL                   | https://host/org/repo/-/tree/branch/path     | gitlab    | yes       |
+ *
  * Ref defaults to "main" if not specified.
+ * Unknown domains default to GitLab URL patterns (covers self-hosted GitLab CE/EE).
  *
  * @throws Error if provider is unsupported
  */
 export function parseRegistrySource(source: string): RegistrySource {
+  // --- Self-hosted URL detection (SSH + unknown HTTPS) ---
+  let host: string | undefined;
+  let normalizedInput: string | undefined;
+
+  // SSH URL: git@host:org/repo[.git] or ssh://git@host[:port]/org/repo[.git]
+  const sshMatch =
+    source.match(/^git@([^:]+):(.+?)(?:\.git)?\/?$/) ??
+    source.match(/^ssh:\/\/git@([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?\/?$/);
+  if (sshMatch) {
+    const sshDomain = sshMatch[1];
+    const sshPath = sshMatch[2];
+    const publicPrefix = PUBLIC_DOMAIN_TO_PREFIX[sshDomain];
+    if (publicPrefix) {
+      // Public provider SSH (e.g., git@github.com:org/repo) — use native prefix, no host
+      normalizedInput = `${publicPrefix}:${sshPath}`;
+    } else {
+      // Self-hosted SSH — default to gitlab provider with host
+      host = sshDomain;
+      normalizedInput = `gitlab:${sshPath}`;
+    }
+  }
+
+  // HTTPS URL to unknown domain (not github.com/gitlab.com/bitbucket.org)
+  if (!host) {
+    const httpsMatch = source.match(/^https?:\/\/([^/]+)\/(.+?)(?:\.git)?\/?$/);
+    if (httpsMatch) {
+      const domain = httpsMatch[1];
+      if (!KNOWN_PUBLIC_DOMAINS.includes(domain)) {
+        host = domain;
+        const pathPart = httpsMatch[2];
+        // Handle GitLab browse URLs: /org/repo/-/tree/branch/path
+        const treeMatch = pathPart.match(
+          /^([^/]+\/[^/]+)(?:\/-)?\/tree\/([^/]+)(?:\/(.+?))?$/,
+        );
+        if (treeMatch) {
+          const [, repoPath, ref, subdir] = treeMatch;
+          normalizedInput = `gitlab:${repoPath}${subdir ? `/${subdir}` : ""}#${ref}`;
+        } else {
+          normalizedInput = `gitlab:${pathPart}`;
+        }
+      }
+    }
+  }
+
+  // Auto-convert known HTTPS URLs to giget format (existing logic)
+  const normalized = normalizedInput ?? normalizeRegistrySource(source);
+
   // Extract provider prefix
-  const colonIndex = source.indexOf(":");
+  const colonIndex = normalized.indexOf(":");
   if (colonIndex === -1) {
     throw new Error(
       `Invalid registry source "${source}". Expected format: gh:user/repo/path`,
     );
   }
 
-  const provider = source.slice(0, colonIndex);
-  const rest = source.slice(colonIndex + 1);
+  const inputProvider = normalized.slice(0, colonIndex);
+  const rest = normalized.slice(colonIndex + 1);
+  const providerAlias = GIGET_PROVIDER_ALIASES[inputProvider];
+  const provider = providerAlias?.provider ?? inputProvider;
+  host ??= providerAlias?.host;
 
   // Check supported provider
-  const pattern = RAW_URL_PATTERNS[provider];
+  const pattern = RAW_URL_PATTERNS[inputProvider] ?? RAW_URL_PATTERNS[provider];
   if (!pattern) {
     const supported = [...new Set(Object.keys(RAW_URL_PATTERNS))].join(", ");
     throw new Error(
-      `Unsupported provider "${provider}". Supported: ${supported}`,
+      `Unsupported provider "${inputProvider}". Supported: ${supported}`,
     );
   }
 
@@ -121,18 +234,18 @@ export function parseRegistrySource(source: string): RegistrySource {
   const refMatch = rest.match(/^([^#]+?)(?:#(.+))?$/);
   if (!refMatch) {
     throw new Error(
-      `Invalid registry source "${source}". Expected format: ${provider}:user/repo/path`,
+      `Invalid registry source "${normalized}". Expected format: ${inputProvider}:user/repo/path`,
     );
   }
 
   const pathPart = refMatch[1];
-  const ref = refMatch[2] || "main";
+  const ref = refMatch[2] ?? "main";
 
   // Split into repo (first two segments) and subdir (rest)
   const segments = pathPart.split("/").filter(Boolean);
   if (segments.length < 2) {
     throw new Error(
-      `Invalid registry source "${source}". Must include user/repo at minimum.`,
+      `Invalid registry source "${normalized}". Must include user/repo at minimum.`,
     );
   }
 
@@ -140,20 +253,44 @@ export function parseRegistrySource(source: string): RegistrySource {
   const subdir = segments.slice(2).join("/");
 
   // Build raw base URL
-  const rawBaseUrl = pattern
+  let rawBaseUrl = pattern
     .replace("{repo}", repo)
     .replace("{ref}", ref)
     .replace("{subdir}", subdir);
 
-  // Build giget source (preserve original format)
-  const gigetSource = source;
+  // Replace public domain with self-hosted host in rawBaseUrl
+  if (host && !providerAlias && provider === "gitlab") {
+    rawBaseUrl = rawBaseUrl.replace("https://gitlab.com", `https://${host}`);
+  }
 
-  return { provider, repo, subdir, ref, rawBaseUrl, gigetSource };
+  // Build giget source (convert provider aliases to supported giget prefixes)
+  const gigetSource = providerAlias ? `${provider}:${rest}` : normalized;
+
+  return { provider, repo, subdir, ref, rawBaseUrl, gigetSource, host };
 }
 
 // =============================================================================
 // Helpers
 // =============================================================================
+
+/**
+ * Temporarily set `GIGET_GITLAB_URL` env var for self-hosted GitLab downloads.
+ * Restores the previous value (or deletes it) after the callback completes.
+ */
+async function withGigetHost<T>(
+  host: string | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  if (!host) return fn();
+  const prev = process.env.GIGET_GITLAB_URL;
+  process.env.GIGET_GITLAB_URL = `https://${host}`;
+  try {
+    return await fn();
+  } finally {
+    if (prev === undefined) delete process.env.GIGET_GITLAB_URL;
+    else process.env.GIGET_GITLAB_URL = prev;
+  }
+}
 
 /**
  * Race a promise against a timeout.
@@ -381,28 +518,6 @@ async function copyMissing(src: string, dest: string): Promise<void> {
 }
 
 /**
- * Download governance constraints from a custom git repository.
- * Clones on first run, pulls on subsequent runs.
- * Copies the repo's `spec/` directory into `.trellis/spec/governance/`.
- */
-export function downloadGovernanceRepo(cwd: string, repoUrl: string): void {
-  const cacheDir = path.join(os.homedir(), ".cache", "trellis-governance");
-  const targetDir = path.join(cwd, ".trellis", "spec", "governance");
-
-  if (!fs.existsSync(cacheDir)) {
-    execSync(`git clone ${repoUrl} ${cacheDir}`, { stdio: "pipe" });
-  } else {
-    execSync(`git -C ${cacheDir} pull`, { stdio: "pipe" });
-  }
-
-  fs.mkdirSync(targetDir, { recursive: true });
-  const specDir = path.join(cacheDir, "spec");
-  if (fs.existsSync(specDir)) {
-    fs.cpSync(specDir, targetDir, { recursive: true });
-  }
-}
-
-/**
  * Download a template by ID
  *
  * @param cwd - Current working directory
@@ -419,6 +534,7 @@ export async function downloadTemplateById(
   strategy: TemplateStrategy,
   template?: SpecTemplate,
   registry?: RegistrySource,
+  destDirOverride?: string,
 ): Promise<{ success: boolean; message: string; skipped?: boolean }> {
   // Use pre-fetched template or find from index
   let resolved = template;
@@ -461,8 +577,8 @@ export async function downloadTemplateById(
     };
   }
 
-  // Get destination path
-  const destDir = getInstallPath(cwd, resolved.type);
+  // Get destination path (use override for monorepo per-package downloads)
+  const destDir = destDirOverride ?? getInstallPath(cwd, resolved.type);
 
   // Check if directory exists for skip strategy
   if (strategy === "skip" && fs.existsSync(destDir)) {
@@ -479,7 +595,9 @@ export async function downloadTemplateById(
       // Custom registry: build full giget source with ref at the end
       // giget format: provider:user/repo/path#ref
       const fullSource = `${registry.provider}:${registry.repo}/${resolved.path}#${registry.ref}`;
-      await downloadWithStrategy(fullSource, destDir, strategy, null);
+      await withGigetHost(registry.host, () =>
+        downloadWithStrategy(fullSource, destDir, strategy, null),
+      );
     } else {
       await downloadWithStrategy(resolved.path, destDir, strategy);
     }
@@ -524,8 +642,9 @@ export async function downloadRegistryDirect(
   cwd: string,
   registry: RegistrySource,
   strategy: TemplateStrategy,
+  destDirOverride?: string,
 ): Promise<{ success: boolean; message: string; skipped?: boolean }> {
-  const destDir = getInstallPath(cwd, "spec");
+  const destDir = destDirOverride ?? getInstallPath(cwd, "spec");
 
   if (strategy === "skip" && fs.existsSync(destDir)) {
     return {
@@ -536,11 +655,13 @@ export async function downloadRegistryDirect(
   }
 
   try {
-    await downloadWithStrategy(
-      registry.gigetSource,
-      destDir,
-      strategy,
-      null, // null = templatePath is already a full giget source
+    await withGigetHost(registry.host, () =>
+      downloadWithStrategy(
+        registry.gigetSource,
+        destDir,
+        strategy,
+        null, // null = templatePath is already a full giget source
+      ),
     );
     return {
       success: true,

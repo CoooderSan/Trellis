@@ -283,20 +283,70 @@ describe("init() integration", () => {
     expect(fs.existsSync(path.join(specDir, "guides", "index.md"))).toBe(true);
   });
 
-  it("#12 frontend project init skips backend spec templates", async () => {
-    // vite.config.ts triggers detectProjectType → "frontend"
+  it("#13 auto-detects monorepo and creates per-package spec directories", async () => {
     fs.writeFileSync(
-      path.join(tmpDir, "vite.config.ts"),
-      "export default {}\n",
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "root", workspaces: ["packages/*"] }),
+    );
+    fs.mkdirSync(path.join(tmpDir, "packages", "web"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "packages", "web", "package.json"),
+      JSON.stringify({
+        name: "@scope/web",
+        dependencies: { react: "^18.0.0" },
+      }),
+    );
+    fs.mkdirSync(path.join(tmpDir, "packages", "api"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "packages", "api", "go.mod"),
+      "module example.com/api\n",
     );
 
     await init({ yes: true });
 
-    const specDir = path.join(tmpDir, PATHS.SPEC);
-    expect(fs.existsSync(path.join(specDir, "frontend", "index.md"))).toBe(
-      true,
+    expect(
+      fs.existsSync(path.join(tmpDir, PATHS.SPEC, "web", "frontend", "index.md")),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(tmpDir, PATHS.SPEC, "api", "backend", "index.md")),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, PATHS.SPEC, "frontend"))).toBe(false);
+
+    const config = fs.readFileSync(
+      path.join(tmpDir, DIR_NAMES.WORKFLOW, "config.yaml"),
+      "utf-8",
     );
-    expect(fs.existsSync(path.join(specDir, "backend"))).toBe(false);
-    expect(fs.existsSync(path.join(specDir, "guides", "index.md"))).toBe(true);
+    expect(config).toContain("packages:");
+    expect(config).toContain("web:");
+    expect(config).toContain("path: packages/web");
+    expect(config).toContain("api:");
+    expect(config).toContain("path: packages/api");
+    expect(config).toContain("default_package:");
+  });
+
+  it("#14 skips monorepo mode when monorepo is explicitly disabled", async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "root", workspaces: ["packages/*"] }),
+    );
+    fs.mkdirSync(path.join(tmpDir, "packages", "web"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "packages", "web", "package.json"),
+      JSON.stringify({
+        name: "@scope/web",
+        dependencies: { react: "^18.0.0" },
+      }),
+    );
+
+    await init({ yes: true, monorepo: false });
+
+    expect(fs.existsSync(path.join(tmpDir, PATHS.SPEC, "frontend", "index.md"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, PATHS.SPEC, "web"))).toBe(false);
+
+    const config = fs.readFileSync(
+      path.join(tmpDir, DIR_NAMES.WORKFLOW, "config.yaml"),
+      "utf-8",
+    );
+    expect(config).not.toContain("packages:");
   });
 });

@@ -42,13 +42,13 @@ python3 ./.trellis/scripts/get_context.py
 
 This shows: developer identity, git status, current task (if any), active tasks.
 
-### Step 3: Read Guidelines Index
+### Step 3: Review Injected Guidelines
 
-```bash
-cat .trellis/spec/frontend/index.md  # Frontend guidelines
-cat .trellis/spec/backend/index.md   # Backend guidelines
-cat .trellis/spec/guides/index.md    # Thinking guides
-```
+Session start already injects relevant Markdown specs from `.trellis/spec/**/*.md` into your context.
+
+- Default sections such as `frontend/`, `backend/`, and `guides/` are prioritized when they exist.
+- Additional sections such as `testing/`, `governance/`, or team-specific directories are also loaded recursively.
+- Read individual spec files manually only when the task needs more detail than the injected context.
 
 ### Step 4: Report and Ask
 

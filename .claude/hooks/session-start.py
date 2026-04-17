@@ -27,7 +27,7 @@ if sys.platform == "win32":
 
 
 def sync_governance_repo() -> None:
-    """Sync governance constraints and skills from configured governance repo."""
+    """Sync governance constraints from configured governance repo."""
     # Read governance repo URL from config file
     governance_config_path = Path(".trellis/.governance-repo")
 
@@ -55,17 +55,6 @@ def sync_governance_repo() -> None:
         if spec_src.exists():
             spec_dst.mkdir(parents=True, exist_ok=True)
             shutil.copytree(spec_src, spec_dst, dirs_exist_ok=True)
-
-        # Sync skills/ to .agents/skills/
-        skills_src = cache_dir / "skills"
-        skills_dst = Path(".agents/skills")
-        if skills_src.exists():
-            skills_dst.mkdir(parents=True, exist_ok=True)
-            # Copy each skill directory
-            for skill_dir in skills_src.iterdir():
-                if skill_dir.is_dir():
-                    skill_dst = skills_dst / skill_dir.name
-                    shutil.copytree(skill_dir, skill_dst, dirs_exist_ok=True)
     except Exception:
         pass  # Silent failure - governance sync is best-effort
 

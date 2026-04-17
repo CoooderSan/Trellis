@@ -3,8 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import {
+  detectMonorepo,
   detectProjectType,
   getProjectTypeDescription,
+  sanitizePkgName,
 } from "../../src/utils/project-detector.js";
 
 // =============================================================================
@@ -43,6 +45,78 @@ describe("getProjectTypeDescription", () => {
       expect(typeof desc).toBe("string");
       expect(desc.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("sanitizePkgName", () => {
+  it("strips npm scope prefixes", () => {
+    expect(sanitizePkgName("@ecochain/trellis")).toBe("trellis");
+  });
+
+  it("leaves unscoped package names unchanged", () => {
+    expect(sanitizePkgName("trellis")).toBe("trellis");
+  });
+});
+
+// =============================================================================
+// detectMonorepo — needs temp directory (MEDIUM)
+// =============================================================================
+
+describe("detectMonorepo", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-monorepo-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns null when no workspace configuration exists", () => {
+    expect(detectMonorepo(tmpDir)).toBeNull();
+  });
+
+  it("detects npm workspaces and infers per-package project types", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "root", workspaces: ["packages/*"] }),
+    );
+
+    fs.mkdirSync(path.join(tmpDir, "packages", "web"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "packages", "web", "package.json"),
+      JSON.stringify({
+        name: "@scope/web",
+        dependencies: { react: "^18.0.0" },
+      }),
+    );
+
+    fs.mkdirSync(path.join(tmpDir, "packages", "api"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "packages", "api", "go.mod"),
+      "module example.com/api\n",
+    );
+
+    const detected = detectMonorepo(tmpDir);
+    expect(detected).not.toBeNull();
+    expect(detected).toHaveLength(2);
+
+    const web = detected?.find((pkg) => pkg.path === "packages/web");
+    expect(web).toMatchObject({
+      name: "@scope/web",
+      path: "packages/web",
+      type: "frontend",
+      isSubmodule: false,
+    });
+
+    const api = detected?.find((pkg) => pkg.path === "packages/api");
+    expect(api).toMatchObject({
+      name: "api",
+      path: "packages/api",
+      type: "backend",
+      isSubmodule: false,
+    });
   });
 });
 

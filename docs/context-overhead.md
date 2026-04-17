@@ -27,7 +27,7 @@ Main Agent (persistent)     Subagent (temporary)
 ─────────────────────────   ─────────────────────
 │ ~6,500 tokens          │  │ ~4,100 tokens    │
 │ ├─ workflow.md         │  │ ├─ agent prompt  │
-│ ├─ index files         │  │ ├─ jsonl specs   │
+│ ├─ spec files          │  │ ├─ jsonl specs   │
 │ └─ start command       │──│ └─ prd.md        │
 │                        │  └─────────────────────
 │ + subagent outputs     │       (discarded)
@@ -53,6 +53,8 @@ Injected at session start via `SessionStart` hook:
 | backend/index.md | ~352 | 0.04% | 0.18% |
 | guides/index.md | ~586 | 0.06% | 0.29% |
 | **Total** | **~6,530** | **0.65%** | **3.27%** |
+
+These numbers reflect the default baseline with the standard top-level spec entry files. Current session-start hooks recursively load `.trellis/spec/**/*.md`, prioritize `frontend/`, `backend/`, and `guides/` when present, then walk additional top-level directories in stable order, with guardrails of `40` files and `24,000` characters total for spec injection.
 
 ### Research Agent
 
