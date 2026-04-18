@@ -16,7 +16,7 @@ import { TrellisContext, contextCollector, debugLog } from "../lib/trellis-conte
 
 const MAX_SPEC_FILES = 40
 const MAX_SPEC_CHARS = 24_000
-const PREFERRED_SPEC_DIRS = ["frontend", "backend", "guides"]
+const DEFAULT_SPEC_DIRS = ["frontend", "backend", "guides"]
 
 function formatSectionName(name) {
   if (name === "__root__") {
@@ -30,20 +30,26 @@ function formatSectionName(name) {
     .join(" ")
 }
 
-function sectionDirSort(a, b) {
-  const aIndex = PREFERRED_SPEC_DIRS.indexOf(a)
-  const bIndex = PREFERRED_SPEC_DIRS.indexOf(b)
+function hasIndexFile(directory) {
+  return existsSync(join(directory, "index.md"))
+}
 
-  if (aIndex !== -1 && bIndex !== -1) {
-    return aIndex - bIndex
+function sectionDirSort(a, b, specRoot) {
+  const aHasIndex = hasIndexFile(join(specRoot, a))
+  const bHasIndex = hasIndexFile(join(specRoot, b))
+  const aIsDefault = DEFAULT_SPEC_DIRS.includes(a)
+  const bIsDefault = DEFAULT_SPEC_DIRS.includes(b)
+
+  const rank = (hasIndex, isDefault, name) => {
+    if (hasIndex && !isDefault) return [0, 0, name]
+    if (isDefault) return [1, DEFAULT_SPEC_DIRS.indexOf(name), name]
+    if (hasIndex) return [2, 0, name]
+    return [3, 0, name]
   }
-  if (aIndex !== -1) {
-    return -1
-  }
-  if (bIndex !== -1) {
-    return 1
-  }
-  return a.localeCompare(b)
+
+  const aRank = rank(aHasIndex, aIsDefault, a)
+  const bRank = rank(bHasIndex, bIsDefault, b)
+  return aRank[0] - bRank[0] || aRank[1] - bRank[1] || aRank[2].localeCompare(bRank[2])
 }
 
 function collectMarkdownFiles(directory) {
@@ -111,7 +117,7 @@ function collectSpecSections(specRoot) {
 
   const sectionDirs = entries
     .filter(entry => entry.isDirectory())
-    .sort((a, b) => sectionDirSort(a.name, b.name))
+    .sort((a, b) => sectionDirSort(a.name, b.name, specRoot))
 
   for (const entry of sectionDirs) {
     const files = collectMarkdownFiles(join(specRoot, entry.name))

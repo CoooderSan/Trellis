@@ -55,7 +55,6 @@ What broader problems does this bug reveal?
 
 Solidify insights into the system:
 
-- [ ] Update any missing team/project rules under `.trellis/spec/**`
 - [ ] Update `.trellis/spec/guides/` thinking guides
 - [ ] Update `.trellis/spec/backend/` or `frontend/` docs
 - [ ] Create issue record (if applicable)

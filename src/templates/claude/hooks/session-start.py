@@ -17,7 +17,7 @@ from pathlib import Path
 
 MAX_SPEC_FILES = 40
 MAX_SPEC_CHARS = 24_000
-PREFERRED_SPEC_DIRS = ("frontend", "backend", "guides")
+DEFAULT_SPEC_DIRS = ("frontend", "backend", "guides")
 
 # IMPORTANT: Force stdout to use UTF-8 on Windows
 # This fixes UnicodeEncodeError when outputting non-ASCII characters
@@ -77,10 +77,21 @@ def format_section_name(name: str) -> str:
     )
 
 
+def has_index_file(directory: Path) -> bool:
+    return (directory / "index.md").is_file()
+
+
 def section_dir_sort_key(section_dir: Path) -> tuple[int, int, str]:
-    if section_dir.name in PREFERRED_SPEC_DIRS:
-        return (0, PREFERRED_SPEC_DIRS.index(section_dir.name), "")
-    return (1, len(PREFERRED_SPEC_DIRS), section_dir.name)
+    has_index = has_index_file(section_dir)
+    is_default = section_dir.name in DEFAULT_SPEC_DIRS
+
+    if has_index and not is_default:
+        return (0, 0, section_dir.name)
+    if is_default:
+        return (1, DEFAULT_SPEC_DIRS.index(section_dir.name), section_dir.name)
+    if has_index:
+        return (2, 0, section_dir.name)
+    return (3, 0, section_dir.name)
 
 
 def iter_markdown_files(directory: Path):

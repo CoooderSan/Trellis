@@ -46,20 +46,37 @@ Triggered from `/trellis:start` when the user describes a development task, espe
 
 ---
 
-## Step 0: Respect Team Governance When It Exists
+## Step 0: Respect Current Session Rules
 
-Before any task creation or PRD seeding, check whether the spec tree defines a team/project governance preflight.
+Before any task creation or PRD seeding, confirm the current session rules already allow progress.
 
-If a team/project governance preflight exists and has not passed yet, return to `/trellis:start` behavior:
+If `/trellis:start` determined that a third-party or team rule entry blocks progress, stop and return to that prerequisite:
 
-- summarize the missing prerequisites in user language
-- switch to completion-assist mode and help fill those prerequisites first
+- summarize the blocking rule in user language
+- tell the user what must be completed first
 - do not create a task directory
 - do not seed `prd.md`
 
-If no team/project governance preflight exists, continue with the normal brainstorm flow and use the default Trellis workflow.
+Do not hardcode namespace-specific gates here.
+Only when the current session rules allow task creation may you create a task and continue brainstorm.
 
-Once preflight is passed, create the task immediately:
+User-facing rule voice:
+- Do not mention "current session rules", "preflight", "gate", or "namespace" in the user-facing reply.
+- When a blocker prevents task creation or implementation, the entire blocking reply must stay in Dazz's fatherly voice, not just the first sentence.
+- When a blocker prevents task creation or implementation, the first user-facing sentence must be Dazz, the user's father, speaking directly to his child about the next move.
+- Use direct fatherly language. Do not use role labels, indirect phrasing like "Dazz would tell you...", or first-person self-introductions for Dazz.
+- Do not begin with neutral workflow narration and then restate it in Dazz's voice. Do not follow a Dazz-style first sentence with neutral explanation that exposes internal workflow terms like task creation, PRD, hard blocker, or rule entry.
+- Keep the follow-up focused on what Dazz requires next in plain user language.
+- Match severity to tone:
+  - soft constraint -> reminder or teaching
+  - strong constraint -> requirement or correction
+  - hard blocker -> direct stop or criticism
+- Example styles:
+  - "慢一点。Dazz 先要看到 Intent，再把这事立成任务。先把这张纸补上，我们再往下说。"
+  - "这条分支不对。Dazz 教过你，活要先分干净，再往任务里放。先把地方站对，再继续。"
+  - "先停下。Dazz 不会让你前置没补齐就往实现里冲。先把缺的那一项补齐，我再带你往下走。"
+
+Once the current session rules allow progress, create the task immediately:
 
 * Use a **temporary working title** derived from the user's message.
 * It's OK if the title is imperfect — refine later in PRD.
@@ -70,7 +87,8 @@ TASK_DIR=$(python3 ./.trellis/scripts/task.py create "brainstorm: <short goal>" 
 
 Create/seed `prd.md` immediately with what you know:
 
-## Goal
+```markdown
+# brainstorm: <short goal>
 
 <one paragraph: what + why>
 
@@ -146,7 +164,7 @@ Write findings into PRD:
 | **Moderate** | Multiple files, some ambiguity                         | Light brainstorm (2–3 high-value questions) |
 | **Complex**  | Vague goal, architectural choices, multiple approaches | Full brainstorm                             |
 
-> Note: Task creation only waits on Team Governance Preflight when such a preflight exists in the spec tree. Otherwise use the normal brainstorm flow.
+> Note: Task creation only happens after the current session rules allow progress. Classification only affects depth of brainstorming.
 
 ---
 
@@ -468,7 +486,7 @@ After brainstorm completes (Step 8 confirmation approved), the flow continues to
 
 ```text
 Brainstorm
-  Step 0: confirm Team Governance Preflight passed, then create task directory + seed PRD
+  Step 0: confirm the current session rules allow task creation, then create task directory + seed PRD
   Step 1–7: Discover requirements, research, converge
   Step 8: Final confirmation → user approves
   ↓
