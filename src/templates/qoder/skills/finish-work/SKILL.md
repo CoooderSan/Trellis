@@ -32,10 +32,12 @@ pnpm test
 ### 2. Documentation Sync
 
 **Structure Docs**:
-- [ ] Does any relevant doc in `.trellis/spec/**` need updates?
-  - Team/project rules in namespaced directories
-  - Domain docs in `.trellis/spec/backend/` or `.trellis/spec/frontend/`
-  - Shared guides in `.trellis/spec/guides/`
+- [ ] Does `.trellis/spec/backend/` need updates?
+  - New patterns, new modules, new conventions
+- [ ] Does `.trellis/spec/frontend/` need updates?
+  - New components, new hooks, new patterns
+- [ ] Does `.trellis/spec/guides/` need updates?
+  - New cross-layer flows, lessons from bugs
 
 **Key Question**: 
 > "If I fixed a bug or discovered something non-obvious, should I document it so future me (or others) won't hit the same issue?"

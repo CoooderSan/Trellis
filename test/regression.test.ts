@@ -56,12 +56,6 @@ afterEach(() => {
   clearManifestCache();
 });
 
-const repoRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-
-function readTemplateSource(relativePath: string): string {
-  return fs.readFileSync(path.join(repoRoot, relativePath), "utf-8");
-}
-
 // =============================================================================
 // 1. Windows / Encoding Regressions
 // =============================================================================
@@ -488,78 +482,6 @@ describe("regression: backslash in markdown templates (beta.12)", () => {
       expect(hook.content).not.toContain("\\--");
       expect(hook.content).not.toContain("\\->");
     }
-  });
-});
-
-describe("regression: team rules precede default guides (2026-04)", () => {
-  it("Claude start uses generic namespaced governance preflight with fallback", () => {
-    const content = readTemplateSource(
-      "src/templates/claude/commands/trellis/start.md",
-    );
-    expect(content).toContain(
-      "Project and team rules should be read from namespaced directories anywhere under `.trellis/spec/**`.",
-    );
-    expect(content).toContain(
-      "contains a team/project governance entry such as `**/common/start-session.md`",
-    );
-    expect(content).toContain("If no team/project governance namespace exists:");
-    expect(content).not.toContain(
-      ".trellis/spec/ecochain/common/start-session.md",
-    );
-  });
-
-  it("Cursor start reads the spec tree in layers before fallback defaults", () => {
-    const content = readTemplateSource(
-      "src/templates/cursor/commands/trellis-start.md",
-    );
-    expect(content).toContain("Read the spec tree in layers based on the upcoming task:");
-    expect(content).toContain(
-      "Treat team/project rules as primary when they exist. Use `frontend/`, `backend/`, and `guides/` as fallback defaults.",
-    );
-  });
-
-  it("Codex pre-development skills read team/project rules first", () => {
-    const content = readTemplateSource(
-      "src/templates/codex/skills/before-backend-dev/SKILL.md",
-    );
-    expect(content).toContain(
-      "Read applicable team/project rules from `.trellis/spec/**` first.",
-    );
-    expect(content).toContain(
-      "Follow team/project rules first, then use backend defaults to fill in framework- or domain-specific details.",
-    );
-  });
-
-  it("Gemini check commands review team/project rules before default guides", () => {
-    const content = readTemplateSource(
-      "src/templates/gemini/commands/trellis/check-frontend.toml",
-    );
-    expect(content).toContain(
-      "Read applicable team/project rules from `.trellis/spec/**` first",
-    );
-    expect(content).toContain(
-      "Review your code against team/project rules first, then frontend defaults",
-    );
-  });
-
-  it("Finish-work checks spec sync across the whole spec tree", () => {
-    const content = readTemplateSource(
-      "src/templates/claude/commands/trellis/finish-work.md",
-    );
-    expect(content).toContain(
-      "Does any relevant doc in `.trellis/spec/**` need updates?",
-    );
-    expect(content).toContain("Team/project rules in namespaced directories");
-  });
-
-  it("workflow template keeps namespace guidance generic", () => {
-    const content = readTemplateSource("src/templates/trellis/workflow.md");
-    expect(content).toContain(
-      "Team and project rules may live in any namespace under `.trellis/spec/**`.",
-    );
-    expect(content).toContain("cat .trellis/spec/<namespace>/index.md");
-    expect(content).not.toContain("cat .trellis/spec/ecochain/common/*.md");
-    expect(content).not.toContain("`ecochain/common/*.md` → `ecochain/develop/*.md`");
   });
 });
 

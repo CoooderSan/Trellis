@@ -46,18 +46,18 @@ Triggered from `/trellis:start` when the user describes a development task, espe
 
 ---
 
-## Step 0: Respect Team Governance When It Exists
+## Step 0: Require Passed Team Governance Preflight
 
-Before any task creation or PRD seeding, check whether the spec tree defines a team/project governance preflight.
+Before any task creation or PRD seeding, confirm Team Governance Preflight has already passed.
 
-If a team/project governance preflight exists and has not passed yet, return to `/trellis:start` behavior:
+If preflight has not passed, stop and return to `/trellis:start` behavior:
 
-- summarize the missing prerequisites in user language
-- switch to completion-assist mode and help fill those prerequisites first
+- summarize the blocking team rules
+- tell the user what must be completed first
 - do not create a task directory
 - do not seed `prd.md`
 
-If no team/project governance preflight exists, continue with the normal brainstorm flow and use the default Trellis workflow.
+Only when preflight is passed may you create a task and continue brainstorm.
 
 Once preflight is passed, create the task immediately:
 
@@ -146,7 +146,7 @@ Write findings into PRD:
 | **Moderate** | Multiple files, some ambiguity                         | Light brainstorm (2–3 high-value questions) |
 | **Complex**  | Vague goal, architectural choices, multiple approaches | Full brainstorm                             |
 
-> Note: Task creation only waits on Team Governance Preflight when such a preflight exists in the spec tree. Otherwise use the normal brainstorm flow.
+> Note: Task creation only happens after Team Governance Preflight passes. Classification only affects depth of brainstorming.
 
 ---
 

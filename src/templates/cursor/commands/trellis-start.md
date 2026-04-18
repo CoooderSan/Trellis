@@ -40,14 +40,7 @@ This returns:
 
 ### Step 3: Read Project Code-Spec Index `[AI]`
 
-Read the spec tree in layers based on the upcoming task:
-
-**1. Team / project rules first**:
-```bash
-# Read applicable team/project rules from `.trellis/spec/**`
-```
-
-**2. Default domain guides when they exist**:
+Based on the upcoming task, read appropriate code-spec docs:
 
 **For Frontend Work**:
 ```bash
@@ -64,8 +57,6 @@ cat .trellis/spec/backend/index.md
 cat .trellis/spec/guides/index.md
 cat .trellis/spec/guides/cross-layer-thinking-guide.md
 ```
-
-Treat team/project rules as primary when they exist. Use `frontend/`, `backend/`, and `guides/` as fallback defaults.
 
 ### Step 4: Check Active Tasks `[AI]`
 

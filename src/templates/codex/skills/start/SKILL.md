@@ -46,46 +46,40 @@ This shows: developer identity, git status, current task (if any), active tasks.
 
 Session start already injects relevant Markdown specs from `.trellis/spec/**/*.md` into your context.
 
-- Trellis provides the platform workflow and command framework.
-- Project and team rules should be read from namespaced directories anywhere under `.trellis/spec/**`.
-- Default sections such as `frontend/`, `backend/`, and `guides/` may exist, but they are not the only valid source of rules.
+- Default sections such as `frontend/`, `backend/`, and `guides/` are prioritized when they exist.
+- Additional sections such as `testing/`, `governance/`, or team-specific directories are also loaded recursively.
 - Read individual spec files manually only when the task needs more detail than the injected context.
 
 ### Step 4: Team Governance Preflight
 
-Before task classification, check whether the spec tree defines a team/project governance preflight.
+Before task classification, run a visible Team Governance Preflight.
 
 Required behavior:
 
-1. Check whether `.trellis/spec/**` contains a team/project governance entry such as `**/common/start-session.md`.
+1. Check whether `.trellis/spec/ecochain/common/start-session.md` exists.
 2. Classify the request first:
    - Question / explanation / read-only investigation / ops sync
    - Development task
    - Development + testing task
-3. If a team/project governance namespace exists, build the applicable rule set from that namespace:
-   - Always include sibling `common/*`
-   - Add sibling `develop/*` for development tasks
-   - Add sibling `testing/*` for testing or quality-gated tasks
-4. Summarize the preflight result explicitly to the user when team/project governance exists:
+3. Build the applicable team rule set:
+   - Always include: `ecochain/common/*`
+   - Add for development tasks: `ecochain/develop/*`
+   - Add for testing or quality-gated tasks: `ecochain/testing/*`
+4. Summarize the preflight result explicitly to the user:
    - task type
    - applicable rule files
    - satisfied items
    - missing or blocking items
    - next allowed action
-5. If any hard gate is missing, do not enter implementation yet.
+5. If any hard gate is missing, stop immediately.
 
-When a hard gate is missing:
+Hard-stop rules:
 - Do not create a task directory
 - Do not write `prd.md`
 - Do not enter brainstorm, task workflow, or implementation
-- Immediately switch to a completion-assist mode
-- Help the user fill the missing prerequisites such as intent, PRD inputs, test scope, or branch preparation
-- Describe the missing prerequisite in user language without exposing internal rule filenames or repo internals
+- First tell the user exactly what must be completed
 
-If no team/project governance namespace exists:
-- Continue with the default Trellis workflow
-- Read the relevant default domain rules such as `frontend/`, `backend/`, and `guides/`
-- Do not invent missing team rules
+If the team entry file is missing or incomplete, report that the Team Governance Preflight cannot be completed and stop instead of silently falling back to the default Trellis workflow.
 
 ### Step 5: Report and Ask
 
@@ -95,7 +89,7 @@ Report what you learned and ask: "What would you like to work on?"
 
 ## Task Classification
 
-If team/project governance exists, classify the task only after the preflight passes. If no team/project governance exists, continue with the default Trellis classification flow.
+Only classify the task after Team Governance Preflight passes.
 
 When user describes a task, classify it:
 
