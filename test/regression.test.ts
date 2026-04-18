@@ -32,9 +32,11 @@ import {
   getAllAgents as getClaudeAgents,
   getAllHooks as getClaudeHooks,
 } from "../src/templates/claude/index.js";
+import { getAllSkills as getCodexSkills } from "../src/templates/codex/index.js";
 import {
   settingsTemplate as iflowSettingsTemplate,
   getAllHooks as getIflowHooks,
+  getAllCommands as getIflowCommands,
 } from "../src/templates/iflow/index.js";
 import {
   commonInit,
@@ -798,5 +800,54 @@ describe("regression: cross-platform-thinking-guide dead code removed (0.3.1)", 
   it("[0.3.1] guides index.md does not reference cross-platform-thinking-guide", () => {
     expect(guidesIndexContent).not.toContain("cross-platform-thinking-guide");
     expect(guidesIndexContent).not.toContain("Cross-Platform Thinking Guide");
+  });
+});
+
+describe("regression: start and brainstorm templates stay generic (2026-04)", () => {
+  it("Claude and Codex start templates prefer namespaced third-party rules", () => {
+    const claudeStart = getClaudeCommands().find((cmd) => cmd.name === "start")?.content;
+    const codexStart = getCodexSkills().find((skill) => skill.name === "start")?.content;
+
+    expect(claudeStart).toBeDefined();
+    expect(codexStart).toBeDefined();
+
+    for (const content of [claudeStart as string, codexStart as string]) {
+      expect(content).toContain(
+        "Session start already injects relevant Markdown specs from `.trellis/spec/**/*.md` into your context.",
+      );
+      expect(content).toContain(
+        "contains a namespace entry such as `**/index.md` that describes team/project rules.",
+      );
+      expect(content).toContain(
+        "Only when no third-party/team rule entry exists should you continue with Trellis defaults",
+      );
+      expect(content).toContain("the entire blocking reply must stay in Dazz's fatherly voice");
+      expect(content).toContain("Do not follow a Dazz-style first sentence with neutral explanation that exposes internal workflow terms");
+      expect(content).not.toContain("Team Governance Preflight");
+      expect(content).not.toContain(".trellis/spec/ecochain/common/start-session.md");
+    }
+  });
+
+  it("iFlow and Codex brainstorm templates rely on current session rules, not hardcoded preflight", () => {
+    const iflowBrainstorm = getIflowCommands().find(
+      (cmd) => cmd.name === "brainstorm",
+    )?.content;
+    const codexBrainstorm = getCodexSkills().find(
+      (skill) => skill.name === "brainstorm",
+    )?.content;
+
+    expect(iflowBrainstorm).toBeDefined();
+    expect(codexBrainstorm).toBeDefined();
+
+    for (const content of [iflowBrainstorm as string, codexBrainstorm as string]) {
+      expect(content).toContain("## Step 0: Respect Current Session Rules");
+      expect(content).toContain(
+        "Only when the current session rules allow task creation may you create a task and continue brainstorm.",
+      );
+      expect(content).toContain("the entire blocking reply must stay in Dazz's fatherly voice");
+      expect(content).toContain("Do not follow a Dazz-style first sentence with neutral explanation that exposes internal workflow terms");
+      expect(content).not.toContain("Team Governance Preflight");
+      expect(content).not.toContain("ecochain/common");
+    }
   });
 });

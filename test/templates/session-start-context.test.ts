@@ -121,6 +121,12 @@ describe("session-start spec context injection", () => {
 
       expectInOrder(context, [
         "### root.md",
+        "## Governance",
+        "### governance/index.md",
+        "## Testing",
+        "### testing/index.md",
+        "## Zzz Custom",
+        "### zzz-custom/index.md",
         "## Frontend",
         "### frontend/index.md",
         "### frontend/button.md",
@@ -130,12 +136,6 @@ describe("session-start spec context injection", () => {
         "### backend/index.md",
         "## Guides",
         "### guides/index.md",
-        "## Governance",
-        "### governance/index.md",
-        "## Testing",
-        "### testing/index.md",
-        "## Zzz Custom",
-        "### zzz-custom/index.md",
       ]);
 
       expect(context, `${label} should include start instructions`).toContain(
@@ -197,6 +197,33 @@ describe("session-start spec context injection", () => {
     }
   });
 
+  it("Claude and iFlow hooks prioritize namespaced directories with top-level index.md before default spec dirs", () => {
+    const projectDir = createProject({
+      "frontend/index.md": "# Frontend\n",
+      "backend/index.md": "# Backend\n",
+      "ecochain/index.md": "# Ecochain\n",
+      "ecochain/common/intent-gate.md": "# Intent Gate\n",
+      "ecochain/testing/test-entry-gate.md": "# Test Entry Gate\n",
+    });
+
+    for (const [scriptPath, env] of [
+      [CLAUDE_HOOK, { ...process.env, CLAUDE_PROJECT_DIR: projectDir }],
+      [IFLOW_HOOK, { ...process.env }],
+    ] as const) {
+      const context = runPythonSessionStart(scriptPath, projectDir, env);
+      expectInOrder(context, [
+        "## Ecochain",
+        "### ecochain/index.md",
+        "### ecochain/common/intent-gate.md",
+        "### ecochain/testing/test-entry-gate.md",
+        "## Frontend",
+        "### frontend/index.md",
+        "## Backend",
+        "### backend/index.md",
+      ]);
+    }
+  });
+
   it("OpenCode plugin prepends recursively loaded spec context to the first user message", async () => {
     const projectDir = createProject({
       "frontend/index.md": "# Frontend\n",
@@ -239,13 +266,13 @@ describe("session-start spec context injection", () => {
       expect(text).toContain("\n\n---\n\nContinue work");
 
       expectInOrder(text, [
+        "## Team Guides",
+        "### team-guides/index.md",
         "## Frontend",
         "### frontend/index.md",
         "### frontend/forms/index.md",
         "## Backend",
         "### backend/index.md",
-        "## Team Guides",
-        "### team-guides/index.md",
       ]);
     } finally {
       process.env.HOME = previousHome;

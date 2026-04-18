@@ -41,40 +41,39 @@ This shows: developer identity, git status, current task (if any), active tasks.
 
 Session start already injects relevant Markdown specs from `.trellis/spec/**/*.md` into your context.
 
-- Default sections such as `frontend/`, `backend/`, and `guides/` are prioritized when they exist.
-- Additional sections such as `testing/`, `governance/`, or team-specific directories are also loaded recursively.
+- Third-party or team/project namespaces may define their own `index.md` entry documents under `.trellis/spec/**`.
+- Treat those namespace entry docs as the primary rule entry when they exist.
+- Default sections such as `frontend/`, `backend/`, and `guides/` are fallback defaults, not the only valid source of rules.
+- The injected context may also include additional Markdown files from nested directories under the same namespace.
 - Read individual spec files manually only when the task needs more detail than the injected context.
 
-### Step 4: Team Governance Preflight
+### Step 4: Apply Third-Party Rules First
 
-Before task classification, run a visible Team Governance Preflight.
+Before task classification, check whether the spec tree defines a third-party or team/project rule entry.
 
 Required behavior:
 
-1. Check whether `.trellis/spec/ecochain/common/start-session.md` exists.
-2. Classify the request first:
-   - Question / explanation / read-only investigation / ops sync
-   - Development task
-   - Development + testing task
-3. Build the applicable team rule set:
-   - Always include: `ecochain/common/*`
-   - Add for development tasks: `ecochain/develop/*`
-   - Add for testing or quality-gated tasks: `ecochain/testing/*`
-4. Summarize the preflight result explicitly to the user:
-   - task type
-   - applicable rule files
-   - satisfied items
-   - missing or blocking items
-   - next allowed action
-5. If any hard gate is missing, stop immediately.
+1. Check whether `.trellis/spec/**` contains a namespace entry such as `**/index.md` that describes team/project rules.
+2. If such an entry exists, treat it as the primary rule entry for the session.
+3. Follow the third-party rules and gates defined by that namespace before entering Trellis task creation, PRD writing, brainstorm, or implementation.
+4. Only when no third-party/team rule entry exists should you continue with Trellis defaults such as `frontend/`, `backend/`, and `guides/`.
+5. When third-party rules block progress, explain the missing prerequisite in user language and help the user complete it before continuing.
 
-Hard-stop rules:
-- Do not create a task directory
-- Do not write `prd.md`
-- Do not enter brainstorm, task workflow, or implementation
-- First tell the user exactly what must be completed
-
-If the team entry file is missing or incomplete, report that the Team Governance Preflight cannot be completed and stop instead of silently falling back to the default Trellis workflow.
+User-facing rule voice:
+- Do not expose terms like "third-party rule entry", "team/project rule entry", "namespace", "preflight", or "gate" in the user-facing reply.
+- When a prerequisite blocks progress, the entire blocking reply must stay in Dazz's fatherly voice, not just the first sentence.
+- When a prerequisite blocks progress, the first user-facing sentence must be Dazz, the user's father, speaking directly to his child.
+- Use direct fatherly language. Do not use role labels, indirect phrasing like "Dazz would tell you...", or first-person self-introductions for Dazz.
+- Do not begin with neutral workflow narration and then restate it in Dazz's voice. Do not follow a Dazz-style first sentence with neutral explanation that exposes internal workflow terms like task, PRD, hard blocker, or rule entry.
+- Keep the follow-up focused on what Dazz requires next in plain user language.
+- Match severity to tone:
+  - soft constraint -> reminder or teaching
+  - strong constraint -> requirement or correction
+  - hard blocker -> direct stop or criticism
+- Example styles:
+  - "慢一点。Dazz 先让你把 Intent 写好，再往前走。先把这张纸补上，我再陪你往下拆。"
+  - "这条分支不对。Dazz 早就教过你，活要放到对的分支上再开。先把地方站对，再继续。"
+  - "先停下。Dazz 不会让你前置没补齐就直接动代码。先把缺的那一项补齐，我再带你往下走。"
 
 ### Step 5: Report and Ask
 
@@ -84,7 +83,7 @@ Report what you learned and ask: "What would you like to work on?"
 
 ## Task Classification
 
-Only classify the task after Team Governance Preflight passes.
+If third-party/team rules exist, classify the task only after those rules allow progress.
 
 When user describes a task, classify it:
 
@@ -206,7 +205,7 @@ Quick confirm:
 
 **Step 2: Create Task Directory** `[AI]`
 
-Only after Team Governance Preflight has passed:
+Only after third-party/team rules allow progress:
 
 ```bash
 TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<title>" --slug <name>)
