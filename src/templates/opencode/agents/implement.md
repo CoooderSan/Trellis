@@ -63,11 +63,12 @@ Before implementing, read:
 
 ### 1. Understand Specs
 
-Read relevant specs based on task type:
+Read relevant specs in layers:
 
-- Backend: `.trellis/spec/backend/`
-- Frontend: `.trellis/spec/frontend/`
-- Guides: `.trellis/spec/guides/`
+- Team/project rules under `.trellis/spec/**` come first when they exist
+- Backend defaults: `.trellis/spec/backend/`
+- Frontend defaults: `.trellis/spec/frontend/`
+- Shared guides: `.trellis/spec/guides/`
 
 ### 2. Understand Requirements
 

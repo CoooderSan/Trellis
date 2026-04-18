@@ -26,7 +26,7 @@ pnpm test
 
 ### 1.5. Test Coverage
 
-Check if your change needs new or updated tests (see `.trellis/spec/unit-test/conventions.md`):
+Check if your change needs new or updated tests (see `.trellis/spec/unit-test/conventions.md` and any applicable team testing rules under `.trellis/spec/**`):
 
 - [ ] New pure function → unit test added?
 - [ ] Bug fix → regression test added in `test/regression.test.ts`?
@@ -36,12 +36,10 @@ Check if your change needs new or updated tests (see `.trellis/spec/unit-test/co
 ### 2. Code-Spec Sync
 
 **Code-Spec Docs**:
-- [ ] Does `.trellis/spec/backend/` need updates?
-  - New patterns, new modules, new conventions
-- [ ] Does `.trellis/spec/frontend/` need updates?
-  - New components, new hooks, new patterns
-- [ ] Does `.trellis/spec/guides/` need updates?
-  - New cross-layer flows, lessons from bugs
+- [ ] Does any relevant doc in `.trellis/spec/**` need updates?
+  - Team/project rules in namespaced directories
+  - Domain docs in `.trellis/spec/backend/` or `.trellis/spec/frontend/`
+  - Shared guides in `.trellis/spec/guides/`
 
 **Key Question**: 
 > "If I fixed a bug or discovered something non-obvious, should I document it so future me (or others) won't hit the same issue?"

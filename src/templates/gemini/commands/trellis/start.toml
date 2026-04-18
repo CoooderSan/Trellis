@@ -42,11 +42,18 @@ This shows: developer identity, git status, current task (if any), active tasks.
 
 ### Step 3: Read Guidelines Index
 
+Read the spec tree in layers:
+
 ```bash
+# 1) Read team/project rules from `.trellis/spec/**` that apply to the task
+
+# 2) Then read default domain guides when they exist
 cat .trellis/spec/frontend/index.md  # Frontend guidelines
 cat .trellis/spec/backend/index.md   # Backend guidelines
 cat .trellis/spec/guides/index.md    # Thinking guides
 ```
+
+Treat team/project rules as primary when they exist. Use `frontend/`, `backend/`, and `guides/` as fallback defaults.
 
 ### Step 4: Report and Ask
 

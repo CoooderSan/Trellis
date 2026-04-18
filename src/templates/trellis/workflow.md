@@ -55,38 +55,57 @@ git status && git log --oneline -10              # Git state
 
 ### Step 2: Read Project Guidelines [MANDATORY]
 
-**CRITICAL**: Read guidelines before writing any code:
+**CRITICAL**: Read the relevant rules from `.trellis/spec/**/*.md` before writing any code.
+
+Use the spec tree in layers:
 
 ```bash
-# Read frontend guidelines index (if applicable)
-cat .trellis/spec/frontend/index.md
+# 1) Read the team/project rules that apply to the task
+# Start with a team/project entry doc when one exists:
+cat .trellis/spec/<namespace>/index.md
+# Or read the relevant docs in that namespace directly
 
-# Read backend guidelines index (if applicable)
+# 2) Read domain-specific guides when they exist
+cat .trellis/spec/frontend/index.md
 cat .trellis/spec/backend/index.md
+cat .trellis/spec/guides/index.md
 ```
 
-**Why read both?**
-- Understand the full project architecture
-- Know coding standards for the entire codebase
-- See how frontend and backend interact
-- Learn the overall code quality requirements
+**How to interpret this structure**:
+- Trellis provides the platform workflow and task framework.
+- Team and project rules may live in any namespace under `.trellis/spec/**`.
+- Team-specific directory layouts are defined by those rules, not by Trellis itself.
+- `frontend/`, `backend/`, and `guides/` are common defaults, not the only valid rule source.
 
 ### Step 3: Before Coding - Read Specific Guidelines (Required)
 
-Based on your task, read the **detailed** guidelines:
+Based on your task, read the relevant detailed specs from `.trellis/spec/**`.
+
+**Common order**:
+1. Team/project entry doc or the relevant namespace docs for the task
+2. Domain rules such as frontend/backend
+3. Shared thinking guides in `guides/`
+
+**Examples**:
+
+**Team / project rules**:
+```bash
+cat .trellis/spec/<namespace>/index.md
+# Or read the relevant docs in that namespace directly
+```
 
 **Frontend Task**:
 ```bash
-cat .trellis/spec/frontend/hook-guidelines.md      # For hooks
-cat .trellis/spec/frontend/component-guidelines.md # For components
-cat .trellis/spec/frontend/type-safety.md          # For types
+cat .trellis/spec/frontend/hook-guidelines.md
+cat .trellis/spec/frontend/component-guidelines.md
+cat .trellis/spec/frontend/type-safety.md
 ```
 
 **Backend Task**:
 ```bash
-cat .trellis/spec/backend/database-guidelines.md   # For DB operations
-cat .trellis/spec/backend/type-safety.md           # For types
-cat .trellis/spec/backend/logging-guidelines.md    # For logging
+cat .trellis/spec/backend/database-guidelines.md
+cat .trellis/spec/backend/logging-guidelines.md
+cat .trellis/spec/backend/error-handling.md
 ```
 
 ---
@@ -132,18 +151,14 @@ cat .trellis/spec/backend/logging-guidelines.md    # For logging
 |-- tasks/               # Task tracking
 |   +-- {MM}-{DD}-{name}/
 |       +-- task.json
-|-- spec/                # [!] MUST READ before coding
-|   |-- frontend/        # Frontend guidelines (if applicable)
-|   |   |-- index.md               # Start here - guidelines index
-|   |   +-- *.md                   # Topic-specific docs
-|   |-- backend/         # Backend guidelines (if applicable)
-|   |   |-- index.md               # Start here - guidelines index
-|   |   +-- *.md                   # Topic-specific docs
-|   +-- guides/          # Thinking guides
-|       |-- index.md                      # Guides index
-|       |-- cross-layer-thinking-guide.md # Pre-implementation checklist
-|       +-- *.md                          # Other guides
-+-- workflow.md             # This document
+|-- spec/                # Rules injected into AI context
+|   |-- <namespace>/     # Optional team/project namespace
+|   |   |-- index.md     # Optional entry document
+|   |   +-- **/*.md      # Team/project-specific rules (nested structure allowed)
+|   |-- frontend/        # Optional default domain docs
+|   |-- backend/         # Optional default domain docs
+|   +-- guides/          # Shared thinking guides
++-- workflow.md          # Trellis platform workflow reference
 ```
 
 ---
@@ -164,26 +179,21 @@ python3 ./.trellis/scripts/get_context.py --json
 
 ### Step 2: Read Development Guidelines [!] REQUIRED
 
-**[!] CRITICAL: MUST read guidelines before writing any code**
+**[!] CRITICAL: MUST read the relevant rules from `.trellis/spec/**/*.md` before writing any code**
 
-Based on what you'll develop, read the corresponding guidelines:
+Recommended order:
 
-**Frontend Development** (if applicable):
+**Team / project rules first**:
 ```bash
-# Read index first, then specific docs based on task
+cat .trellis/spec/<namespace>/index.md
+# Or read the relevant docs in that namespace directly
+```
+
+**Domain rules when applicable**:
+```bash
 cat .trellis/spec/frontend/index.md
-```
-
-**Backend Development** (if applicable):
-```bash
-# Read index first, then specific docs based on task
 cat .trellis/spec/backend/index.md
-```
-
-**Cross-Layer Features**:
-```bash
-# For features spanning multiple layers
-cat .trellis/spec/guides/cross-layer-thinking-guide.md
+cat .trellis/spec/guides/index.md
 ```
 
 ### Step 3: Select Task to Develop
@@ -295,6 +305,9 @@ workspace/
 **Structure** (Multi-doc format):
 ```
 spec/
+|-- <namespace>/        # Optional team/project docs
+|   |-- index.md        # Optional entry doc
+|   +-- **/*.md         # Team/project-specific rules
 |-- frontend/           # Frontend docs (if applicable)
 |   |-- index.md        # Start here
 |   +-- *.md            # Topic-specific docs
@@ -372,9 +385,10 @@ python3 ./.trellis/scripts/task.py list-archive    # List archived tasks
 
 | Task Type | Must-read Document |
 |-----------|-------------------|
+| Team-governed development | `<namespace>/index.md` or relevant namespace docs |
 | Frontend work | `frontend/index.md` → relevant docs |
 | Backend work | `backend/index.md` → relevant docs |
-| Cross-Layer Feature | `guides/cross-layer-thinking-guide.md` |
+| Cross-Layer Feature | `guides/index.md` or `guides/cross-layer-thinking-guide.md` |
 
 ### Commit Convention
 

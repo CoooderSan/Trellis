@@ -40,11 +40,18 @@ python3 ./.trellis/scripts/get_context.py
 
 ### Step 3: Read Project Guidelines `[AI]`
 
+Read project guidelines in layers:
+
 ```bash
+# 1) Read team/project rules from `.trellis/spec/**` that apply to the task
+
+# 2) Then read default domain guides when they exist
 cat .trellis/spec/frontend/index.md  # Frontend guidelines index
 cat .trellis/spec/backend/index.md   # Backend guidelines index
 cat .trellis/spec/guides/index.md    # Thinking guides
 ```
+
+Treat team/project rules as primary when they exist. Use `frontend/`, `backend/`, and `guides/` as fallback defaults.
 
 ### Step 4: Ask User for Requirements
 

@@ -128,11 +128,14 @@ git diff main...HEAD --name-only
 
 ### 2. Categorized Review
 
+**All changed files**:
+- Review applicable team/project rules from `.trellis/spec/**` first
+
 **Frontend files** (`apps/web/`):
-- Reference `.trellis/spec/frontend/index.md`
+- Use `.trellis/spec/frontend/index.md` as the default frontend reference when it exists
 
 **Backend files** (`packages/api/`):
-- Reference `.trellis/spec/backend/index.md`
+- Use `.trellis/spec/backend/index.md` as the default backend reference when it exists
 
 ### 3. Output Review Report
 
