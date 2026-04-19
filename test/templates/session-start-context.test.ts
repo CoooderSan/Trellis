@@ -25,11 +25,18 @@ function createProject(
   tempDirs.push(projectDir);
 
   const files = {
-    ".trellis/workflow.md": "# Workflow\n",
-    ".trellis/scripts/get_context.py": "print('SESSION CONTEXT')\n",
-    ".claude/commands/trellis/start.md": "# Claude Start\n",
-    ".iflow/commands/trellis/start.md": "# iFlow Start\n",
-    ".opencode/commands/trellis/start.md": "# OpenCode Start\n",
+    ".trellis/workflow.md": [
+      "# Workflow",
+      "",
+      "## Session Start Process",
+      "",
+      "## Development Process",
+      "",
+      "## Session End",
+      "",
+    ].join("\n"),
+    ".trellis/scripts/get_context.py":
+      "import sys\nif '--mode' in sys.argv:\n    print('{\"mode\": \"single\"}')\nelse:\n    print('SESSION CONTEXT')\n",
     ...Object.fromEntries(
       Object.entries(specFiles).map(([path, content]) => [
         join(".trellis/spec", path),
@@ -48,7 +55,11 @@ function createProject(
   return projectDir;
 }
 
-function runPythonSessionStart(scriptPath: string, projectDir: string, env: NodeJS.ProcessEnv) {
+function runPythonSessionStart(
+  scriptPath: string,
+  projectDir: string,
+  env: NodeJS.ProcessEnv,
+) {
   const raw = execFileSync("python3", [scriptPath], {
     cwd: projectDir,
     env,
@@ -65,7 +76,10 @@ function expectInOrder(haystack: string, needles: string[]) {
   for (const needle of needles) {
     const nextIndex = haystack.indexOf(needle);
     expect(nextIndex, `missing "${needle}"`).toBeGreaterThanOrEqual(0);
-    expect(nextIndex, `"${needle}" should appear after previous entry`).toBeGreaterThan(lastIndex);
+    expect(
+      nextIndex,
+      `"${needle}" should appear after previous entry`,
+    ).toBeGreaterThan(lastIndex);
     lastIndex = nextIndex;
   }
 }
@@ -77,26 +91,15 @@ afterEach(() => {
 });
 
 describe("session-start spec context injection", () => {
-  it("Claude and iFlow hooks recursively load nested spec files in stable order", () => {
-    const projectDir = createProject(
-      {
-        "root.md": "# Root\n",
-        "frontend/index.md": "# Frontend\n",
-        "frontend/button.md": "# Button\n",
-        "frontend/nested/index.md": "# Nested Frontend\n",
-        "frontend/nested/rules.md": "# Nested Rules\n",
-        "backend/index.md": "# Backend\n",
-        "guides/index.md": "# Guides\n",
-        "governance/index.md": "# Governance\n",
-        "testing/index.md": "# Testing\n",
-        "zzz-custom/index.md": "# Custom\n",
-        ".hidden/ignored.md": "# Hidden\n",
-        "backend/.secret.md": "# Secret\n",
-      },
-      {
-        ".trellis/spec/frontend/.ignored-dir/rule.md": "# Ignore Dir\n",
-      },
-    );
+  it("Claude and iFlow hooks inject workflow indexes, guideline indexes, and task status", () => {
+    const projectDir = createProject({
+      "frontend/index.md": "# Frontend Index\n- read frontend/rules.md\n",
+      "frontend/rules.md": "# Frontend Rules\n",
+      "ecochain/index.md": "# Ecochain Package\n- read ecochain/common/index.md\n",
+      "ecochain/common/index.md": "# Ecochain Common\n- read common/start-session.md\n",
+      "ecochain/common/start-session.md": "# Start Session Rule\n",
+      "guides/index.md": "# Guides Index\n",
+    });
 
     for (const [label, scriptPath, env] of [
       [
@@ -104,134 +107,215 @@ describe("session-start spec context injection", () => {
         CLAUDE_HOOK,
         { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
       ],
-      ["iFlow", IFLOW_HOOK, { ...process.env }],
+      [
+        "iFlow",
+        IFLOW_HOOK,
+        { ...process.env, IFLOW_PROJECT_DIR: projectDir },
+      ],
     ] as const) {
       const context = runPythonSessionStart(scriptPath, projectDir, env);
+      expect(context).toContain("<workflow>");
+      expect(context).toContain("# Development Workflow — Section Index");
+      expect(context).toContain("Full guide: .trellis/workflow.md (read on demand)");
+      expect(context).toContain("## Session Start Process");
+      expect(context).toContain("## Development Process");
       expect(context).toContain("<guidelines>");
-      expect(context).toContain("### root.md");
-      expect(context).toContain("## Frontend");
-      expect(context).toContain("## Backend");
-      expect(context).toContain("## Guides");
-      expect(context).toContain("## Governance");
-      expect(context).toContain("## Testing");
-      expect(context).toContain("## Zzz Custom");
-      expect(context).not.toContain("ignored.md");
-      expect(context).not.toContain(".secret.md");
-      expect(context).not.toContain(".ignored-dir");
+      expect(context).toContain(
+        "These are guideline indexes only. Read the specific files they reference before implementation.",
+      );
+      expect(context).toContain("## guides");
+      expect(context).toContain("# Guides Index");
+      expect(context).toContain("## ecochain");
+      expect(context).toContain("# Ecochain Package");
+      expect(context).toContain("## ecochain/common");
+      expect(context).toContain("# Ecochain Common");
+      expect(context).toContain("## frontend");
+      expect(context).toContain("# Frontend Index");
+      expect(context).toContain("<task-status>");
+      expect(context).toContain("Status: NO ACTIVE TASK");
+      expect(context).not.toContain("### ecochain/common/start-session.md");
+      expect(context).not.toContain("# Start Session Rule");
+      expect(context).not.toContain("# Frontend Rules");
+      expect(context).not.toContain("<instructions>");
+      expect(context).not.toContain("[Spec context truncated");
 
       expectInOrder(context, [
-        "### root.md",
-        "## Governance",
-        "### governance/index.md",
-        "## Testing",
-        "### testing/index.md",
-        "## Zzz Custom",
-        "### zzz-custom/index.md",
-        "## Frontend",
-        "### frontend/index.md",
-        "### frontend/button.md",
-        "### frontend/nested/index.md",
-        "### frontend/nested/rules.md",
-        "## Backend",
-        "### backend/index.md",
-        "## Guides",
-        "### guides/index.md",
+        "## guides",
+        "# Guides Index",
+        "## ecochain",
+        "# Ecochain Package",
+        "## ecochain/common",
+        "# Ecochain Common",
+        "## frontend",
+        "# Frontend Index",
       ]);
 
-      expect(context, `${label} should include start instructions`).toContain(
-        "<instructions>",
-      );
+      expect(context, `${label} should inject ready marker`).toContain("<ready>");
     }
   });
 
-  it("Claude hook truncates nested spec injection after the file limit", () => {
-    const specFiles = Object.fromEntries(
-      Array.from({ length: 41 }, (_, index) => [
-        `frontend/spec-${String(index).padStart(2, "0")}.md`,
-        `# Spec ${index}\n`,
-      ]),
+  it("Claude and iFlow hooks keep namespaced package indexes even when spec_scope narrows monorepo packages", () => {
+    const projectDir = createProject(
+      {
+        "ecochain/index.md": "# Ecochain Package\n",
+        "ecochain/common/index.md": "# Ecochain Common\n",
+        "pkg-a/backend/index.md": "# PkgA Backend\n",
+        "pkg-a/frontend/index.md": "# PkgA Frontend\n",
+        "pkg-b/backend/index.md": "# PkgB Backend\n",
+        "guides/index.md": "# Guides Index\n",
+      },
+      {
+        ".trellis/scripts/common/__init__.py": "",
+        ".trellis/scripts/common/config.py": [
+          "from pathlib import Path",
+          "",
+          "def is_monorepo(_root: Path):",
+          "    return True",
+          "",
+          "def get_packages(_root: Path):",
+          "    return {'pkg-a': {}, 'pkg-b': {}}",
+          "",
+          "def get_spec_scope(_root: Path):",
+          "    return ['pkg-a']",
+          "",
+          "def get_default_package(_root: Path):",
+          "    return 'pkg-a'",
+          "",
+        ].join("\n"),
+        ".trellis/scripts/common/paths.py": [
+          "def get_current_task(_root):",
+          "    return None",
+          "",
+        ].join("\n"),
+        ".trellis/scripts/get_context.py": [
+          "import json",
+          "import sys",
+          "if '--mode' in sys.argv:",
+          "    print(json.dumps({",
+          "        'mode': 'monorepo',",
+          "        'packages': [{'name': 'pkg-a'}, {'name': 'pkg-b'}],",
+          "        'specScope': ['pkg-a'],",
+          "        'activeTaskPackage': None,",
+          "        'defaultPackage': 'pkg-a',",
+          "    }))",
+          "else:",
+          "    print('SESSION CONTEXT')",
+          "",
+        ].join("\n"),
+      },
     );
-    const projectDir = createProject(specFiles);
+
+    for (const [scriptPath, env] of [
+      [CLAUDE_HOOK, { ...process.env, CLAUDE_PROJECT_DIR: projectDir }],
+      [IFLOW_HOOK, { ...process.env, IFLOW_PROJECT_DIR: projectDir }],
+    ] as const) {
+      const context = runPythonSessionStart(scriptPath, projectDir, env);
+      expect(context).toContain("## guides");
+      expect(context).toContain("## ecochain");
+      expect(context).toContain("## ecochain/common");
+      expect(context).toContain("## pkg-a/backend");
+      expect(context).toContain("## pkg-a/frontend");
+      expect(context).not.toContain("## pkg-b/backend");
+    }
+  });
+
+  it("Claude and iFlow hooks include persisted session gate summary when available", () => {
+    const projectDir = createProject(
+      {
+        "frontend/index.md": "# Frontend Index\n",
+      },
+      {
+        ".trellis/scripts/session_gate.py": [
+          "import json",
+          "import sys",
+          "if sys.argv[1:] == ['show', '--json']:",
+          "    print(json.dumps({",
+          "        'status': 'blocked',",
+          "        'taskType': 'brainstorm',",
+          "        'request': 'Add inventory sync',",
+          "        'summary': 'Need intent first',",
+          "        'applicableDocs': ['.trellis/spec/ecochain/index.md'],",
+          "        'blockers': ['Intent missing'],",
+          "        'nextStep': 'Write intent',",
+          "        'updatedAt': '2026-04-19T09:00:00Z',",
+          "    }))",
+          "",
+        ].join("\n"),
+      },
+    );
+
+    for (const [scriptPath, env] of [
+      [CLAUDE_HOOK, { ...process.env, CLAUDE_PROJECT_DIR: projectDir }],
+      [IFLOW_HOOK, { ...process.env, IFLOW_PROJECT_DIR: projectDir }],
+    ] as const) {
+      const context = runPythonSessionStart(scriptPath, projectDir, env);
+      expect(context).toContain("<session-gate>");
+      expect(context).toContain("Status: BLOCKED");
+      expect(context).toContain("Task type: brainstorm");
+      expect(context).toContain("Request: Add inventory sync");
+      expect(context).toContain("Summary: Need intent first");
+      expect(context).toContain("Docs:");
+      expect(context).toContain("- .trellis/spec/ecochain/index.md");
+      expect(context).toContain("Blockers:");
+      expect(context).toContain("- Intent missing");
+      expect(context).toContain("Next: Write intent");
+      expect(context).toContain("Updated: 2026-04-19T09:00:00Z");
+    }
+  });
+
+  it("Claude hook reports active task readiness in task-status", () => {
+    const projectDir = createProject(
+      {
+        "frontend/index.md": "# Frontend Index\n",
+      },
+      {
+        ".trellis/.current-task": "demo-task\n",
+        ".trellis/tasks/demo-task/prd.md": "# PRD\n",
+        ".trellis/tasks/demo-task/spec.jsonl":
+          '{"file":".trellis/spec/frontend/index.md"}\n',
+        ".trellis/tasks/demo-task/task.json": JSON.stringify({
+          title: "Demo Task",
+          status: "in_progress",
+        }),
+      },
+    );
 
     const context = runPythonSessionStart(CLAUDE_HOOK, projectDir, {
       ...process.env,
       CLAUDE_PROJECT_DIR: projectDir,
     });
 
-    expect(context).toContain(
-      "[Spec context truncated after 40 files",
+    expect(context).toContain("<task-status>");
+    expect(context).toContain("Status: READY");
+    expect(context).toContain("Task: Demo Task");
+    expect(context).toContain("Next: Continue with implement or check");
+  });
+
+  it("OpenCode plugin prepends workflow indexes, guideline indexes, gate summary, and task status to the first user message", async () => {
+    const projectDir = createProject(
+      {
+        "frontend/index.md": "# Frontend Index\n",
+        "frontend/forms/index.md": "# Forms Index\n",
+        "team-guides/index.md": "# Team Guides\n",
+        "team-guides/rules.md": "# Team Guide Rules\n",
+      },
+      {
+        ".trellis/scripts/session_gate.py": [
+          "import json",
+          "import sys",
+          "if sys.argv[1:] == ['show', '--json']:",
+          "    print(json.dumps({",
+          "        'status': 'ready',",
+          "        'taskType': 'simple',",
+          "        'request': 'Continue work',",
+          "        'summary': 'No blockers',",
+          "        'nextStep': 'Classify the task',",
+          "        'updatedAt': '2026-04-19T10:00:00Z',",
+          "    }))",
+          "",
+        ].join("\n"),
+      },
     );
-    expect(context).toContain("### frontend/spec-39.md");
-    expect(context).not.toContain("### frontend/spec-40.md");
-  });
-
-  it("Claude and iFlow hooks include namespaced ecochain specs through the same recursive injection path", () => {
-    const projectDir = createProject({
-      "frontend/index.md": "# Frontend\n",
-      "ecochain/common/start-session.md": "# Team Preflight\n",
-      "ecochain/common/intent-gate.md": "# Intent Gate\n",
-      "ecochain/develop/branch-governance.md": "# Branch Governance\n",
-      "ecochain/testing/test-entry-gate.md": "# Test Entry Gate\n",
-    });
-
-    for (const [scriptPath, env] of [
-      [CLAUDE_HOOK, { ...process.env, CLAUDE_PROJECT_DIR: projectDir }],
-      [IFLOW_HOOK, { ...process.env }],
-    ] as const) {
-      const context = runPythonSessionStart(scriptPath, projectDir, env);
-      expect(context).toContain("## Ecochain");
-      expect(context).toContain("### ecochain/common/start-session.md");
-      expect(context).toContain("### ecochain/common/intent-gate.md");
-      expect(context).toContain("### ecochain/develop/branch-governance.md");
-      expect(context).toContain("### ecochain/testing/test-entry-gate.md");
-
-      expectInOrder(context, [
-        "## Frontend",
-        "### frontend/index.md",
-        "## Ecochain",
-        "### ecochain/common/intent-gate.md",
-        "### ecochain/common/start-session.md",
-        "### ecochain/develop/branch-governance.md",
-        "### ecochain/testing/test-entry-gate.md",
-      ]);
-    }
-  });
-
-  it("Claude and iFlow hooks prioritize namespaced directories with top-level index.md before default spec dirs", () => {
-    const projectDir = createProject({
-      "frontend/index.md": "# Frontend\n",
-      "backend/index.md": "# Backend\n",
-      "ecochain/index.md": "# Ecochain\n",
-      "ecochain/common/intent-gate.md": "# Intent Gate\n",
-      "ecochain/testing/test-entry-gate.md": "# Test Entry Gate\n",
-    });
-
-    for (const [scriptPath, env] of [
-      [CLAUDE_HOOK, { ...process.env, CLAUDE_PROJECT_DIR: projectDir }],
-      [IFLOW_HOOK, { ...process.env }],
-    ] as const) {
-      const context = runPythonSessionStart(scriptPath, projectDir, env);
-      expectInOrder(context, [
-        "## Ecochain",
-        "### ecochain/index.md",
-        "### ecochain/common/intent-gate.md",
-        "### ecochain/testing/test-entry-gate.md",
-        "## Frontend",
-        "### frontend/index.md",
-        "## Backend",
-        "### backend/index.md",
-      ]);
-    }
-  });
-
-  it("OpenCode plugin prepends recursively loaded spec context to the first user message", async () => {
-    const projectDir = createProject({
-      "frontend/index.md": "# Frontend\n",
-      "frontend/forms/index.md": "# Forms\n",
-      "backend/index.md": "# Backend\n",
-      "team-guides/index.md": "# Team Guides\n",
-      ".hidden/ignored.md": "# Hidden\n",
-    });
 
     const previousHome = process.env.HOME;
     const isolatedHome = mkdtempSync(join(tmpdir(), "trellis-opencode-home-"));
@@ -257,22 +341,39 @@ describe("session-start spec context injection", () => {
       await plugin["experimental.chat.messages.transform"]({}, output);
 
       const text = output.messages[0].parts[0].text;
+      expect(text).toContain("<workflow>");
+      expect(text).toContain("# Development Workflow — Section Index");
       expect(text).toContain("<guidelines>");
-      expect(text).toContain("## Frontend");
-      expect(text).toContain("### frontend/forms/index.md");
-      expect(text).toContain("## Backend");
-      expect(text).toContain("## Team Guides");
-      expect(text).not.toContain("ignored.md");
+      expect(text).toContain("## team-guides");
+      expect(text).toContain("# Team Guides");
+      expect(text).toContain("## frontend");
+      expect(text).toContain("# Frontend Index");
+      expect(text).toContain("## frontend/forms");
+      expect(text).toContain("# Forms Index");
+      expect(text).toContain("<session-gate>");
+      expect(text).toContain("Status: READY");
+      expect(text).toContain("Task type: simple");
+      expect(text).toContain("Summary: No blockers");
+      expect(text).toContain("<task-status>");
+      expect(text).toContain("Status: NO ACTIVE TASK");
+      expect(text).not.toContain("<instructions>");
+      expect(text).not.toContain("# Team Guide Rules");
       expect(text).toContain("\n\n---\n\nContinue work");
 
       expectInOrder(text, [
-        "## Team Guides",
-        "### team-guides/index.md",
-        "## Frontend",
-        "### frontend/index.md",
-        "### frontend/forms/index.md",
-        "## Backend",
-        "### backend/index.md",
+        "<session-context>",
+        "<current-state>",
+        "<session-gate>",
+        "<workflow>",
+        "<guidelines>",
+        "## frontend",
+        "# Frontend Index",
+        "## frontend/forms",
+        "# Forms Index",
+        "## team-guides",
+        "# Team Guides",
+        "<task-status>",
+        "<ready>",
       ]);
     } finally {
       process.env.HOME = previousHome;

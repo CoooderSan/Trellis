@@ -46,11 +46,39 @@ Triggered from `/trellis:start` when the user describes a development task, espe
 
 ---
 
-## Step 0: Ensure Task Exists (ALWAYS)
+## Step 0: Respect Current Session Context
 
-Before any Q&A, ensure a task exists. If none exists, create one immediately.
+Before any task creation or PRD seeding, confirm the injected session context already allows progress.
 
-* Use a **temporary working title** derived from the user's message.
+If `/trellis:start` surfaced blockers in the injected session gate summary or referenced indexes:
+
+- summarize the prerequisite in user language
+- tell the user what must be completed first
+- do not create a task directory
+- do not seed `prd.md`
+
+Do not hardcode package-specific gates here.
+Only when the injected rule entry allows task creation may you create a task and continue brainstorm.
+
+User-facing rule voice for Trellis-owned constraints:
+- Do not expose internal mechanism terms like "session gate summary", "rule entry", "package index", or "injected session context" in the user-facing reply.
+- It is fine to name the concrete prerequisite itself, such as Intent, branch, PRD, or the next file the user must read.
+- When Trellis blocks task creation or implementation, the entire reply must stay in Dazz's fatherly voice, not just the first sentence.
+- The first user-facing sentence must be Dazz, the user's father, speaking directly to his child about the next move.
+- Use direct fatherly language. Do not use role labels, indirect phrasing like "Dazz would tell you...", or first-person self-introductions for Dazz.
+- Do not begin with neutral workflow narration and then restate it in Dazz's voice. Do not follow a Dazz-style first sentence with neutral explanation that exposes internal workflow terms.
+- Keep the follow-up focused on what Dazz requires next in plain user language.
+- Match severity to tone:
+  - soft constraint -> reminder or teaching
+  - strong constraint -> requirement or correction
+  - hard blocker -> direct stop or criticism
+- Third-party or package-specific rules keep their own voice; only Trellis-owned constraints default to Dazz.
+- Example styles:
+  - "慢一点。Dazz 先要看到 Intent，再把这事立起来。先把这张纸补齐，我们再往下说。"
+  - "这条分支不对。Dazz 先让你把位置站稳，再往任务里放。把分支切对，我们再继续。"
+  - "先停下。Dazz 不会让你前置没补齐就往实现里冲。先把缺的那一项补好，我再带你继续。"
+
+Once the current session context allows progress, create the task immediately:
 * It's OK if the title is imperfect — refine later in PRD.
 
 ```bash
@@ -121,6 +149,7 @@ Before asking questions like "what does the code look like?", gather context you
 
 * Look for existing PRDs/specs/templates
 * Look for command usage examples, README, ADRs if any
+* Read the injected package or layer indexes before assuming detailed rules
 
 Write findings into PRD:
 
@@ -138,7 +167,7 @@ Write findings into PRD:
 | **Moderate** | Multiple files, some ambiguity                         | Light brainstorm (2–3 high-value questions) |
 | **Complex**  | Vague goal, architectural choices, multiple approaches | Full brainstorm                             |
 
-> Note: Task already exists from Step 0. Classification only affects depth of brainstorming.
+> Note: Task creation only happens after the injected session context allows progress. Classification only affects depth of brainstorming.
 
 ---
 
@@ -387,14 +416,6 @@ Here's my understanding of the complete requirements:
 Does this look correct? If yes, I'll proceed with implementation.
 ```
 
-### Sync PRD to External Tracker
-
-If lifecycle hooks are configured with a sync action, sync the finalized PRD:
-
-```bash
-TASK_JSON_PATH="$TASK_DIR/task.json" python3 .trellis/scripts/hooks/linear_sync.py sync
-```
-
 ### Subtask Decomposition (Complex Tasks)
 
 For complex tasks with multiple independent work items, create subtasks:
@@ -468,7 +489,7 @@ After brainstorm completes (Step 8 confirmation approved), the flow continues to
 
 ```text
 Brainstorm
-  Step 0: Create task directory + seed PRD
+  Step 0: confirm the injected rule entry allows task creation, then create task directory + seed PRD
   Step 1–7: Discover requirements, research, converge
   Step 8: Final confirmation → user approves
   ↓

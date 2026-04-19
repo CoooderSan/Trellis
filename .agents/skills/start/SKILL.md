@@ -42,21 +42,54 @@ python3 ./.trellis/scripts/get_context.py
 
 This shows: developer identity, git status, current task (if any), active tasks.
 
-### Step 3: Read Guidelines Index
+### Step 3: Review Injected Session Context
 
-```bash
-cat .trellis/spec/frontend/index.md  # Frontend guidelines
-cat .trellis/spec/backend/index.md   # Backend guidelines
-cat .trellis/spec/guides/index.md    # Thinking guides
-```
+Session start already injects the current project state, workflow section index, guideline indexes, task status, and any persisted session gate summary.
 
-### Step 4: Report and Ask
+- Package or layer indexes under `.trellis/spec/` are the rule entry points for the current session.
+- Default sections such as `frontend/`, `backend/`, and `guides/` are fallback defaults when no package-specific entry applies.
+- `spec_scope` or the active task may narrow which package indexes appear.
+- Detailed rule files are read on demand from the injected indexes, not recursively inlined into the session.
+- If you need implementation details, read the referenced files before coding.
+
+### Step 4: Resolve Blockers Before Classification
+
+Before task classification, check whether the injected session gate summary or referenced indexes indicate a prerequisite.
+
+Required behavior:
+
+1. If the injected context reports blockers, stop and explain the prerequisite in plain language.
+2. Read the referenced index or rule files before deciding whether work can proceed.
+3. Do not create a task directory or seed a PRD while prerequisites are still unresolved.
+4. Continue with task classification only after the injected rule entry allows progress.
+
+User-facing rule voice for Trellis-owned constraints:
+- Do not expose internal mechanism terms like "session gate summary", "rule entry", "package index", or "injected context" in the user-facing reply.
+- It is fine to name the concrete prerequisite itself, such as Intent, branch, PRD, or the next file the user must read.
+- When Trellis blocks progress or requires a next step, the entire reply must stay in Dazz's fatherly voice, not just the first sentence.
+- The first user-facing sentence must be Dazz, the user's father, speaking directly to his child about the next move.
+- Use direct fatherly language. Do not use role labels, indirect phrasing like "Dazz would tell you...", or first-person self-introductions for Dazz.
+- Do not begin with neutral workflow narration and then restate it in Dazz's voice. Do not follow a Dazz-style first sentence with neutral explanation that exposes internal workflow terms.
+- Keep the follow-up focused on what Dazz requires next in plain user language.
+- Match severity to tone:
+  - soft constraint -> reminder or teaching
+  - strong constraint -> requirement or correction
+  - hard blocker -> direct stop or criticism
+- Third-party or package-specific rules keep their own voice; only Trellis-owned constraints default to Dazz.
+- Example styles:
+  - "慢一点。Dazz 先要看到 Intent，再往下走。先把这张纸补齐，我再陪你继续。"
+  - "这条分支不对。Dazz 先让你把位置站稳，再开工。把分支切对，我们再往下做。"
+  - "先停下。Dazz 不会让你前置没补齐就往实现里冲。先把缺的那一项补好，我再带你继续。"
+
+### Step 5: Report and Ask
 
 Report what you learned and ask: "What would you like to work on?"
 
 ---
 
 ## Task Classification
+
+If the injected rule entry or session gate summary blocks progress, classify the task only after that prerequisite is cleared.
 
 When user describes a task, classify it:
 
@@ -91,7 +124,7 @@ For questions or trivial fixes, work directly:
 
 ## Simple Task
 
-For simple, well-defined tasks:
+For simple, well-defined development tasks:
 
 1. Quick confirm: "I understand you want to [goal]. Ready to proceed?"
 2. If yes, proceed to **Task Workflow Phase 1 Path B** (create task, write PRD, then research)
@@ -101,7 +134,7 @@ For simple, well-defined tasks:
 
 ## Complex Task - Brainstorm First
 
-For complex or vague tasks, use the brainstorm process to clarify requirements.
+For complex or vague development tasks, use the brainstorm process to clarify requirements.
 
 See `$brainstorm` for the full process. Summary:
 
@@ -156,6 +189,8 @@ If unclear, ask clarifying questions.
 
 **Step 2: Create Task Directory** `[AI]`
 
+Only after the injected rule entry allows progress:
+
 ```bash
 TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<title>" --slug <name>)
 ```
@@ -186,46 +221,11 @@ Create `prd.md` in the task directory with:
 
 ### Phase 2: Prepare for Implementation (shared)
 
-> Both paths converge here. PRD and task directory must exist before proceeding.
+**Step 4: Research the Codebase** `[AI]`
 
-**Step 4: Code-Spec Depth Check** `[AI]`
+Based on the confirmed PRD, review the relevant code and spec indexes before implementation.
 
-If the task touches infra or cross-layer contracts, do not start implementation until code-spec depth is defined.
-
-Trigger this requirement when the change includes any of:
-- New or changed command/API signatures
-- Database schema or migration changes
-- Infra integrations (storage, queue, cache, secrets, env contracts)
-- Cross-layer payload transformations
-
-Must-have before proceeding:
-- [ ] Target code-spec files to update are identified
-- [ ] Concrete contract is defined (signature, fields, env keys)
-- [ ] Validation and error matrix is defined
-- [ ] At least one Good/Base/Bad case is defined
-
-**Step 5: Research the Codebase** `[AI]`
-
-Based on the confirmed PRD, run a focused research pass and produce:
-
-1. Relevant spec files in `.trellis/spec/`
-2. Existing code patterns to follow (2-3 examples)
-3. Files that will likely need modification
-
-Use this output format:
-
-```markdown
-## Relevant Specs
-- <path>: <why it's relevant>
-
-## Code Patterns Found
-- <pattern>: <example file path>
-
-## Files to Modify
-- <path>: <what change>
-```
-
-**Step 6: Configure Context** `[AI]`
+**Step 5: Configure Context** `[AI]`
 
 Initialize default context:
 
@@ -234,15 +234,14 @@ python3 ./.trellis/scripts/task.py init-context "$TASK_DIR" <type>
 # type: backend | frontend | fullstack
 ```
 
-Add specs found in your research pass:
+Add relevant code-spec files and code patterns:
 
 ```bash
-# For each relevant spec and code pattern:
 python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" implement "<path>" "<reason>"
 python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" check "<path>" "<reason>"
 ```
 
-**Step 7: Activate Task** `[AI]`
+**Step 6: Activate Task** `[AI]`
 
 ```bash
 python3 ./.trellis/scripts/task.py start "$TASK_DIR"
@@ -254,25 +253,17 @@ This sets `.current-task` so hooks can inject context.
 
 ### Phase 3: Execute (shared)
 
-**Step 8: Implement** `[AI]`
+**Step 7: Implement** `[AI]`
 
-Implement the task described in `prd.md`.
+Implement using the injected task context.
 
-- Follow all specs injected into implement context
-- Keep changes scoped to requirements
-- Run lint and typecheck before finishing
+**Step 8: Check Quality** `[AI]`
 
-**Step 9: Check Quality** `[AI]`
+Review changes against the configured requirements and specs.
 
-Run a quality pass against check context:
+**Step 9: Complete** `[AI]`
 
-- Review all code changes against the specs
-- Fix issues directly
-- Ensure lint and typecheck pass
-
-**Step 10: Complete** `[AI]`
-
-1. Verify lint and typecheck pass
+1. Verify checks pass
 2. Report what was implemented
 3. Remind user to:
    - Test the changes
@@ -289,40 +280,7 @@ If `get_context.py` shows a current task:
 2. Check `task.json` for current status and phase
 3. Ask user: "Continue working on <task-name>?"
 
-If yes, resume from the appropriate step (usually Step 7 or 8).
-
----
-
-## Skills Reference
-
-### User Skills `[USER]`
-
-| Skill | When to Use |
-|---------|-------------|
-| `$start` | Begin a session (this skill) |
-| `$finish-work` | Before committing changes |
-| `$record-session` | After completing a task |
-
-### AI Scripts `[AI]`
-
-| Script | Purpose |
-|--------|---------|
-| `python3 ./.trellis/scripts/get_context.py` | Get session context |
-| `python3 ./.trellis/scripts/task.py create` | Create task directory |
-| `python3 ./.trellis/scripts/task.py init-context` | Initialize jsonl files |
-| `python3 ./.trellis/scripts/task.py add-context` | Add spec to jsonl |
-| `python3 ./.trellis/scripts/task.py start` | Set current task |
-| `python3 ./.trellis/scripts/task.py finish` | Clear current task |
-| `python3 ./.trellis/scripts/task.py archive` | Archive completed task |
-
-### Workflow Phases `[AI]`
-
-| Phase | Purpose | Context Source |
-|-------|---------|----------------|
-| research | Analyze codebase | direct repo inspection |
-| implement | Write code | `implement.jsonl` |
-| check | Review & fix | `check.jsonl` |
-| debug | Fix specific issues | `debug.jsonl` |
+If yes, resume from the appropriate step.
 
 ---
 

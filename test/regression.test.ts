@@ -803,8 +803,8 @@ describe("regression: cross-platform-thinking-guide dead code removed (0.3.1)", 
   });
 });
 
-describe("regression: start and brainstorm templates stay generic (2026-04)", () => {
-  it("Claude and Codex start templates prefer namespaced third-party rules", () => {
+describe("regression: start and brainstorm templates stay index-first while Trellis constraints use Dazz voice (2026-04)", () => {
+  it("Claude and Codex start templates inject index-first session context and keep Trellis blockers in Dazz voice", () => {
     const claudeStart = getClaudeCommands().find((cmd) => cmd.name === "start")?.content;
     const codexStart = getCodexSkills().find((skill) => skill.name === "start")?.content;
 
@@ -813,22 +813,27 @@ describe("regression: start and brainstorm templates stay generic (2026-04)", ()
 
     for (const content of [claudeStart as string, codexStart as string]) {
       expect(content).toContain(
-        "Session start already injects relevant Markdown specs from `.trellis/spec/**/*.md` into your context.",
+        "Session start already injects the current project state, workflow section index, guideline indexes, task status, and any persisted session gate summary.",
       );
       expect(content).toContain(
-        "contains a namespace entry such as `**/index.md` that describes team/project rules.",
+        "Package or layer indexes under `.trellis/spec/` are the rule entry points for the current session.",
       );
       expect(content).toContain(
-        "Only when no third-party/team rule entry exists should you continue with Trellis defaults",
+        "Detailed rule files are read on demand from the injected indexes, not recursively inlined into the session.",
       );
-      expect(content).toContain("the entire blocking reply must stay in Dazz's fatherly voice");
-      expect(content).toContain("Do not follow a Dazz-style first sentence with neutral explanation that exposes internal workflow terms");
+      expect(content).toContain(
+        "User-facing rule voice for Trellis-owned constraints:",
+      );
+      expect(content).toContain("the entire reply must stay in Dazz's fatherly voice");
+      expect(content).toContain(
+        "Third-party or package-specific rules keep their own voice; only Trellis-owned constraints default to Dazz.",
+      );
       expect(content).not.toContain("Team Governance Preflight");
       expect(content).not.toContain(".trellis/spec/ecochain/common/start-session.md");
     }
   });
 
-  it("iFlow and Codex brainstorm templates rely on current session rules, not hardcoded preflight", () => {
+  it("iFlow and Codex brainstorm templates depend on injected context while Trellis blockers stay in Dazz voice", () => {
     const iflowBrainstorm = getIflowCommands().find(
       (cmd) => cmd.name === "brainstorm",
     )?.content;
@@ -840,14 +845,22 @@ describe("regression: start and brainstorm templates stay generic (2026-04)", ()
     expect(codexBrainstorm).toBeDefined();
 
     for (const content of [iflowBrainstorm as string, codexBrainstorm as string]) {
-      expect(content).toContain("## Step 0: Respect Current Session Rules");
+      expect(content).toContain("## Step 0: Respect Current Session Context");
       expect(content).toContain(
-        "Only when the current session rules allow task creation may you create a task and continue brainstorm.",
+        "Only when the injected rule entry allows task creation may you create a task and continue brainstorm.",
       );
-      expect(content).toContain("the entire blocking reply must stay in Dazz's fatherly voice");
-      expect(content).toContain("Do not follow a Dazz-style first sentence with neutral explanation that exposes internal workflow terms");
+      expect(content).toContain(
+        "Read the injected package or layer indexes before assuming detailed rules",
+      );
+      expect(content).toContain(
+        "User-facing rule voice for Trellis-owned constraints:",
+      );
+      expect(content).toContain("the entire reply must stay in Dazz's fatherly voice");
+      expect(content).toContain(
+        "Third-party or package-specific rules keep their own voice; only Trellis-owned constraints default to Dazz.",
+      );
       expect(content).not.toContain("Team Governance Preflight");
-      expect(content).not.toContain("ecochain/common");
+      expect(content).not.toContain("ecochain/common/start-session.md");
     }
   });
 });
