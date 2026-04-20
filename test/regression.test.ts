@@ -803,8 +803,8 @@ describe("regression: cross-platform-thinking-guide dead code removed (0.3.1)", 
   });
 });
 
-describe("regression: start and brainstorm templates stay generic (2026-04)", () => {
-  it("Claude and Codex start templates stay generic and describe index-first session context", () => {
+describe("regression: start and brainstorm templates preserve index-first contract (2026-04)", () => {
+  it("Claude and Codex start templates keep index-first context while allowing scoped Dazz guidance", () => {
     const claudeStart = getClaudeCommands().find((cmd) => cmd.name === "start")?.content;
     const codexStart = getCodexSkills().find((skill) => skill.name === "start")?.content;
 
@@ -826,11 +826,12 @@ describe("regression: start and brainstorm templates stay generic (2026-04)", ()
       );
       expect(content).not.toContain("Team Governance Preflight");
       expect(content).not.toContain(".trellis/spec/ecochain/common/start-session.md");
-      expect(content).not.toContain("Dazz's fatherly voice");
+      expect(content).toContain("Use Dazz's fatherly voice only for Trellis-owned constraint moments");
+      expect(content).toContain("If Intent is missing, Trellis should prefer read-only research before asking for more detail whenever a plausible source already exists.");
     }
   });
 
-  it("iFlow and Codex brainstorm templates stay generic and depend on injected session context", () => {
+  it("iFlow and Codex brainstorm templates keep injected-context flow while allowing scoped Dazz guidance", () => {
     const iflowBrainstorm = getIflowCommands().find(
       (cmd) => cmd.name === "brainstorm",
     )?.content;
@@ -855,7 +856,8 @@ describe("regression: start and brainstorm templates stay generic (2026-04)", ()
       );
       expect(content).not.toContain("Team Governance Preflight");
       expect(content).not.toContain("ecochain/common");
-      expect(content).not.toContain("Dazz's fatherly voice");
+      expect(content).toContain("Use Dazz's fatherly voice only for Trellis-owned constraint moments");
+      expect(content).toContain("While Intent is still missing, Trellis may research, summarize, and draft the smallest viable Intent, but must not imply implementation has started.");
     }
   });
 });
