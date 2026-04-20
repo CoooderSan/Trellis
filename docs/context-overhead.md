@@ -8,15 +8,27 @@
 
 | Scenario | Tokens | 1M Window | 200k Window |
 |----------|--------|-----------|-------------|
-| **Session start** | ~6,500 | 0.65% | 3.25% |
-| **Peak (during Implement)** | ~11,000 | 1.1% | 5.5% |
-| **Full workflow cycle** | ~8,500 avg | 0.85% | 4.25% |
+| **Session start** | ~2,300 | 0.23% | 1.15% |
+| **Peak (during Implement)** | ~6,900 | 0.69% | 3.45% |
+| **Full workflow cycle** | ~4,200 avg | 0.42% | 2.10% |
 
-**Bottom line**: Trellis uses **~1% of 1M** or **~5% of 200k** context at peak. The rest is yours.
+**Bottom line**: Trellis uses **well under 1% of 1M** or **~3.5% of 200k** context at peak. The rest is yours.
 
 ---
 
 ## How Trellis Context Works
+
+### Key Insight: Session start is now index-first
+
+The current SessionStart hooks inject:
+
+- a workflow **section index** instead of the full `workflow.md`
+- current project state from `get_context.py`
+- task status
+- relevant spec `index.md` entry files
+- optional persisted session-gate summary
+
+Detailed rule files are **not** recursively inlined anymore. They are read on demand from the injected indexes.
 
 ### Key Insight: Subagent Context is Independent
 
@@ -25,12 +37,13 @@ Each subagent runs with its **own isolated context**, which is discarded when it
 ```
 Main Agent (persistent)     Subagent (temporary)
 ─────────────────────────   ─────────────────────
-│ ~6,500 tokens          │  │ ~4,100 tokens    │
-│ ├─ workflow.md         │  │ ├─ agent prompt  │
-│ ├─ spec files          │  │ ├─ jsonl specs   │
-│ └─ start command       │──│ └─ prd.md        │
-│                        │  └─────────────────────
-│ + subagent outputs     │       (discarded)
+│ ~2,300 tokens          │  │ ~4,100 tokens    │
+│ ├─ workflow ToC        │  │ ├─ agent prompt  │
+│ ├─ current state       │  │ ├─ jsonl specs   │
+│ ├─ task status         │  │ └─ prd.md        │
+│ └─ spec indexes        │  └─────────────────────
+│                        │       (discarded)
+│ + subagent outputs     │
 └─────────────────────────
 ```
 
@@ -46,15 +59,16 @@ Injected at session start via `SessionStart` hook:
 
 | Component | Tokens | 1M | 200k |
 |-----------|--------|-----|------|
-| workflow.md | ~2,871 | 0.29% | 1.44% |
-| start.md (command) | ~1,638 | 0.16% | 0.82% |
+| workflow ToC | ~120 | 0.01% | 0.06% |
 | get_context.py output | ~748 | 0.07% | 0.37% |
+| task status + ready block | ~120 | 0.01% | 0.06% |
 | frontend/index.md | ~335 | 0.03% | 0.17% |
 | backend/index.md | ~352 | 0.04% | 0.18% |
 | guides/index.md | ~586 | 0.06% | 0.29% |
-| **Total** | **~6,530** | **0.65%** | **3.27%** |
+| session wrapper tags / glue | ~80 | 0.01% | 0.04% |
+| **Total** | **~2,341** | **0.23%** | **1.17%** |
 
-These numbers reflect the default baseline with the standard top-level spec entry files. Current session-start hooks recursively load `.trellis/spec/**/*.md`, prioritize `frontend/`, `backend/`, and `guides/` when present, then walk additional top-level directories in stable order, with guardrails of `40` files and `24,000` characters total for spec injection. Team namespaces such as `.trellis/spec/ecochain/**` participate in the same recursive loading path; they do not require a second injector.
+These numbers reflect the default baseline with the standard top-level spec entry files. Current session-start hooks inject a workflow section index, current project state, task status, and the relevant spec `index.md` entry files. Default sections such as `frontend/`, `backend/`, and `guides/` remain available as fallbacks, while package-scoped indexes can be narrowed by `spec_scope` or the active task. Detailed rule files are read on demand from the injected indexes instead of being recursively inlined.
 
 ### Research Agent
 
@@ -125,15 +139,15 @@ Context usage through a typical development cycle:
 
 | Phase | Main Agent | Subagent | Peak Total | 1M | 200k |
 |-------|------------|----------|------------|-----|------|
-| Session start | 6,530 | - | 6,530 | 0.65% | 3.27% |
-| + Research | 6,530 | 1,000 | 7,530 | 0.75% | 3.77% |
-| + Research output | 7,030 | - | 7,030 | 0.70% | 3.52% |
-| + Implement | 7,030 | 4,100 | **11,130** | **1.11%** | **5.57%** |
-| + Implement output | 7,830 | - | 7,830 | 0.78% | 3.92% |
-| + Check | 7,830 | 2,300 | 10,130 | 1.01% | 5.07% |
-| + Check output | 8,430 | - | 8,430 | 0.84% | 4.22% |
+| Session start | 2,341 | - | 2,341 | 0.23% | 1.17% |
+| + Research | 2,341 | 1,000 | 3,341 | 0.33% | 1.67% |
+| + Research output | 2,841 | - | 2,841 | 0.28% | 1.42% |
+| + Implement | 2,841 | 4,100 | **6,941** | **0.69%** | **3.47%** |
+| + Implement output | 3,641 | - | 3,641 | 0.36% | 1.82% |
+| + Check | 3,641 | 2,300 | 5,941 | 0.59% | 2.97% |
+| + Check output | 4,241 | - | 4,241 | 0.42% | 2.12% |
 
-**Peak usage: ~11,130 tokens** (during Implement phase)
+**Peak usage: ~6,941 tokens** (during Implement phase)
 
 ---
 
@@ -197,11 +211,11 @@ done
 
 ### Q: What's the absolute minimum context?
 
-**~6,530 tokens** at session start. This is the baseline for using Trellis.
+**~2,300 tokens** at session start for the default index-first baseline. Package-scoped indexes or a persisted session gate summary can add a bit more, but Trellis no longer injects full nested rule trees up front.
 
 ### Q: Can I use Trellis with 32k context models?
 
-**Possible but tight.** Peak usage (~11k) is 34% of 32k. You'll have ~21k for actual work. Consider disabling MCP servers and using minimal JSONL files.
+**Yes, more comfortably now.** Peak usage (~6.9k) is about 22% of 32k. You'll still have ~25k for actual work. It is still worth disabling unused MCP servers and keeping JSONL files focused.
 
 ### Q: How does MCP affect this?
 
@@ -213,9 +227,9 @@ done
 
 | Model | Trellis Overhead | Available for Work |
 |-------|------------------|-------------------|
-| **1M tokens** | ~1.1% peak | **~988,870 tokens** |
-| **200k tokens** | ~5.6% peak | **~188,870 tokens** |
-| **128k tokens** | ~8.7% peak | **~116,870 tokens** |
-| **32k tokens** | ~34.8% peak | **~20,870 tokens** |
+| **1M tokens** | ~0.7% peak | **~993,059 tokens** |
+| **200k tokens** | ~3.5% peak | **~193,059 tokens** |
+| **128k tokens** | ~5.4% peak | **~121,059 tokens** |
+| **32k tokens** | ~21.7% peak | **~25,059 tokens** |
 
-Trellis is designed for modern large-context models. With 200k+ context, the framework overhead is negligible.
+Trellis is designed for modern large-context models. With 200k+ context, the framework overhead is small even at peak, and the index-first session-start path leaves noticeably more room for actual work.

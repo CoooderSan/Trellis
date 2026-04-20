@@ -13,11 +13,23 @@ from .paths import DIR_WORKFLOW, get_repo_root
 from .worktree import parse_simple_yaml
 
 
+import sys
+
+
 # Defaults
 DEFAULT_SESSION_COMMIT_MESSAGE = "chore: record journal"
 DEFAULT_MAX_JOURNAL_LINES = 2000
 
 CONFIG_FILE = "config.yaml"
+
+
+def _is_true_config_value(value: object) -> bool:
+    """Return True when a config value represents an enabled flag."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() == "true"
+    return False
 
 
 def _get_config_path(repo_root: Path | None = None) -> Path:
@@ -70,3 +82,112 @@ def get_hooks(event: str, repo_root: Path | None = None) -> list[str]:
     if isinstance(commands, list):
         return [str(c) for c in commands]
     return []
+
+
+def get_packages(repo_root: Path | None = None) -> dict[str, dict] | None:
+    """Get monorepo package declarations."""
+    config = _load_config(repo_root)
+    packages = config.get("packages")
+    if not isinstance(packages, dict):
+        return None
+    filtered = {k: v for k, v in packages.items() if isinstance(v, dict)}
+    if not filtered:
+        return None
+    return filtered
+
+
+def get_default_package(repo_root: Path | None = None) -> str | None:
+    """Get the default package name from config."""
+    config = _load_config(repo_root)
+    value = config.get("default_package")
+    return str(value) if value else None
+
+
+def get_submodule_packages(repo_root: Path | None = None) -> dict[str, str]:
+    """Get packages that are git submodules."""
+    packages = get_packages(repo_root)
+    if packages is None:
+        return {}
+    return {
+        name: cfg.get("path", name)
+        for name, cfg in packages.items()
+        if cfg.get("type") == "submodule"
+    }
+
+
+def get_git_packages(repo_root: Path | None = None) -> dict[str, str]:
+    """Get packages that have their own independent git repository."""
+    packages = get_packages(repo_root)
+    if packages is None:
+        return {}
+    return {
+        name: cfg.get("path", name)
+        for name, cfg in packages.items()
+        if _is_true_config_value(cfg.get("git"))
+    }
+
+
+def is_monorepo(repo_root: Path | None = None) -> bool:
+    """Check if the project is configured as a monorepo."""
+    return get_packages(repo_root) is not None
+
+
+def get_spec_base(package: str | None = None, repo_root: Path | None = None) -> str:
+    """Get the spec directory base path relative to .trellis/."""
+    if package and is_monorepo(repo_root):
+        return f"spec/{package}"
+    return "spec"
+
+
+def validate_package(package: str, repo_root: Path | None = None) -> bool:
+    """Check if a package name is valid in this project."""
+    packages = get_packages(repo_root)
+    if packages is None:
+        return True
+    return package in packages
+
+
+def resolve_package(
+    task_package: str | None = None,
+    repo_root: Path | None = None,
+) -> str | None:
+    """Resolve package from inferred sources with validation."""
+    packages = get_packages(repo_root)
+    if packages is None:
+        return None
+
+    if task_package and isinstance(task_package, str):
+        if task_package in packages:
+            return task_package
+        print(
+            f"Warning: task.json package '{task_package}' not found in config, skipping",
+            file=sys.stderr,
+        )
+
+    default = get_default_package(repo_root)
+    if default:
+        if default in packages:
+            return default
+        print(
+            f"Warning: default_package '{default}' not found in config, skipping",
+            file=sys.stderr,
+        )
+
+    return None
+
+
+def get_spec_scope(repo_root: Path | None = None) -> list[str] | str | None:
+    """Get session.spec_scope configuration."""
+    config = _load_config(repo_root)
+    session = config.get("session")
+    if not isinstance(session, dict):
+        return None
+
+    scope = session.get("spec_scope")
+    if scope is None:
+        return None
+    if isinstance(scope, str):
+        return scope
+    if isinstance(scope, list):
+        return [str(s) for s in scope]
+    return None

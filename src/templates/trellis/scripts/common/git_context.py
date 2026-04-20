@@ -11,9 +11,11 @@ Provides:
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
+from .config import get_git_packages
+from .git import run_git
+from .packages_context import get_context_packages_json, get_context_packages_text, get_packages_section
 from .paths import (
     DIR_SCRIPTS,
     DIR_SPEC,
@@ -34,26 +36,64 @@ from .paths import (
 # =============================================================================
 
 
-def _run_git_command(args: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
-    """Run a git command and return (returncode, stdout, stderr).
+def _collect_package_git_info(repo_root: Path) -> list[dict]:
+    """Collect git status and recent commits for packages with independent git repos."""
+    git_pkgs = get_git_packages(repo_root)
+    if not git_pkgs:
+        return []
 
-    Uses UTF-8 encoding with -c i18n.logOutputEncoding=UTF-8 to ensure
-    consistent output across all platforms (Windows, macOS, Linux).
-    """
-    try:
-        # Force git to output UTF-8 for consistent cross-platform behavior
-        git_args = ["git", "-c", "i18n.logOutputEncoding=UTF-8"] + args
-        result = subprocess.run(
-            git_args,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        return result.returncode, result.stdout, result.stderr
-    except Exception as e:
-        return 1, "", str(e)
+    result = []
+    for pkg_name, pkg_path in git_pkgs.items():
+        pkg_dir = repo_root / pkg_path
+        if not (pkg_dir / ".git").exists():
+            continue
+
+        _, branch_out, _ = run_git(["branch", "--show-current"], cwd=pkg_dir)
+        branch = branch_out.strip() or "unknown"
+
+        _, status_out, _ = run_git(["status", "--porcelain"], cwd=pkg_dir)
+        changes = len([l for l in status_out.splitlines() if l.strip()])
+
+        _, log_out, _ = run_git(["log", "--oneline", "-5"], cwd=pkg_dir)
+        commits = []
+        for line in log_out.splitlines():
+            if line.strip():
+                parts = line.split(" ", 1)
+                if len(parts) >= 2:
+                    commits.append({"hash": parts[0], "message": parts[1]})
+                elif len(parts) == 1:
+                    commits.append({"hash": parts[0], "message": ""})
+
+        result.append({
+            "name": pkg_name,
+            "path": pkg_path,
+            "branch": branch,
+            "isClean": changes == 0,
+            "uncommittedChanges": changes,
+            "recentCommits": commits,
+        })
+
+    return result
+
+
+def _append_package_git_context(lines: list[str], package_git_info: list[dict]) -> None:
+    for pkg in package_git_info:
+        lines.append(f"## GIT STATUS ({pkg['name']}: {pkg['path']})")
+        lines.append(f"Branch: {pkg['branch']}")
+        if pkg["isClean"]:
+            lines.append("Working directory: Clean")
+        else:
+            lines.append(
+                f"Working directory: {pkg['uncommittedChanges']} uncommitted change(s)"
+            )
+        lines.append("")
+        lines.append(f"## RECENT COMMITS ({pkg['name']}: {pkg['path']})")
+        if pkg["recentCommits"]:
+            for commit in pkg["recentCommits"]:
+                lines.append(f"{commit['hash']} {commit['message']}")
+        else:
+            lines.append("(no commits)")
+        lines.append("")
 
 
 def _read_json_file(path: Path) -> dict | None:
@@ -94,15 +134,15 @@ def get_context_json(repo_root: Path | None = None) -> dict:
         )
 
     # Git info
-    _, branch_out, _ = _run_git_command(["branch", "--show-current"], cwd=repo_root)
+    _, branch_out, _ = run_git(["branch", "--show-current"], cwd=repo_root)
     branch = branch_out.strip() or "unknown"
 
-    _, status_out, _ = _run_git_command(["status", "--porcelain"], cwd=repo_root)
+    _, status_out, _ = run_git(["status", "--porcelain"], cwd=repo_root)
     git_status_count = len([line for line in status_out.splitlines() if line.strip()])
     is_clean = git_status_count == 0
 
     # Recent commits
-    _, log_out, _ = _run_git_command(["log", "--oneline", "-5"], cwd=repo_root)
+    _, log_out, _ = run_git(["log", "--oneline", "-5"], cwd=repo_root)
     commits = []
     for line in log_out.splitlines():
         if line.strip():
@@ -131,6 +171,9 @@ def get_context_json(repo_root: Path | None = None) -> dict:
                             }
                         )
 
+    # Package git repos (independent sub-repositories)
+    pkg_git_info = _collect_package_git_info(repo_root)
+
     return {
         "developer": developer or "",
         "git": {
@@ -148,6 +191,7 @@ def get_context_json(repo_root: Path | None = None) -> dict:
             "lines": journal_lines,
             "nearLimit": journal_lines > 1800,
         },
+        "packageGit": pkg_git_info,
     }
 
 
@@ -199,11 +243,11 @@ def get_context_text(repo_root: Path | None = None) -> str:
 
     # Git status
     lines.append("## GIT STATUS")
-    _, branch_out, _ = _run_git_command(["branch", "--show-current"], cwd=repo_root)
+    _, branch_out, _ = run_git(["branch", "--show-current"], cwd=repo_root)
     branch = branch_out.strip() or "unknown"
     lines.append(f"Branch: {branch}")
 
-    _, status_out, _ = _run_git_command(["status", "--porcelain"], cwd=repo_root)
+    _, status_out, _ = run_git(["status", "--porcelain"], cwd=repo_root)
     status_lines = [line for line in status_out.splitlines() if line.strip()]
     status_count = len(status_lines)
 
@@ -213,20 +257,23 @@ def get_context_text(repo_root: Path | None = None) -> str:
         lines.append(f"Working directory: {status_count} uncommitted change(s)")
         lines.append("")
         lines.append("Changes:")
-        _, short_out, _ = _run_git_command(["status", "--short"], cwd=repo_root)
+        _, short_out, _ = run_git(["status", "--short"], cwd=repo_root)
         for line in short_out.splitlines()[:10]:
             lines.append(line)
     lines.append("")
 
     # Recent commits
     lines.append("## RECENT COMMITS")
-    _, log_out, _ = _run_git_command(["log", "--oneline", "-5"], cwd=repo_root)
+    _, log_out, _ = run_git(["log", "--oneline", "-5"], cwd=repo_root)
     if log_out.strip():
         for line in log_out.splitlines():
             lines.append(line)
     else:
         lines.append("(no commits)")
     lines.append("")
+
+    # Package git repos — independent sub-repositories
+    _append_package_git_context(lines, _collect_package_git_info(repo_root))
 
     # Current task
     lines.append("## CURRENT TASK")
@@ -384,13 +431,13 @@ def get_context_record_json(repo_root: Path | None = None) -> dict:
     tasks_dir = get_tasks_dir(repo_root)
 
     # Git info
-    _, branch_out, _ = _run_git_command(["branch", "--show-current"], cwd=repo_root)
+    _, branch_out, _ = run_git(["branch", "--show-current"], cwd=repo_root)
     branch = branch_out.strip() or "unknown"
 
-    _, status_out, _ = _run_git_command(["status", "--porcelain"], cwd=repo_root)
+    _, status_out, _ = run_git(["status", "--porcelain"], cwd=repo_root)
     git_status_count = len([line for line in status_out.splitlines() if line.strip()])
 
-    _, log_out, _ = _run_git_command(["log", "--oneline", "-5"], cwd=repo_root)
+    _, log_out, _ = run_git(["log", "--oneline", "-5"], cwd=repo_root)
     commits = []
     for line in log_out.splitlines():
         if line.strip():
@@ -444,6 +491,8 @@ def get_context_record_json(repo_root: Path | None = None) -> dict:
                     "status": data.get("status", "unknown"),
                 }
 
+    pkg_git_info = _collect_package_git_info(repo_root)
+
     return {
         "developer": developer or "",
         "git": {
@@ -454,6 +503,7 @@ def get_context_record_json(repo_root: Path | None = None) -> dict:
         },
         "myTasks": my_tasks,
         "currentTask": current_task_info,
+        "packageGit": pkg_git_info,
     }
 
 
@@ -537,11 +587,11 @@ def get_context_text_record(repo_root: Path | None = None) -> str:
 
     # GIT STATUS
     lines.append("## GIT STATUS")
-    _, branch_out, _ = _run_git_command(["branch", "--show-current"], cwd=repo_root)
+    _, branch_out, _ = run_git(["branch", "--show-current"], cwd=repo_root)
     branch = branch_out.strip() or "unknown"
     lines.append(f"Branch: {branch}")
 
-    _, status_out, _ = _run_git_command(["status", "--porcelain"], cwd=repo_root)
+    _, status_out, _ = run_git(["status", "--porcelain"], cwd=repo_root)
     status_lines = [line for line in status_out.splitlines() if line.strip()]
     status_count = len(status_lines)
 
@@ -551,20 +601,23 @@ def get_context_text_record(repo_root: Path | None = None) -> str:
         lines.append(f"Working directory: {status_count} uncommitted change(s)")
         lines.append("")
         lines.append("Changes:")
-        _, short_out, _ = _run_git_command(["status", "--short"], cwd=repo_root)
+        _, short_out, _ = run_git(["status", "--short"], cwd=repo_root)
         for line in short_out.splitlines()[:10]:
             lines.append(line)
     lines.append("")
 
     # RECENT COMMITS
     lines.append("## RECENT COMMITS")
-    _, log_out, _ = _run_git_command(["log", "--oneline", "-5"], cwd=repo_root)
+    _, log_out, _ = run_git(["log", "--oneline", "-5"], cwd=repo_root)
     if log_out.strip():
         for line in log_out.splitlines():
             lines.append(line)
     else:
         lines.append("(no commits)")
     lines.append("")
+
+    # Package git repos — independent sub-repositories
+    _append_package_git_context(lines, _collect_package_git_info(repo_root))
 
     # CURRENT TASK
     lines.append("## CURRENT TASK")
@@ -618,14 +671,19 @@ def main() -> None:
     parser.add_argument(
         "--mode",
         "-m",
-        choices=["default", "record"],
+        choices=["default", "record", "packages"],
         default="default",
-        help="Output mode: default (full context) or record (for record-session)",
+        help="Output mode: default, record, or packages",
     )
 
     args = parser.parse_args()
 
-    if args.mode == "record":
+    if args.mode == "packages":
+        if args.json:
+            print(json.dumps(get_context_packages_json(), indent=2, ensure_ascii=False))
+        else:
+            print(get_context_packages_text())
+    elif args.mode == "record":
         if args.json:
             print(json.dumps(get_context_record_json(), indent=2, ensure_ascii=False))
         else:

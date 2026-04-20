@@ -148,51 +148,40 @@
 
 ---
 
-## Current Saved Progress (2026-04-17)
+## Current Saved Progress (2026-04-19)
 
 ### Scope Decision
-- 当前范围已收紧：**不要大面积修改官方内容**。
-- 目标改为：仅在 `session-start` 注入层追加**递归加载第三方嵌套 spec** 的能力，同时保持官方顶层 `frontend/backend/guides` 结构与主文案不变。
+- 当前范围已调整为：**向 upstream 的 index-first session-start 语义收敛**。
+- 目标不再是保留递归全文注入，而是：
+  - session-start 只注入 workflow section index、current state、task status，以及相关 spec `index.md` 入口文件；
+  - package-scoped 内容可被 `spec_scope` 或 active task 收窄；
+  - 细则文件由 package / layer index 按需引导读取；
+  - Trellis core 模板保持 generic，不再内置 team-first / Dazz 话术。
 
-### Saved Commit
-- 已保存提交：`f29d196`
-- Commit message：`feat: recursively load nested spec files at session start`
+### Current Implementation State
+- 已完成：
+  - `src/templates/claude/hooks/session-start.py`
+  - `src/templates/iflow/hooks/session-start.py`
+  - `src/templates/opencode/plugin/session-start.js`
+  - `src/templates/{claude,iflow,opencode}/commands/trellis/start.md`
+  - `src/templates/{claude,iflow,opencode}/commands/trellis/brainstorm.md`
+  - `src/templates/codex/skills/{start,brainstorm}/SKILL.md`
+  - `test/templates/session-start-context.test.ts`
+  - `test/regression.test.ts`
+- 当前行为：
+  - 注入 workflow ToC，而不是完整 `workflow.md` 正文
+  - 注入 spec index files，而不是递归内联 `.trellis/spec/**/*.md`
+  - 保留 default fallback：`frontend` / `backend` / `guides`
+  - 保留 namespaced package indexes（如 `ecochain/index.md`）
+  - 对 monorepo package-scoped layer indexes 应用 `spec_scope` / active task narrowing
+  - 注入 `<task-status>`，统一提示当前任务是否 ready
 
-### Files Changed In Saved Commit
-- `src/templates/claude/hooks/session-start.py`
-- `src/templates/iflow/hooks/session-start.py`
-- `src/templates/opencode/plugin/session-start.js`
+### Verification
+- 已通过：
+  - `pnpm vitest run test/templates/session-start-context.test.ts test/regression.test.ts`
+  - `pnpm typecheck`
 
-### Behavior Added
-- 递归读取 `.trellis/spec/` 下的 `.md` 文件
-- 顶层分组顺序优先：`frontend` → `backend` → `guides` → 其他目录按字典序
-- 同目录内 `index.md` 优先，其余 markdown 按文件名字典序
-- 子目录递归按字典序
-- 跳过隐藏文件和隐藏目录
-- 超限时截断，并追加提示
-
-### Guardrails
-- `MAX_SPEC_FILES = 40`
-- `MAX_SPEC_CHARS = 24_000`
-
-### Explicitly Not Included
-- 不包含更大范围的 upstream 收敛工作
-- 不包含 `start/before/check` 模板文案修改
-- 不包含 `src/commands/init.ts` 修改
-- 不包含 `src/utils/template-fetcher.ts` 修改
-
-### Recommended Next Step For Codex
-1. 先读 `git show f29d196`
-2. 再读上述 3 个文件，确认递归顺序和截断规则
-3. 如继续开发，保持范围只在 `session-start` 注入层
-
-### Additional Progress (2026-04-17)
-- 已新增回归测试：`test/templates/session-start-context.test.ts`
-- 覆盖范围：
-  - Claude / iFlow hook 的嵌套 spec 递归加载顺序
-  - 隐藏文件与隐藏目录跳过
-  - Claude hook 的 `MAX_SPEC_FILES = 40` 截断提示
-  - OpenCode plugin 首条用户消息前置注入的递归 spec 行为
-- 当前建议：
-  - 继续以验证和小范围补强为主
-  - 不扩大到 `init` / `template-fetcher` / 文案体系调整
+### Recommended Next Step
+1. 继续收 Trellis 文档中的旧 recursive / preflight 口径
+2. 再对齐 ai-governance 与 bootstrap 文档中的 index-first 表述
+3. 最后评估是否需要同步 dogfood/runtime copies 或 dist 产物

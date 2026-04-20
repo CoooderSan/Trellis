@@ -31,7 +31,7 @@
 
 | Capability | What it changes |
 | --- | --- |
-| **Auto-injected specs** | Write conventions once in `.trellis/spec/`, then let Trellis inject the relevant context from `.trellis/spec/**/*.md` into each session instead of repeating yourself, including custom top-level sections and nested Markdown specs. |
+| **Auto-injected specs** | Write conventions once in `.trellis/spec/`, then let Trellis inject the relevant workflow index, project state, and spec entry indexes for the current session instead of repeating yourself. |
 | **Task-centered workflow** | Keep PRDs, implementation context, review context, and task status in `.trellis/tasks/` so AI work stays structured. |
 | **Parallel agent execution** | Run multiple AI tasks side by side with git worktrees instead of turning one branch into a traffic jam. |
 | **Project memory** | Journals in `.trellis/workspace/` preserve what happened last time, so each new session starts with real context. |
@@ -98,9 +98,9 @@ At a high level, the workflow is simple:
 3. Let Trellis inject the right context for the current task.
 4. Use checks, journals, and worktrees to keep quality and continuity intact.
 
-Session-start spec loading recursively walks `.trellis/spec/**/*.md`. When present, the official default sections (`frontend`, `backend`, `guides`) are prioritized first; additional top-level directories are loaded afterward in stable order. Within each directory, `index.md` is loaded before other files, hidden files/directories are skipped, and injection is capped to prevent runaway context growth.
+Trellis injects workflow and spec entry indexes at session start, then lets the active task or `spec_scope` narrow which package-scoped rules appear in context. Detailed rule files are read on demand from the indexes instead of being recursively inlined.
 
-If your project installs team governance under a namespace such as `.trellis/spec/ecochain/**`, `/trellis:start` should run Team Governance Preflight before task classification, brainstorm, task creation, or implementation. Team rules act as the upper-layer policy; Trellis continues as the execution workflow only after hard gates pass.
+If your project installs team governance under a namespace such as `.trellis/spec/ecochain/**`, treat its package and layer indexes as the rule entry. Trellis stays generic; the injected index order determines which additional rule files you must read before task classification, brainstorm, task creation, or implementation.
 
 ## What's New
 

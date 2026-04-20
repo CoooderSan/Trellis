@@ -37,6 +37,10 @@ export const commonInit = readTemplate("scripts/common/__init__.py");
 export const commonPaths = readTemplate("scripts/common/paths.py");
 export const commonDeveloper = readTemplate("scripts/common/developer.py");
 export const commonGitContext = readTemplate("scripts/common/git_context.py");
+export const commonGit = readTemplate("scripts/common/git.py");
+export const commonPackagesContext = readTemplate(
+  "scripts/common/packages_context.py",
+);
 export const commonWorktree = readTemplate("scripts/common/worktree.py");
 export const commonTaskQueue = readTemplate("scripts/common/task_queue.py");
 export const commonTaskUtils = readTemplate("scripts/common/task_utils.py");
@@ -44,6 +48,7 @@ export const commonPhase = readTemplate("scripts/common/phase.py");
 export const commonRegistry = readTemplate("scripts/common/registry.py");
 export const commonCliAdapter = readTemplate("scripts/common/cli_adapter.py");
 export const commonConfig = readTemplate("scripts/common/config.py");
+export const commonSessionGate = readTemplate("scripts/common/session_gate.py");
 
 // Python scripts - multi_agent
 export const multiAgentInit = readTemplate("scripts/multi_agent/__init__.py");
@@ -60,6 +65,7 @@ export const getDeveloperScript = readTemplate("scripts/get_developer.py");
 export const initDeveloperScript = readTemplate("scripts/init_developer.py");
 export const taskScript = readTemplate("scripts/task.py");
 export const getContextScript = readTemplate("scripts/get_context.py");
+export const sessionGateScript = readTemplate("scripts/session_gate.py");
 export const addSessionScript = readTemplate("scripts/add_session.py");
 export const createBootstrapScript = readTemplate(
   "scripts/create_bootstrap.py",
@@ -85,6 +91,8 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/paths.py", commonPaths);
   scripts.set("common/developer.py", commonDeveloper);
   scripts.set("common/git_context.py", commonGitContext);
+  scripts.set("common/git.py", commonGit);
+  scripts.set("common/packages_context.py", commonPackagesContext);
   scripts.set("common/worktree.py", commonWorktree);
   scripts.set("common/task_queue.py", commonTaskQueue);
   scripts.set("common/task_utils.py", commonTaskUtils);
@@ -92,6 +100,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/registry.py", commonRegistry);
   scripts.set("common/cli_adapter.py", commonCliAdapter);
   scripts.set("common/config.py", commonConfig);
+  scripts.set("common/session_gate.py", commonSessionGate);
 
   // Multi-agent
   scripts.set("multi_agent/__init__.py", multiAgentInit);
@@ -106,6 +115,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("init_developer.py", initDeveloperScript);
   scripts.set("task.py", taskScript);
   scripts.set("get_context.py", getContextScript);
+  scripts.set("session_gate.py", sessionGateScript);
   scripts.set("add_session.py", addSessionScript);
   scripts.set("create_bootstrap.py", createBootstrapScript);
 

@@ -803,8 +803,8 @@ describe("regression: cross-platform-thinking-guide dead code removed (0.3.1)", 
   });
 });
 
-describe("regression: start and brainstorm templates stay index-first while Trellis constraints use Dazz voice (2026-04)", () => {
-  it("Claude and Codex start templates inject index-first session context and keep Trellis blockers in Dazz voice", () => {
+describe("regression: start and brainstorm templates stay generic (2026-04)", () => {
+  it("Claude and Codex start templates stay generic and describe index-first session context", () => {
     const claudeStart = getClaudeCommands().find((cmd) => cmd.name === "start")?.content;
     const codexStart = getCodexSkills().find((skill) => skill.name === "start")?.content;
 
@@ -822,41 +822,15 @@ describe("regression: start and brainstorm templates stay index-first while Trel
         "Detailed rule files are read on demand from the injected indexes, not recursively inlined into the session.",
       );
       expect(content).toContain(
-        "When the blocker is missing Intent or incomplete scope, you may still do read-only research to help the user form the Intent.",
-      );
-      expect(content).toContain(
-        "If the user refuses to write Intent themselves, offer to draft the smallest viable Intent from available sources, but do not describe the work as proceeding without Intent.",
-      );
-      expect(content).toContain(
-        "If team governance already names a preferred knowledge source such as synced docs, check that source before asking the user to restate it.",
-      );
-      expect(content).toContain(
-        "When the next move has a clear safer or more correct default, recommend that path first in Dazz's voice instead of presenting neutral options with equal weight.",
-      );
-      expect(content).toContain(
-        "If you still offer alternatives, label the recommended path as the default and frame the others as secondary fallbacks.",
-      );
-      expect(content).toContain(
-        "User-facing rule voice for Trellis-owned constraints:",
-      );
-      expect(content).toContain(
-        "Use Dazz's fatherly voice only for Trellis-owned constraint moments: reminders, teaching, correction, blocking, or criticism.",
-      );
-      expect(content).toContain(
-        "Routine progress updates, research summaries, and non-constraint narration should stay natural and should not be forced into Dazz voice.",
-      );
-      expect(content).toContain(
-        'Do not turn every sentence into the same Dazz catchphrase. Avoid repetitive openers such as repeating "慢一点，Dazz ..." across consecutive sentences.',
-      );
-      expect(content).toContain(
-        "Third-party or package-specific rules keep their own voice; only Trellis-owned constraints default to Dazz.",
+        "If the injected context reports blockers, stop and explain the prerequisite in plain language.",
       );
       expect(content).not.toContain("Team Governance Preflight");
       expect(content).not.toContain(".trellis/spec/ecochain/common/start-session.md");
+      expect(content).not.toContain("Dazz's fatherly voice");
     }
   });
 
-  it("iFlow and Codex brainstorm templates depend on injected context while Trellis blockers stay in Dazz voice", () => {
+  it("iFlow and Codex brainstorm templates stay generic and depend on injected session context", () => {
     const iflowBrainstorm = getIflowCommands().find(
       (cmd) => cmd.name === "brainstorm",
     )?.content;
@@ -870,52 +844,18 @@ describe("regression: start and brainstorm templates stay index-first while Trel
     for (const content of [iflowBrainstorm as string, codexBrainstorm as string]) {
       expect(content).toContain("## Step 0: Respect Current Session Context");
       expect(content).toContain(
-        "do not finish, archive, retire, or otherwise mutate the current task state for the sake of the blocked next task",
+        "Before any task creation or PRD seeding, confirm the injected session context already allows progress.",
       );
-      expect(content).toContain(
-        "Only when the injected rule entry allows task creation may you create a task and continue brainstorm.",
+      expect(content).toMatch(
+        /If `(?:\/trellis:start|\$start)` surfaced blockers in the injected session gate summary or referenced indexes:/,
       );
-      expect(content).toContain(
-        "When the next move has a clear safer or more correct default, recommend that path first in Dazz's voice instead of presenting neutral options with equal weight.",
-      );
+      expect(content).toContain("Do not hardcode package-specific gates here.");
       expect(content).toContain(
         "Read the injected package or layer indexes before assuming detailed rules",
       );
-      expect(content).toContain(
-        "if the blocker is missing Intent or incomplete scope, do read-only research first when repo/docs/specs likely contain the missing context",
-      );
-      expect(content).toContain(
-        "if the user refuses to write Intent themselves, offer to draft the smallest viable Intent from available sources, but keep it explicit that Intent is still being established",
-      );
-      expect(content).toContain(
-        "if team governance already points to a preferred knowledge source such as synced docs, check it before asking the user to restate it",
-      );
-      expect(content).toContain(
-        "When the next move has a clear safer or more correct default, recommend that path first in Dazz's voice instead of presenting neutral options with equal weight.",
-      );
-      expect(content).toContain(
-        "If you still offer alternatives, label the recommended path as the default and frame the others as secondary fallbacks.",
-      );
-      expect(content).toContain(
-        "Do not write durable memory from one-off tests, adversarial prompts, temporary freshness claims, or corrections made only to probe behavior.",
-      );
-      expect(content).toContain(
-        "User-facing rule voice for Trellis-owned constraints:",
-      );
-      expect(content).toContain(
-        "Use Dazz's fatherly voice only for Trellis-owned constraint moments: reminders, teaching, correction, blocking, or criticism.",
-      );
-      expect(content).toContain(
-        "Routine progress updates, research summaries, and non-constraint narration should stay natural and should not be forced into Dazz voice.",
-      );
-      expect(content).toContain(
-        'Do not turn every sentence into the same Dazz catchphrase. Avoid repetitive openers such as repeating "慢一点，Dazz ..." across consecutive sentences.',
-      );
-      expect(content).toContain(
-        "Third-party or package-specific rules keep their own voice; only Trellis-owned constraints default to Dazz.",
-      );
       expect(content).not.toContain("Team Governance Preflight");
-      expect(content).not.toContain("ecochain/common/start-session.md");
+      expect(content).not.toContain("ecochain/common");
+      expect(content).not.toContain("Dazz's fatherly voice");
     }
   });
 });
