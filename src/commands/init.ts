@@ -41,6 +41,7 @@ import {
   type SpecTemplate,
   type TemplateStrategy,
   type RegistrySource,
+  type RegistryBackend,
 } from "../utils/template-fetcher.js";
 import { setupProxy, maskProxyUrl } from "../utils/proxy.js";
 
@@ -711,6 +712,8 @@ export async function init(options: InitOptions): Promise<void> {
     }
   }
 
+  let registryBackend: RegistryBackend | undefined;
+
   // Determine template strategy from flags (needed before monorepo template downloads)
   let templateStrategy: TemplateStrategy = "skip";
   if (options.overwrite) {
@@ -860,6 +863,7 @@ export async function init(options: InitOptions): Promise<void> {
               undefined,
               registry,
               destDir,
+              registryBackend,
             );
             if (result.success && !result.skipped) {
               remoteSpecPackages.add(sanitizePkgName(pkg.name));
@@ -951,7 +955,8 @@ export async function init(options: InitOptions): Promise<void> {
     let templates: SpecTemplate[];
     let registryProbeNotFound = false;
     if (registry) {
-      const probeResult = await probeRegistryIndex(indexUrl);
+      const probeResult = await probeRegistryIndex(indexUrl, registry);
+      registryBackend = probeResult.backend;
       templates = probeResult.templates;
       registryProbeNotFound = probeResult.isNotFound;
     } else {
@@ -1040,7 +1045,11 @@ export async function init(options: InitOptions): Promise<void> {
                 `   Checking for templates at ${registry.gigetSource}...`,
               ),
             );
-            const customProbe = await probeRegistryIndex(customIndexUrl);
+            const customProbe = await probeRegistryIndex(
+              customIndexUrl,
+              registry,
+            );
+            registryBackend = customProbe.backend;
             const customTemplates = customProbe.templates;
             if (customTemplates.length > 0) {
               // Marketplace mode: show picker with custom templates
@@ -1160,7 +1169,9 @@ export async function init(options: InitOptions): Promise<void> {
   if (options.yes && registry && !selectedTemplate && !monorepoPackages) {
     const probeResult = await probeRegistryIndex(
       `${registry.rawBaseUrl}/index.json`,
+      registry,
     );
+    registryBackend = probeResult.backend;
     if (probeResult.templates.length > 0) {
       // Marketplace mode requires interactive selection — can't auto-select
       console.log(
@@ -1203,6 +1214,8 @@ export async function init(options: InitOptions): Promise<void> {
       templateStrategy,
       prefetched,
       registry,
+      undefined,
+      registryBackend,
     );
 
     if (result.success) {
@@ -1254,6 +1267,8 @@ export async function init(options: InitOptions): Promise<void> {
       cwd,
       registry,
       templateStrategy,
+      undefined,
+      registryBackend,
     );
 
     if (result.success) {

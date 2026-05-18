@@ -187,6 +187,26 @@ describe("parseRegistrySource", () => {
     );
   });
 
+  it("parses self-hosted GitLab tree URL with port", () => {
+    const result = parseRegistrySource(
+      "https://gitlab.yfsj.cc:8443/cowork/ai-governance/-/tree/master/spec",
+    );
+    expect(result.provider).toBe("gitlab");
+    expect(result.repo).toBe("cowork/ai-governance");
+    expect(result.subdir).toBe("spec");
+    expect(result.ref).toBe("master");
+    expect(result.host).toBe("gitlab.yfsj.cc:8443");
+    expect(result.rawBaseUrl).toBe(
+      "https://gitlab.yfsj.cc:8443/cowork/ai-governance/-/raw/master/spec",
+    );
+    expect(result.gigetSource).toBe("gitlab:cowork/ai-governance/spec#master");
+    expect(result.gitUrl).toBe(
+      "https://gitlab.yfsj.cc:8443/cowork/ai-governance.git",
+    );
+    expect(result.preferGit).toBe(true);
+    expect(result.sourceKind).toBe("https");
+  });
+
   // -------------------------------------------------------------------------
   // Error cases
   // -------------------------------------------------------------------------
