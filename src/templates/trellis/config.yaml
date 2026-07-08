@@ -31,3 +31,42 @@ max_journal_lines: 2000
 #     - "echo 'Task finished'"
 #   after_archive:
 #     - "echo 'Task archived'"
+
+#-------------------------------------------------------------------------------
+# Governance Gate
+#-------------------------------------------------------------------------------
+
+# Optional hard gate for teams that keep policy in external governance specs.
+# Trellis enforces the workflow choke points; the policy text/evaluator can live
+# outside this repository and be refreshed by your own governance tooling.
+#
+# When enabled without a command, Trellis uses the persisted session gate state:
+#   ready / not_required -> allow
+#   blocked / needs_review / not_evaluated / missing -> block
+#
+# governance:
+#   enabled: true
+#   # Optional external evaluator. Omit this to use session_gate.py state.
+#   # command: "python3 ./ai-governance/scripts/evaluate_gate.py --json"
+#   enforce:
+#     task_create: true
+#     task_start: true
+
+#-------------------------------------------------------------------------------
+# Monorepo / Polyrepo Packages
+#-------------------------------------------------------------------------------
+
+# Declare packages for monorepo or meta-repo projects.
+# For independent repositories nested under one parent directory, set git: true.
+#
+# To enable packages, add a top-level packages key with entries like this:
+#   wms:
+#     path: wms
+#     git: true
+#   web-wms:
+#     path: web-wms
+#     git: true
+# default_package: wms
+#
+# session:
+#   spec_scope: active_task

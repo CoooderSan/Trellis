@@ -5,6 +5,7 @@ Package discovery and context output.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from .config import _is_true_config_value, get_default_package, get_packages, get_spec_scope
@@ -30,8 +31,6 @@ def _get_active_task_package(repo_root: Path) -> str | None:
         return None
 
     try:
-        import json
-
         data = json.loads(task_json.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None

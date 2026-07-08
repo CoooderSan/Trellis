@@ -33,7 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from common.cli_adapter import CLIAdapter, get_cli_adapter
-from common.git_context import _run_git_command
+from common.git import run_git as _run_git_command
 from common.paths import (
     DIR_WORKFLOW,
     FILE_CURRENT_TASK,

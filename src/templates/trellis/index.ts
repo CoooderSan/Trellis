@@ -49,6 +49,9 @@ export const commonRegistry = readTemplate("scripts/common/registry.py");
 export const commonCliAdapter = readTemplate("scripts/common/cli_adapter.py");
 export const commonConfig = readTemplate("scripts/common/config.py");
 export const commonSessionGate = readTemplate("scripts/common/session_gate.py");
+export const commonGovernanceGate = readTemplate(
+  "scripts/common/governance_gate.py",
+);
 
 // Python scripts - multi_agent
 export const multiAgentInit = readTemplate("scripts/multi_agent/__init__.py");
@@ -66,6 +69,7 @@ export const initDeveloperScript = readTemplate("scripts/init_developer.py");
 export const taskScript = readTemplate("scripts/task.py");
 export const getContextScript = readTemplate("scripts/get_context.py");
 export const sessionGateScript = readTemplate("scripts/session_gate.py");
+export const governanceGateScript = readTemplate("scripts/governance_gate.py");
 export const addSessionScript = readTemplate("scripts/add_session.py");
 export const createBootstrapScript = readTemplate(
   "scripts/create_bootstrap.py",
@@ -101,6 +105,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/cli_adapter.py", commonCliAdapter);
   scripts.set("common/config.py", commonConfig);
   scripts.set("common/session_gate.py", commonSessionGate);
+  scripts.set("common/governance_gate.py", commonGovernanceGate);
 
   // Multi-agent
   scripts.set("multi_agent/__init__.py", multiAgentInit);
@@ -116,6 +121,7 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("task.py", taskScript);
   scripts.set("get_context.py", getContextScript);
   scripts.set("session_gate.py", sessionGateScript);
+  scripts.set("governance_gate.py", governanceGateScript);
   scripts.set("add_session.py", addSessionScript);
   scripts.set("create_bootstrap.py", createBootstrapScript);
 

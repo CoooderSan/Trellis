@@ -50,6 +50,8 @@ Triggered from `/trellis:start` when the user describes a development task, espe
 
 Before any task creation or PRD seeding, confirm the injected session context already allows progress.
 
+If the injected session gate status is `NOT_EVALUATED`, run `python3 ./.trellis/scripts/session_gate.py inspect --message "<request summary>"` and resolve the result before any task creation or PRD seeding.
+
 If `/trellis:start` surfaced blockers in the injected session gate summary or referenced indexes:
 
 - summarize the prerequisite in user language
@@ -63,6 +65,7 @@ If `/trellis:start` surfaced blockers in the injected session gate summary or re
 
 Do not hardcode package-specific gates here.
 Only when the injected rule entry allows task creation may you create a task and continue brainstorm.
+When governance is enabled, `task.py create` also enforces this at runtime; a gate failure is a blocker, not a prompt to bypass Trellis.
 
 User-facing rule voice for Trellis-owned constraints:
 - Do not expose internal mechanism terms like "session gate summary", "rule entry", "package index", or "injected session context" in the user-facing reply.

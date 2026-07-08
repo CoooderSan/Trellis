@@ -43,7 +43,7 @@ from datetime import datetime
 from pathlib import Path
 
 from common.cli_adapter import get_cli_adapter_auto
-from common.git_context import _run_git_command
+from common.git import run_git
 from common.paths import (
     DIR_WORKFLOW,
     DIR_TASKS,
@@ -63,6 +63,7 @@ from common.task_utils import (
     archive_task_complete,
 )
 from common.config import get_hooks
+from common.governance_gate import enforce_governance_gate
 
 
 # =============================================================================
@@ -294,6 +295,13 @@ def cmd_create(args: argparse.Namespace) -> int:
     # Get current developer as creator
     creator = get_developer(repo_root) or assignee
 
+    if not enforce_governance_gate(
+        "task_create",
+        message=args.title,
+        repo_root=repo_root,
+    ):
+        return 1
+
     # Generate slug if not provided
     slug = args.slug or _slugify(args.title)
     if not slug:
@@ -315,7 +323,7 @@ def cmd_create(args: argparse.Namespace) -> int:
     today = datetime.now().strftime("%Y-%m-%d")
 
     # Record current branch as base_branch (PR target)
-    _, branch_out, _ = _run_git_command(["branch", "--show-current"], cwd=repo_root)
+    _, branch_out, _ = run_git(["branch", "--show-current"], cwd=repo_root)
     current_branch = branch_out.strip() or "main"
 
     task_data = {
@@ -658,6 +666,22 @@ def cmd_start(args: argparse.Namespace) -> int:
         print("Hint: Use task name (e.g., 'my-task') or full path (e.g., '.trellis/tasks/01-31-my-task')")
         return 1
 
+    task_json_path = full_path / FILE_TASK_JSON
+    task_title = None
+    data = _read_json_file(task_json_path)
+    if data:
+        value = data.get("title") or data.get("name") or data.get("id")
+        if value:
+            task_title = str(value)
+
+    if not enforce_governance_gate(
+        "task_start",
+        message=task_title,
+        task_dir=str(full_path),
+        repo_root=repo_root,
+    ):
+        return 1
+
     # Convert to relative path for storage
     try:
         task_dir = str(full_path.relative_to(repo_root))
@@ -669,7 +693,6 @@ def cmd_start(args: argparse.Namespace) -> int:
         print()
         print(colored("The hook will now inject context from this task's jsonl files.", Colors.BLUE))
 
-        task_json_path = full_path / FILE_TASK_JSON
         _run_hooks("after_start", task_json_path, repo_root)
         return 0
     else:
@@ -793,10 +816,10 @@ def cmd_archive(args: argparse.Namespace) -> int:
 def _auto_commit_archive(task_name: str, repo_root: Path) -> None:
     """Stage .trellis/tasks/ changes and commit after archive."""
     tasks_rel = f"{DIR_WORKFLOW}/{DIR_TASKS}"
-    _run_git_command(["add", "-A", tasks_rel], cwd=repo_root)
+    run_git(["add", "-A", tasks_rel], cwd=repo_root)
 
     # Check if there are staged changes
-    rc, _, _ = _run_git_command(
+    rc, _, _ = run_git(
         ["diff", "--cached", "--quiet", "--", tasks_rel], cwd=repo_root
     )
     if rc == 0:
@@ -804,7 +827,7 @@ def _auto_commit_archive(task_name: str, repo_root: Path) -> None:
         return
 
     commit_msg = f"chore(task): archive {task_name}"
-    rc, _, err = _run_git_command(["commit", "-m", commit_msg], cwd=repo_root)
+    rc, _, err = run_git(["commit", "-m", commit_msg], cwd=repo_root)
     if rc == 0:
         print(f"[OK] Auto-committed: {commit_msg}", file=sys.stderr)
     else:

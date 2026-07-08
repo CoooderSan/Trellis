@@ -26,7 +26,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from common.git_context import _run_git_command
+from common.git import run_git as _run_git_command
 from common.paths import (
     DIR_WORKFLOW,
     FILE_TASK_JSON,

@@ -611,6 +611,70 @@ from common.developer import get_developer
 
 ---
 
+## Governance Gate Runtime Contract
+
+Trellis workflow gates must be enforced in runtime scripts, not only in prompt
+templates. Team policy may live in external governance docs or adapters, but
+the Trellis command that mutates workflow state owns the hard stop.
+
+### Enforcement Points
+
+Use `.trellis/scripts/common/governance_gate.py` for hard gates before mutating
+task lifecycle state:
+
+```python
+from common.governance_gate import enforce_governance_gate
+
+if not enforce_governance_gate(
+    "task_create",
+    message=args.title,
+    repo_root=repo_root,
+):
+    return 1
+```
+
+Required events:
+
+| Event | Command | Must happen before |
+|-------|---------|--------------------|
+| `task_create` | `.trellis/scripts/task.py create` | task directory, `task.json`, `prd.md`, hooks |
+| `task_start` | `.trellis/scripts/task.py start` | `.current-task` update and `after_start` hooks |
+
+### Config Contract
+
+The runtime reads `.trellis/config.yaml`:
+
+```yaml
+governance:
+  enabled: true
+  command: "python3 ./ai-governance/scripts/evaluate_gate.py --json" # optional
+  enforce:
+    task_create: true
+    task_start: true
+```
+
+- If `governance.enabled` is false or absent, the gate is a no-op.
+- If `command` is configured, it is executed with `TRELLIS_GOVERNANCE_EVENT`,
+  `TRELLIS_GATE_EVENT`, optional `TRELLIS_GATE_MESSAGE`, and optional
+  `TRELLIS_TASK_DIR` environment variables.
+- If `command` is absent, the runtime uses the persisted session gate state.
+- Passing statuses are only `ready` and `not_required`; `blocked`,
+  `needs_review`, `not_evaluated`, or missing state must block.
+
+### Validation Matrix
+
+| Case | Expected result | Required assertion |
+|------|-----------------|--------------------|
+| Governance disabled | command succeeds normally | existing task lifecycle tests still pass |
+| Enabled + missing session state | `task.py create` exits `1` | no task directory is created |
+| Enabled + `ready` state | `task.py create` exits `0` | task directory is created |
+| Enabled + later `blocked` state | `task.py start` exits `1` | `.current-task` is not written |
+| External command exits non-zero | action exits `1` | stderr includes the governance blocker |
+
+Tests for this contract belong in `test/templates/governance-gate.test.ts`.
+
+---
+
 ## DO / DON'T
 
 ### DO

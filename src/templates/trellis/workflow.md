@@ -194,9 +194,17 @@ Use the task management script:
 # List active tasks
 python3 ./.trellis/scripts/task.py list
 
-# Create new task (creates directory with task.json)
+# If governance is enabled and no ready gate is recorded yet, inspect first
+python3 ./.trellis/scripts/session_gate.py inspect --message "<request summary>"
+
+# Create new task only after prerequisites are satisfied
 python3 ./.trellis/scripts/task.py create "<title>" --slug <task-name>
 ```
+
+When governance hard gates are enabled in `.trellis/config.yaml`, `task.py create`
+and `task.py start` are runtime-enforced. A gate failure means the prerequisite
+must be resolved before creating task directories, writing `prd.md`, or entering
+implementation.
 
 ---
 
@@ -205,23 +213,26 @@ python3 ./.trellis/scripts/task.py create "<title>" --slug <task-name>
 ### Task Development Flow
 
 ```
-1. Create or select task
+1. Resolve configured governance/session prerequisites
+   --> python3 ./.trellis/scripts/session_gate.py inspect --message "<request summary>" when needed
+
+2. Create or select task
    --> python3 ./.trellis/scripts/task.py create "<title>" --slug <name> or list
 
-2. Write code according to guidelines
+3. Write code according to guidelines
    --> Read .trellis/spec/ docs relevant to your task
    --> For cross-layer: read .trellis/spec/guides/
 
-3. Self-test
+4. Self-test
    --> Run project's lint/test commands (see spec docs)
    --> Manual feature testing
 
-4. Commit code
+5. Commit code
    --> git add <files>
    --> git commit -m "type(scope): description"
        Format: feat/fix/docs/refactor/test/chore
 
-5. Record session (one command)
+6. Record session (one command)
    --> python3 ./.trellis/scripts/add_session.py --title "Title" --commit "hash"
 ```
 

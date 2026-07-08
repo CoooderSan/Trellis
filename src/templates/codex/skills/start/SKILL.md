@@ -58,15 +58,17 @@ Before task classification, check whether the injected session gate summary or r
 
 Required behavior:
 
-1. If the injected context reports blockers, stop and explain the prerequisite in plain language.
-2. Read the referenced index or rule files before deciding whether work can proceed.
-3. When the blocker is missing Intent or incomplete scope, you may still do read-only research to help the user form the Intent.
-4. If the user refuses to write Intent themselves, offer to draft the smallest viable Intent from available sources, but do not describe the work as proceeding without Intent.
-5. If existing docs, specs, notes, or code can answer the next question, inspect them before asking the user.
-6. If team governance already names a preferred knowledge source such as synced docs, check that source before asking the user to restate it.
-7. Do not finish, archive, retire, or otherwise mutate the current task state while prerequisites for the next task are still unresolved.
-8. Do not implement, create a task directory, or seed a PRD while prerequisites are still unresolved.
-9. Continue with task classification only after the injected rule entry allows progress.
+1. If the injected context reports `NOT_EVALUATED`, run `python3 ./.trellis/scripts/session_gate.py inspect --message "<request summary>"` before creating any task.
+2. If the injected context reports blockers, stop and explain the prerequisite in plain language.
+3. Read the referenced index or rule files before deciding whether work can proceed.
+4. When the blocker is missing Intent or incomplete scope, you may still do read-only research to help the user form the Intent.
+5. If the user refuses to write Intent themselves, offer to draft the smallest viable Intent from available sources, but do not describe the work as proceeding without Intent.
+6. If existing docs, specs, notes, or code can answer the next question, inspect them before asking the user.
+7. If team governance already names a preferred knowledge source such as synced docs, check that source before asking the user to restate it.
+8. Do not finish, archive, retire, or otherwise mutate the current task state while prerequisites for the next task are still unresolved.
+9. Do not implement, create a task directory, or seed a PRD while prerequisites are still unresolved.
+10. Continue with task classification only after the injected rule entry allows progress.
+11. When governance is enabled, `task.py create` and `task.py start` also enforce this gate at runtime; do not try to bypass that failure.
 
 User-facing rule voice for Trellis-owned constraints:
 - Do not expose internal mechanism terms like "session gate summary", "rule entry", "package index", or "injected context" in the user-facing reply.

@@ -11,6 +11,9 @@ import {
   commonPhase,
   commonRegistry,
   commonCliAdapter,
+  commonConfig,
+  commonSessionGate,
+  commonGovernanceGate,
   multiAgentInit,
   multiAgentStart,
   multiAgentCleanup,
@@ -21,6 +24,8 @@ import {
   initDeveloperScript,
   taskScript,
   getContextScript,
+  sessionGateScript,
+  governanceGateScript,
   addSessionScript,
   createBootstrapScript,
   workflowMdTemplate,
@@ -46,6 +51,9 @@ describe("trellis template constants", () => {
     commonPhase,
     commonRegistry,
     commonCliAdapter,
+    commonConfig,
+    commonSessionGate,
+    commonGovernanceGate,
     multiAgentInit,
     multiAgentStart,
     multiAgentCleanup,
@@ -56,6 +64,8 @@ describe("trellis template constants", () => {
     initDeveloperScript,
     taskScript,
     getContextScript,
+    sessionGateScript,
+    governanceGateScript,
     addSessionScript,
     createBootstrapScript,
     workflowMdTemplate,
@@ -71,12 +81,7 @@ describe("trellis template constants", () => {
 
   it("Python scripts contain valid Python syntax indicators", () => {
     // scriptsInit (__init__.py) only has docstrings, so use scripts with actual code
-    const pyScripts = [
-      commonInit,
-      commonPaths,
-      getDeveloperScript,
-      taskScript,
-    ];
+    const pyScripts = [commonInit, commonPaths, getDeveloperScript, taskScript];
     for (const script of pyScripts) {
       expect(
         script.includes("import") ||
@@ -116,8 +121,10 @@ describe("getAllScripts", () => {
     expect(scripts.has("__init__.py")).toBe(true);
     expect(scripts.has("common/__init__.py")).toBe(true);
     expect(scripts.has("common/paths.py")).toBe(true);
+    expect(scripts.has("common/governance_gate.py")).toBe(true);
     expect(scripts.has("task.py")).toBe(true);
     expect(scripts.has("get_developer.py")).toBe(true);
+    expect(scripts.has("governance_gate.py")).toBe(true);
     expect(scripts.has("multi_agent/start.py")).toBe(true);
   });
 
@@ -138,5 +145,7 @@ describe("getAllScripts", () => {
     expect(scripts.get("__init__.py")).toBe(scriptsInit);
     expect(scripts.get("common/__init__.py")).toBe(commonInit);
     expect(scripts.get("task.py")).toBe(taskScript);
+    expect(scripts.get("common/governance_gate.py")).toBe(commonGovernanceGate);
+    expect(scripts.get("governance_gate.py")).toBe(governanceGateScript);
   });
 });
