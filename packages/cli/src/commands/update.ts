@@ -6,7 +6,7 @@ import inquirer from "inquirer";
 
 import { DIR_NAMES, FILE_NAMES, PATHS } from "../constants/paths.js";
 import type { AITool } from "../types/ai-tools.js";
-import { VERSION, PACKAGE_NAME } from "../constants/version.js";
+import { VERSION, PACKAGE_NAME, PACKAGE_REGISTRY } from "../constants/version.js";
 import {
   getMigrationsForVersion,
   getAllMigrations,
@@ -1306,8 +1306,15 @@ function getInstalledVersion(cwd: string): string {
  */
 async function getLatestNpmVersion(): Promise<string | null> {
   try {
+    const registryBase = PACKAGE_REGISTRY.endsWith("/")
+      ? PACKAGE_REGISTRY
+      : `${PACKAGE_REGISTRY}/`;
+    const metadataUrl = new URL(
+      `${encodeURIComponent(PACKAGE_NAME)}/latest`,
+      registryBase,
+    );
     const response = await fetch(
-      `https://registry.npmjs.org/${PACKAGE_NAME}/latest`,
+      metadataUrl,
     );
     if (!response.ok) {
       return null;

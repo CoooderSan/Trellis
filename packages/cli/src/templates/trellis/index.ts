@@ -45,6 +45,10 @@ export const commonConfig = readTemplate("scripts/common/config.py");
 export const commonIo = readTemplate("scripts/common/io.py");
 export const commonLog = readTemplate("scripts/common/log.py");
 export const commonGit = readTemplate("scripts/common/git.py");
+export const commonGovernanceGate = readTemplate(
+  "scripts/common/governance_gate.py",
+);
+export const commonSessionGate = readTemplate("scripts/common/session_gate.py");
 export const commonTypes = readTemplate("scripts/common/types.py");
 export const commonTasks = readTemplate("scripts/common/tasks.py");
 export const commonTaskContext = readTemplate("scripts/common/task_context.py");
@@ -69,6 +73,8 @@ export const initDeveloperScript = readTemplate("scripts/init_developer.py");
 export const taskScript = readTemplate("scripts/task.py");
 export const getContextScript = readTemplate("scripts/get_context.py");
 export const addSessionScript = readTemplate("scripts/add_session.py");
+export const governanceGateScript = readTemplate("scripts/governance_gate.py");
+export const sessionGateScript = readTemplate("scripts/session_gate.py");
 
 // Configuration files
 export const workflowMdTemplate = readTemplate("workflow.md");
@@ -104,6 +110,8 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("common/io.py", commonIo);
   scripts.set("common/log.py", commonLog);
   scripts.set("common/git.py", commonGit);
+  scripts.set("common/governance_gate.py", commonGovernanceGate);
+  scripts.set("common/session_gate.py", commonSessionGate);
   scripts.set("common/types.py", commonTypes);
   scripts.set("common/tasks.py", commonTasks);
   scripts.set("common/task_context.py", commonTaskContext);
@@ -120,6 +128,8 @@ export function getAllScripts(): Map<string, string> {
   scripts.set("task.py", taskScript);
   scripts.set("get_context.py", getContextScript);
   scripts.set("add_session.py", addSessionScript);
+  scripts.set("governance_gate.py", governanceGateScript);
+  scripts.set("session_gate.py", sessionGateScript);
 
   return scripts;
 }

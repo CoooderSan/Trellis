@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_DIR = path.resolve(__dirname, "..");
+const RELEASE_REMOTE = process.env.TRELLIS_RELEASE_REMOTE || "private";
 
 const RELEASE_TYPES = new Set([
   "patch",
@@ -76,7 +77,7 @@ function main() {
 
   run("node scripts/check-manifest-continuity.js");
   docsGuard(type);
-  run("pnpm --filter @mindfoldhq/trellis-core test");
+  run("pnpm --filter @ecochain/trellis-core test");
   run("pnpm test");
 
   // Exclude .trellis/ from the pre-release sweep: dirty task/workspace files
@@ -93,7 +94,7 @@ function main() {
   run("git add package.json ../core/package.json");
   run(`git commit -m "${version}"`);
   run(`git tag "v${version}"`);
-  run(`git push origin ${pushTarget(type)} --tags`);
+  run(`git push ${RELEASE_REMOTE} ${pushTarget(type)} --tags`);
 }
 
 main();

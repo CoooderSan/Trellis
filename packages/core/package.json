@@ -1,5 +1,5 @@
 {
-  "name": "@mindfoldhq/trellis-core",
+  "name": "@ecochain/trellis-core",
   "version": "0.6.5",
   "description": "Trellis core SDK — channel and task domain primitives consumed by the Trellis CLI and downstream Node services",
   "type": "module",
@@ -38,8 +38,8 @@
   ],
   "sideEffects": false,
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "registry": "https://packages.aliyun.com/63b637070a96c30780aae039/npm/npm-registry/",
+    "access": "public"
   },
   "scripts": {
     "build": "pnpm run clean && tsc",
@@ -73,6 +73,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/mindfold-ai/trellis.git"
+    "url": "https://gitlab.yfsj.cc:8443/cowork/Trellis.git"
   }
 }

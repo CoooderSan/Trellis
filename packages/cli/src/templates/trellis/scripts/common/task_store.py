@@ -30,6 +30,7 @@ from .config import (
     validate_package,
 )
 from .git import run_git
+from .governance_gate import enforce_governance_gate
 from .io import read_json, write_json
 from .log import Colors, colored
 from .paths import (
@@ -226,6 +227,13 @@ def cmd_create(args: argparse.Namespace) -> int:
         if not assignee:
             print(colored("Error: No developer set. Run init_developer.py first or use --assignee", Colors.RED), file=sys.stderr)
             return 1
+
+    if not enforce_governance_gate(
+        "task_create",
+        message=args.title,
+        repo_root=repo_root,
+    ):
+        return 1
 
     ensure_tasks_dir(repo_root)
 

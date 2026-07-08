@@ -2,7 +2,7 @@ import {
   clearChannelTitle,
   setChannelTitle,
   type ChannelScope,
-} from "@mindfoldhq/trellis-core/channel";
+} from "@ecochain/trellis-core/channel";
 
 import { parseChannelScope } from "./store/schema.js";
 

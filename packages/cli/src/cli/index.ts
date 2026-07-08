@@ -13,11 +13,11 @@ import {
 } from "../commands/workflow.js";
 import { registerChannelCommand } from "../commands/channel/index.js";
 import { DIR_NAMES } from "../constants/paths.js";
-import { PACKAGE_NAME, VERSION } from "../constants/version.js";
+import { PACKAGE_NAME, PACKAGE_REGISTRY, VERSION } from "../constants/version.js";
 import { compareVersions } from "../utils/compare-versions.js";
 
 // Re-export for backwards compatibility (consumers should prefer constants/version.js)
-export { VERSION, PACKAGE_NAME };
+export { VERSION, PACKAGE_NAME, PACKAGE_REGISTRY };
 
 /**
  * Check if a Trellis update is available (compare project version with CLI version)

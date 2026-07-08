@@ -44,7 +44,19 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MANIFESTS_DIR = path.join(__dirname, "../src/migrations/manifests");
-const PACKAGE_NAME = "@mindfoldhq/trellis";
+const PACKAGE_NAME = "@ecochain/trellis";
+
+function npmRegistry() {
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "../package.json"), "utf-8"),
+  );
+  return (
+    process.env.NPM_CONFIG_REGISTRY ||
+    process.env.npm_config_registry ||
+    pkg.publishConfig?.registry ||
+    "https://registry.npmjs.org/"
+  );
+}
 
 /**
  * Check whether `version` is already published on npm. Returns false on network
@@ -53,7 +65,7 @@ const PACKAGE_NAME = "@mindfoldhq/trellis";
  */
 function versionOnNpm(version) {
   try {
-    const out = execSync(`npm view ${PACKAGE_NAME}@${version} version 2>/dev/null`, {
+    const out = execSync(`npm view ${PACKAGE_NAME}@${version} version --registry=${npmRegistry()} 2>/dev/null`, {
       encoding: "utf-8",
       timeout: 8_000,
     }).trim();

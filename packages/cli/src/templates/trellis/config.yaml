@@ -51,6 +51,21 @@ max_journal_lines: 2000
 #     - "echo 'Task archived'"
 
 #-------------------------------------------------------------------------------
+# Governance Gate
+#-------------------------------------------------------------------------------
+
+# Optional hard gates for workflow mutations. When enabled, task creation and
+# task activation can be blocked until the current session has passed a local
+# rule review or an external evaluator command returns an allowed result.
+#
+# governance:
+#   enabled: true
+#   command: "python3 ./ai-governance/scripts/evaluate_gate.py --json"
+#   enforce:
+#     task_create: true
+#     task_start: true
+
+#-------------------------------------------------------------------------------
 # Monorepo / Packages
 #-------------------------------------------------------------------------------
 

@@ -9,7 +9,7 @@
  * bucket of migrations.
  *
  * This guard runs before `pnpm version` bumps on every release track:
- *   1. Query npm for all published versions of @mindfoldhq/trellis
+ *   1. Query npm for all published versions of @ecochain/trellis
  *   2. Diff against local `src/migrations/manifests/*.json`
  *   3. Fail non-zero if any npm version lacks a local manifest
  *
@@ -31,7 +31,19 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MANIFESTS_DIR = path.join(__dirname, "../src/migrations/manifests");
-const PACKAGE_NAME = "@mindfoldhq/trellis";
+const PACKAGE_NAME = "@ecochain/trellis";
+
+function npmRegistry() {
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "../package.json"), "utf-8"),
+  );
+  return (
+    process.env.NPM_CONFIG_REGISTRY ||
+    process.env.npm_config_registry ||
+    pkg.publishConfig?.registry ||
+    "https://registry.npmjs.org/"
+  );
+}
 
 /**
  * Historical npm versions whose manifests are permanently missing from the
@@ -67,7 +79,7 @@ function readLocalManifestVersions() {
 
 function fetchNpmVersions() {
   try {
-    const output = execSync(`npm view ${PACKAGE_NAME} versions --json`, {
+    const output = execSync(`npm view ${PACKAGE_NAME} versions --json --registry=${npmRegistry()}`, {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 15_000,

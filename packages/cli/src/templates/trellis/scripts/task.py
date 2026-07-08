@@ -43,6 +43,7 @@ from common.active_task import (
     set_active_task,
 )
 from common.io import read_json, write_json
+from common.governance_gate import enforce_governance_gate
 from common.task_utils import resolve_task_dir, run_task_hooks
 from common.tasks import iter_active_tasks, children_progress
 
@@ -91,6 +92,13 @@ def cmd_start(args: argparse.Namespace) -> int:
         task_dir = str(full_path)
 
     task_json_path = full_path / FILE_TASK_JSON
+
+    if not enforce_governance_gate(
+        "task_start",
+        task_dir=task_dir,
+        repo_root=repo_root,
+    ):
+        return 1
 
     if not resolve_context_key():
         # Degraded mode: no session identity available.

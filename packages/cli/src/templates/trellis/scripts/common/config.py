@@ -264,6 +264,60 @@ def get_hooks(event: str, repo_root: Path | None = None) -> list[str]:
 
 
 # =============================================================================
+# Governance Gate
+# =============================================================================
+
+
+def get_governance_config(repo_root: Path | None = None) -> dict:
+    """Get governance gate configuration.
+
+    The governance section is intentionally generic. Team-specific policy can
+    live in external spec repositories or executable adapters, while Trellis
+    owns the runtime enforcement points.
+    """
+    config = _load_config(repo_root)
+    governance = config.get("governance")
+    if isinstance(governance, dict):
+        return governance
+    return {}
+
+
+def is_governance_enabled(repo_root: Path | None = None) -> bool:
+    """Return True when governance hard gates are enabled."""
+    governance = get_governance_config(repo_root)
+    return _is_true_config_value(governance.get("enabled"))
+
+
+def get_governance_command(repo_root: Path | None = None) -> str | None:
+    """Get optional external governance evaluator command."""
+    governance = get_governance_config(repo_root)
+    command = governance.get("command")
+    if isinstance(command, str) and command.strip():
+        return command.strip()
+    return None
+
+
+def is_governance_event_enforced(
+    event: str,
+    repo_root: Path | None = None,
+) -> bool:
+    """Return True when a governance event should be hard-blocking."""
+    if not is_governance_enabled(repo_root):
+        return False
+
+    governance = get_governance_config(repo_root)
+    enforce = governance.get("enforce")
+    if isinstance(enforce, dict):
+        value = enforce.get(event)
+        if value is not None:
+            return _is_true_config_value(value)
+
+    # If governance is enabled, task creation and activation are hard gates by
+    # default. Other events are opt-in until they have explicit runtime support.
+    return event in {"task_create", "task_start"}
+
+
+# =============================================================================
 # Monorepo / Packages
 # =============================================================================
 

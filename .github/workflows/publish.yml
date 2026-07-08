@@ -62,29 +62,29 @@ jobs:
         id: plan
         run: node packages/cli/scripts/release-preflight.js publish-plan --github
 
-      - name: Publish @mindfoldhq/trellis-core
+      - name: Publish @ecochain/trellis-core
         if: steps.plan.outputs.core_publish == 'true'
         run: pnpm publish --access public --no-git-checks --tag ${{ steps.plan.outputs.tag }}
         working-directory: packages/core
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
+          NPM_CONFIG_REGISTRY: https://packages.aliyun.com/63b637070a96c30780aae039/npm/npm-registry/
 
-      - name: Skip @mindfoldhq/trellis-core (already on npm)
+      - name: Skip @ecochain/trellis-core (already on npm)
         if: steps.plan.outputs.core_publish != 'true'
-        run: echo "@mindfoldhq/trellis-core@${{ steps.plan.outputs.version }} already published; skipping."
+        run: echo "@ecochain/trellis-core@${{ steps.plan.outputs.version }} already published; skipping."
 
-      - name: Publish @mindfoldhq/trellis
+      - name: Publish @ecochain/trellis
         if: steps.plan.outputs.cli_publish == 'true'
         run: pnpm publish --access public --no-git-checks --tag ${{ steps.plan.outputs.tag }}
         working-directory: packages/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
+          NPM_CONFIG_REGISTRY: https://packages.aliyun.com/63b637070a96c30780aae039/npm/npm-registry/
 
-      - name: Skip @mindfoldhq/trellis (already on npm)
+      - name: Skip @ecochain/trellis (already on npm)
         if: steps.plan.outputs.cli_publish != 'true'
-        run: echo "@mindfoldhq/trellis@${{ steps.plan.outputs.version }} already published; skipping."
+        run: echo "@ecochain/trellis@${{ steps.plan.outputs.version }} already published; skipping."
 
-      - name: Verify published packages on public npm
+      - name: Verify published packages on configured npm registry
         run: node packages/cli/scripts/release-preflight.js verify-npm --package all

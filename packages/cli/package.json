@@ -1,5 +1,5 @@
 {
-  "name": "@mindfoldhq/trellis",
+  "name": "@ecochain/trellis",
   "version": "0.6.5",
   "description": "AI capabilities grow like ivy — Trellis provides the structure to guide them along a disciplined path",
   "type": "module",
@@ -10,6 +10,7 @@
     "tl": "./bin/trellis.js"
   },
   "publishConfig": {
+    "registry": "https://packages.aliyun.com/63b637070a96c30780aae039/npm/npm-registry/",
     "access": "public"
   },
   "scripts": {
@@ -52,7 +53,7 @@
   "author": "Mindfold LLC",
   "license": "AGPL-3.0-only",
   "dependencies": {
-    "@mindfoldhq/trellis-core": "workspace:*",
+    "@ecochain/trellis-core": "workspace:*",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "figlet": "^1.9.4",
@@ -85,6 +86,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/mindfold-ai/trellis.git"
+    "url": "https://gitlab.yfsj.cc:8443/cowork/Trellis.git"
   }
 }

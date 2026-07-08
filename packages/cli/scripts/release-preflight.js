@@ -3,8 +3,8 @@
  * Shared release / publish preflight.
  *
  * One source of truth for:
- *   1. Version match between `@mindfoldhq/trellis` and
- *      `@mindfoldhq/trellis-core` (and the current git tag when checked from
+ *   1. Version match between `@ecochain/trellis` and
+ *      `@ecochain/trellis-core` (and the current git tag when checked from
  *      a tag context).
  *   2. The npm dist-tag derived from the shared version (`beta`, `rc`,
  *      `alpha`, or `latest`).
@@ -24,7 +24,7 @@
  *                                    skipped (but version mismatches still
  *                                    fail loudly).
  *   verify-packed-cli                Pack the CLI and assert its dependency
- *                                    on @mindfoldhq/trellis-core resolves
+ *                                    on @ecochain/trellis-core resolves
  *                                    to the exact shared version (not
  *                                    "workspace:*" or a loose range).
  *   verify-npm [--package all|core|cli]
@@ -71,6 +71,16 @@ function readVersions() {
   };
 }
 
+function npmRegistry() {
+  const cli = readJSON(CLI_PKG);
+  return (
+    process.env.NPM_CONFIG_REGISTRY ||
+    process.env.npm_config_registry ||
+    cli.publishConfig?.registry ||
+    "https://registry.npmjs.org/"
+  );
+}
+
 function tagVersionFromEnv() {
   // GITHUB_REF for `push: tags: v*` looks like `refs/tags/v0.6.0-beta.12`.
   // GITHUB_REF_NAME on `release.published` is the tag name.
@@ -89,7 +99,7 @@ export function computeNpmTag(version) {
 export function npmVersionExists(pkgName, version) {
   try {
     const out = execSync(
-      `npm view ${pkgName}@${version} version --json --registry=https://registry.npmjs.org/`,
+      `npm view ${pkgName}@${version} version --json --registry=${npmRegistry()}`,
       { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 15_000 },
     ).trim();
     if (!out) return false;
@@ -107,7 +117,7 @@ export function npmVersionExists(pkgName, version) {
 
 function npmViewJSON(args) {
   const out = execSync(
-    `npm view ${args} --json --registry=https://registry.npmjs.org/`,
+    `npm view ${args} --json --registry=${npmRegistry()}`,
     { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 15_000 },
   ).trim();
   return out ? JSON.parse(out) : null;
@@ -247,18 +257,18 @@ function verifyPackedCli() {
       stdio: ["pipe", "pipe", "pipe"],
     });
     const packedPkg = readJSON(path.join(extractDir, "package/package.json"));
-    const dep = packedPkg.dependencies?.["@mindfoldhq/trellis-core"];
+    const dep = packedPkg.dependencies?.["@ecochain/trellis-core"];
     if (!dep) {
-      fail(`packed CLI is missing dependency on @mindfoldhq/trellis-core.`);
+      fail(`packed CLI is missing dependency on @ecochain/trellis-core.`);
     }
     if (dep !== v.cliVersion) {
       fail(
-        `packed CLI depends on @mindfoldhq/trellis-core@"${dep}" but expected exact "${v.cliVersion}".\n` +
+        `packed CLI depends on @ecochain/trellis-core@"${dep}" but expected exact "${v.cliVersion}".\n` +
           `pnpm should rewrite workspace:* to the exact published version; got "${dep}" instead.`,
       );
     }
     console.log(
-      `${GREEN}ok${RESET} packed CLI pins @mindfoldhq/trellis-core to exact ${v.cliVersion}.`,
+      `${GREEN}ok${RESET} packed CLI pins @ecochain/trellis-core to exact ${v.cliVersion}.`,
     );
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
