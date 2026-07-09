@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 from .config import (
+    get_governance_config,
     get_governance_command,
     is_governance_event_enforced,
 )
@@ -23,6 +25,8 @@ from .session_gate import load_gate_state, summarize_gate_state
 
 
 PASS_STATUSES = {"ready", "not_required"}
+DEFAULT_PLAN_REQUIRED_SECTIONS = ["Intent", "Goal", "Requirements", "Acceptance Criteria"]
+TBD_RE = re.compile(r"\b(TBD|TODO)\b|待定|未填写|未确认", re.IGNORECASE)
 
 
 @dataclass
@@ -49,6 +53,14 @@ def _normalize_status(value: object) -> str:
     if isinstance(value, str) and value.strip():
         return value.strip().lower()
     return "not_evaluated"
+
+
+def _is_true(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "yes", "1", "on"}
+    return False
 
 
 def _result_from_payload(payload: dict, *, default_allowed: bool, source: str) -> GateResult:
@@ -95,6 +107,138 @@ def _result_from_session_gate(repo_root: Path) -> GateResult:
         summary=summarize_gate_state(state),
         blockers=blockers,
         next_step=str(state.get("nextStep")) if state.get("nextStep") else None,
+    )
+
+
+def _normalize_heading(value: str) -> str:
+    value = re.sub(r"[^a-z0-9]+", " ", value.lower())
+    return " ".join(value.split())
+
+
+def _extract_h2_sections(content: str) -> dict[str, str]:
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in content.splitlines():
+        match = re.match(r"^##\s+(.+?)\s*$", line)
+        if match:
+            current = _normalize_heading(match.group(1))
+            sections.setdefault(current, [])
+            continue
+        if current is not None:
+            sections[current].append(line)
+    return {key: "\n".join(lines).strip() for key, lines in sections.items()}
+
+
+def _section_has_meaningful_content(body: str) -> bool:
+    lines = []
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        line = re.sub(r"^[-*]\s+", "", line)
+        line = re.sub(r"^- \[[ xX]\]\s+", "", line)
+        line = line.strip()
+        if not line:
+            continue
+        if TBD_RE.fullmatch(line.rstrip(".。")):
+            continue
+        if TBD_RE.search(line) and line.lower().startswith(("tbd", "todo")):
+            continue
+        if TBD_RE.search(line) and len(line.split()) <= 6:
+            continue
+        lines.append(line)
+    return bool(lines)
+
+
+def _configured_required_sections(plan_gate: dict) -> list[str]:
+    raw_sections = plan_gate.get("required_sections")
+    if isinstance(raw_sections, list):
+        sections = [str(item).strip() for item in raw_sections if str(item).strip()]
+        if sections:
+            return sections
+    return DEFAULT_PLAN_REQUIRED_SECTIONS
+
+
+def _is_plan_gate_enabled(repo_root: Path) -> bool:
+    governance = get_governance_config(repo_root)
+    plan_gate = governance.get("plan_gate")
+    return isinstance(plan_gate, dict) and _is_true(plan_gate.get("enabled"))
+
+
+def _result_from_plan_gate(repo_root: Path, task_dir: str | None) -> GateResult:
+    governance = get_governance_config(repo_root)
+    raw_plan_gate = governance.get("plan_gate")
+    plan_gate: dict = raw_plan_gate if isinstance(raw_plan_gate, dict) else {}
+
+    if not task_dir:
+        return GateResult(
+            allowed=False,
+            status="blocked",
+            summary="Plan/Intent gate needs a task directory to inspect.",
+            blockers=["task_start did not provide TRELLIS_TASK_DIR/task_dir."],
+            next_step="Run task.py start with a concrete task directory.",
+            source="plan_gate",
+        )
+
+    task_path = Path(task_dir)
+    if not task_path.is_absolute():
+        task_path = repo_root / task_path
+
+    prd_path = task_path / "prd.md"
+    if not prd_path.is_file():
+        return GateResult(
+            allowed=False,
+            status="blocked",
+            summary="Plan/Intent is missing.",
+            blockers=[f"Missing required planning artifact: {prd_path.relative_to(repo_root).as_posix() if prd_path.is_absolute() else prd_path}"],
+            next_step="Create prd.md with Intent, Goal, Requirements, and Acceptance Criteria before task.py start.",
+            source="plan_gate",
+        )
+
+    try:
+        content = prd_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return GateResult(
+            allowed=False,
+            status="blocked",
+            summary="Plan/Intent could not be read.",
+            blockers=[str(exc)],
+            next_step="Fix prd.md permissions or encoding, then rerun task.py start.",
+            source="plan_gate",
+        )
+
+    sections = _extract_h2_sections(content)
+    blockers: list[str] = []
+    for section in _configured_required_sections(plan_gate):
+        key = _normalize_heading(section)
+        body = sections.get(key)
+        if body is None:
+            blockers.append(f"Missing required prd.md section: ## {section}")
+        elif not _section_has_meaningful_content(body):
+            blockers.append(f"Required prd.md section is still empty/TBD: ## {section}")
+
+    require_risk = _is_true(plan_gate.get("require_risk"))
+    if require_risk:
+        risk_body = sections.get("risk") or sections.get("risk level")
+        if risk_body is None:
+            blockers.append("Missing required prd.md section: ## Risk")
+        elif not re.search(r"\b(low|medium|high|critical)\b", risk_body, re.IGNORECASE):
+            blockers.append("Risk section must declare one of: Low, Medium, High, Critical")
+
+    if blockers:
+        return GateResult(
+            allowed=False,
+            status="blocked",
+            summary="Plan/Intent gate blocked task_start.",
+            blockers=blockers,
+            next_step="Complete prd.md in Phase 1 before activating the task. Only readonly research and Intent/Plan drafting are allowed before start.",
+            source="plan_gate",
+        )
+
+    return GateResult(
+        allowed=True,
+        status="ready",
+        summary="Plan/Intent gate passed.",
+        blockers=[],
+        source="plan_gate",
     )
 
 
@@ -204,6 +348,9 @@ def evaluate_governance_gate(
             message=message,
             task_dir=task_dir,
         )
+
+    if event == "task_start" and _is_plan_gate_enabled(repo_root):
+        return _result_from_plan_gate(repo_root, task_dir)
 
     return _result_from_session_gate(repo_root)
 

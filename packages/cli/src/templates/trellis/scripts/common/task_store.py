@@ -171,6 +171,10 @@ def _default_prd_content(title: str, description: str | None = None) -> str:
     heading = title.strip() or "Untitled task"
     return f"""# {heading}
 
+## Intent
+
+TBD. Capture the user/business intent, source link, cached document path, or explicit confirmation that authorizes this work.
+
 ## Goal
 
 {goal}
@@ -182,6 +186,11 @@ def _default_prd_content(title: str, description: str | None = None) -> str:
 ## Acceptance Criteria
 
 - [ ] TBD
+
+## Risk
+
+- Level: TBD (Low / Medium / High / Critical)
+- Approval: TBD
 
 ## Notes
 

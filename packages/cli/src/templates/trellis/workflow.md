@@ -157,7 +157,7 @@ Phase 3: Finish  → verify, update spec, commit, and wrap up
 
 ### Planning Artifacts
 
-- `prd.md` — requirements, constraints, and acceptance criteria. Do not put technical design or execution checklists here.
+- `prd.md` — the task's Intent/Plan: user/business intent, goal, requirements, constraints, acceptance criteria, and optional risk notes. Do not put technical design or execution checklists here.
 - `design.md` — technical design for complex tasks: boundaries, contracts, data flow, tradeoffs, compatibility, rollout / rollback shape.
 - `implement.md` — execution plan for complex tasks: ordered checklist, validation commands, review gates, and rollback points.
 - `implement.jsonl` / `check.jsonl` — spec and research manifests for sub-agent context. They do not replace `implement.md`.
@@ -191,6 +191,7 @@ Complex task: ask the user if you can create a Trellis task and enter the planni
 
 [workflow-state:planning]
 Load `trellis-brainstorm`; stay in planning.
+Treat `prd.md` as the Intent/Plan artifact. Until it has real Intent, Goal, Requirements, and Acceptance Criteria, only clarify, research, and draft planning docs; do not imply implementation has started.
 Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start.
@@ -204,6 +205,7 @@ Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research mani
 
 [workflow-state:planning-inline]
 Load `trellis-brainstorm`; stay in planning.
+Treat `prd.md` as the Intent/Plan artifact. Until it has real Intent, Goal, Requirements, and Acceptance Criteria, only clarify, research, and draft planning docs; do not imply implementation has started.
 Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `trellis-before-dev`.
@@ -337,7 +339,7 @@ The brainstorm skill will guide you to:
 - Prefer offering options over open-ended questions
 - Update `prd.md` immediately after each user answer
 - Split large scopes into a parent task plus child tasks when the deliverables can be verified independently
-- Keep `prd.md` focused on requirements and acceptance criteria
+- Keep `prd.md` focused on Intent, Goal, Requirements, Acceptance Criteria, and risk notes
 - For complex tasks, produce `design.md` and `implement.md` before implementation starts
 
 When considering a parent/child split:
@@ -441,7 +443,9 @@ After artifact review, flip the task status to `in_progress`:
 python3 ./.trellis/scripts/task.py start <task-dir>
 ```
 
-For lightweight tasks, `prd.md` can be enough. For complex tasks, `prd.md`, `design.md`, and `implement.md` must exist and be reviewed before start. On sub-agent-dispatch platforms, `implement.jsonl` and `check.jsonl` must both have real curated entries before start. Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
+For lightweight tasks, `prd.md` can be enough, but it must be a real Intent/Plan: Intent, Goal, Requirements, and Acceptance Criteria are filled with task-specific content, not template placeholders. For complex tasks, `prd.md`, `design.md`, and `implement.md` must exist and be reviewed before start. On sub-agent-dispatch platforms, `implement.jsonl` and `check.jsonl` must both have real curated entries before start. Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
+
+If governance `plan_gate` is enabled, `task.py start` enforces this boundary: incomplete Intent/Plan artifacts keep the task in Phase 1, where only clarification, readonly research, and planning doc edits are allowed.
 
 After this command succeeds, the breadcrumb auto-switches to `[workflow-state:in_progress]`, and the rest of Phase 2 / 3 follows.
 

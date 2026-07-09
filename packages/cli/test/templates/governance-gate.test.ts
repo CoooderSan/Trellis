@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -40,11 +41,8 @@ function createProject(config = "") {
   return projectDir;
 }
 
-function writeGateState(projectDir: string, state: Record<string, unknown>) {
-  writeFile(
-    join(projectDir, ".trellis", "workspace", "agent", "session-gate.json"),
-    `${JSON.stringify(state, null, 2)}\n`,
-  );
+function writePrd(projectDir: string, taskDir: string, content: string) {
+  writeFile(join(projectDir, taskDir, "prd.md"), content);
 }
 
 function runTask(projectDir: string, args: string[]) {
@@ -71,7 +69,7 @@ afterEach(() => {
 });
 
 describe("governance hard gate template scripts", () => {
-  const enabledConfig = [
+  const legacySessionGateConfig = [
     "governance:",
     "  enabled: true",
     "  enforce:",
@@ -80,8 +78,24 @@ describe("governance hard gate template scripts", () => {
     "",
   ].join("\n");
 
-  it("blocks task creation when governance is enabled and no session gate passed", () => {
-    const projectDir = createProject(enabledConfig);
+  const planGateConfig = [
+    "governance:",
+    "  enabled: true",
+    "  enforce:",
+    "    task_create: false",
+    "    task_start: true",
+    "  plan_gate:",
+    "    enabled: true",
+    "    required_sections:",
+    "      - Intent",
+    "      - Goal",
+    "      - Requirements",
+    "      - Acceptance Criteria",
+    "",
+  ].join("\n");
+
+  it("keeps legacy session-gate behavior when plan_gate is not enabled", () => {
+    const projectDir = createProject(legacySessionGateConfig);
     const result = runTask(projectDir, [
       "create",
       "Add demo feature",
@@ -95,16 +109,8 @@ describe("governance hard gate template scripts", () => {
     expect(taskNames(projectDir)).toEqual([]);
   });
 
-  it("allows task creation after a ready session gate result", () => {
-    const projectDir = createProject(enabledConfig);
-    writeGateState(projectDir, {
-      status: "ready",
-      taskType: "development",
-      request: "Add demo feature",
-      summary: "Preflight passed",
-      blockers: [],
-      nextStep: "Create the Trellis task",
-    });
+  it("allows task creation without intent when only task_start is gated", () => {
+    const projectDir = createProject(planGateConfig);
 
     const result = runTask(projectDir, [
       "create",
@@ -116,18 +122,14 @@ describe("governance hard gate template scripts", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toMatch(/\.trellis\/tasks\/\d{2}-\d{2}-demo/);
     expect(taskNames(projectDir)).toHaveLength(1);
+
+    const prd = readFileSync(join(projectDir, result.stdout.trim(), "prd.md"), "utf-8");
+    expect(prd).toContain("## Intent");
+    expect(prd).toContain("## Risk");
   });
 
-  it("blocks task activation when the gate later becomes blocked", () => {
-    const projectDir = createProject(enabledConfig);
-    writeGateState(projectDir, {
-      status: "ready",
-      taskType: "development",
-      request: "Add demo feature",
-      summary: "Preflight passed",
-      blockers: [],
-    });
-
+  it("blocks task activation while the plan/intent artifact is still a skeleton", () => {
+    const projectDir = createProject(planGateConfig);
     const createResult = runTask(projectDir, [
       "create",
       "Add demo feature",
@@ -137,22 +139,56 @@ describe("governance hard gate template scripts", () => {
     expect(createResult.status).toBe(0);
     const taskDir = createResult.stdout.trim();
 
-    writeGateState(projectDir, {
-      status: "blocked",
-      taskType: "development",
-      request: "Add demo feature",
-      summary: "Intent is missing",
-      blockers: ["Intent missing"],
-      nextStep: "Write Intent first",
-    });
-
     const startResult = runTask(projectDir, ["start", taskDir]);
 
     expect(startResult.status).toBe(1);
     expect(startResult.stderr).toContain("Governance gate blocked task_start");
-    expect(startResult.stderr).toContain("Intent missing");
+    expect(startResult.stderr).toContain("Plan/Intent gate blocked task_start");
+    expect(startResult.stderr).toContain("Required prd.md section is still empty/TBD: ## Intent");
     expect(existsSync(join(projectDir, ".trellis", ".current-task"))).toBe(
       false,
     );
+  });
+
+  it("allows task activation after prd.md contains a real intent plan", () => {
+    const projectDir = createProject(planGateConfig);
+    const createResult = runTask(projectDir, [
+      "create",
+      "Add demo feature",
+      "--slug",
+      "demo",
+    ]);
+    expect(createResult.status).toBe(0);
+    const taskDir = createResult.stdout.trim();
+
+    writePrd(
+      projectDir,
+      taskDir,
+      [
+        "# Add demo feature",
+        "",
+        "## Intent",
+        "User confirmed the product needs a demo feature for onboarding validation.",
+        "",
+        "## Goal",
+        "Expose a minimal demo feature behind the existing workflow.",
+        "",
+        "## Requirements",
+        "- Reuse existing task creation flow.",
+        "- Avoid production data changes.",
+        "",
+        "## Acceptance Criteria",
+        "- [ ] Demo task can be activated only after plan review.",
+        "",
+        "## Risk",
+        "- Level: Low",
+        "",
+      ].join("\n"),
+    );
+
+    const startResult = runTask(projectDir, ["start", taskDir]);
+
+    expect(startResult.status).toBe(0);
+    expect(startResult.stderr).not.toContain("Governance gate blocked task_start");
   });
 });
