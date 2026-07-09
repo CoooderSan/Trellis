@@ -40,13 +40,13 @@ Index files list the specific guideline docs to read when you actually start cod
 ## Step 4: Decide next action
 From Step 1 you know the current task and status. Check the task directory:
 
-- **Active task status `planning` + no `prd.md`** → Phase 1.1. Load the `trellis-brainstorm` skill.
-- **Active task status `planning` + `prd.md` exists** → stay in Phase 1. Lightweight tasks can be PRD-only; complex tasks need `design.md` + `implement.md`. Load the relevant Phase 1 step detail before `task.py start`.
+- **Active task status `planning` + missing `intent.md` or `prd.md`** → Phase 1.1. Load the `trellis-brainstorm` skill.
+- **Active task status `planning` + `intent.md` and `prd.md` exist** → stay in Phase 1. Lightweight tasks need `intent.md` + `prd.md`; complex tasks also need `design.md` + `implement.md`. Load the relevant Phase 1 step detail before `task.py start`.
 - **Active task status `in_progress`** → Phase 2 step 2.1. Load the step detail:
   ```bash
   {{PYTHON_CMD}} ./.trellis/scripts/get_context.py --mode phase --step 2.1 --platform {{CLI_FLAG}}
   ```
-- **No active task** → classify first. For simple conversation / small task, ask only whether this turn should create a Trellis task. For complex work, ask whether you may create a Trellis task and enter planning. If the user says no, skip Trellis for this session.
+- **No active task** → classify first. Simple conversation, readonly investigation, and operational commands can continue without a task only when no project files will be changed. Any development work needs a Trellis task and `intent.md` before implementation. For complex work, ask whether you may create a Trellis task and enter planning. If the user says no, hard-stop development in Dazz voice; offer only readonly research or drafting a minimal Intent.
 
 ---
 

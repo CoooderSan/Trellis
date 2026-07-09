@@ -55,11 +55,13 @@ max_journal_lines: 2000
 #-------------------------------------------------------------------------------
 
 # Optional hard gates for workflow mutations. Recommended pattern: allow
-# task_create so Phase 1 can capture Intent/Plan, then gate task_start so work
-# cannot enter Phase 2 implementation until the planning artifact is complete.
+# task_create so Phase 1 can create the Intent document, then gate task_start
+# so work cannot enter Phase 2 implementation until the Intent and PRD are
+# complete.
 #
-# Without `command`, `plan_gate.enabled: true` uses the local task prd.md as the
-# Intent/Plan source. With `command`, your external evaluator owns the policy.
+# Without `command`, `plan_gate.enabled: true` uses the local task intent.md and
+# prd.md as the planning sources. With `command`, your external evaluator owns
+# the policy.
 #
 # governance:
 #   enabled: true
@@ -68,8 +70,14 @@ max_journal_lines: 2000
 #     task_start: true
 #   plan_gate:
 #     enabled: true
-#     required_sections:
+#     intent_document:
+#       enabled: true
+#       path: intent.md
+#     intent_required_sections:
 #       - Intent
+#       - Scope
+#       - Acceptance Criteria
+#     required_sections:
 #       - Goal
 #       - Requirements
 #       - Acceptance Criteria

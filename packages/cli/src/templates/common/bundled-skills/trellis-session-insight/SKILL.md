@@ -22,7 +22,7 @@ The bar is "would a senior teammate ask 'didn't we already talk about this?'" �
 - **Brainstorm rerun risk.** Starting a new task that touches an area the user has been in before, and you want to check whether a decision was already made — before re-asking the user.
 - **Familiar-bug debugging.** The current bug pattern feels like one the user reported / fixed before. Pulling the relevant past session can save a full debugging loop.
 - **Cross-session continuation.** The user resumes work after a gap and says "where were we" / "继续上次的" without being specific.
-- **Decision retrieval.** The user references "the decision we made about X" but the decision lives in an old brainstorm, not in any `prd.md` / `spec/`.
+- **Decision retrieval.** The user references "the decision we made about X" but the decision lives in an old brainstorm, not in any `intent.md` / `prd.md` / `spec/`.
 - **Finish-work retrospective.** When the user explicitly asks for a wrap-up of what was decided / what hurt / what surprised them in this task — not as a forced step on every finish-work.
 - **Pattern-spotting across past work.** The user asks "do I keep making the same mistake on X" / "我每次都踩这个坑吗" — search across sessions answers that.
 
@@ -30,7 +30,7 @@ If none of these apply, don't call `mem`. It is a tool, not a ceremony.
 
 ## When NOT to reach for it
 
-- The relevant context is already in the current turn, `prd.md`, `design.md`, recent `git log`, or the open files. `mem` is for stuff that has fallen out of immediate reach.
+- The relevant context is already in the current turn, `intent.md`, `prd.md`, `design.md`, recent `git log`, or the open files. `mem` is for stuff that has fallen out of immediate reach.
 - The user is asking about a fact in the code, not a fact from a past conversation. `git log -p` / `grep` / reading the file directly is faster and more authoritative.
 - You are in a sub-agent (`trellis-implement` / `trellis-check`) whose dispatch prompt already includes the curated `implement.jsonl` / `check.jsonl` context. Adding `mem` on top usually just clutters.
 - The user has explicitly said "don't dig through history, just answer what I asked".
@@ -40,7 +40,7 @@ If none of these apply, don't call `mem`. It is a tool, not a ceremony.
 Treat the output as **raw material**, not a deliverable. Once you have it, decide based on the live conversation:
 
 - **Quote inline in your reply** if a specific past exchange answers the user's current question — and cite the session-id / phase so the user can verify.
-- **Update `<task>/prd.md` or `<task>/design.md`** if `mem` surfaced a load-bearing decision that should have been written down but wasn't. Surface the proposed edit to the user first.
+- **Update `<task>/intent.md`, `<task>/prd.md`, or `<task>/design.md`** if `mem` surfaced a load-bearing decision that should have been written down but wasn't. Surface the proposed edit to the user first.
 - **Append to a task-local notes file** (e.g. `<task>/notes.md` or extending an existing one) if the finding belongs to the current task's record but doesn't fit the PRD.
 - **Update `.trellis/spec/`** if the finding is a project-wide convention or gotcha that would help future tasks. Run the `trellis-update-spec` skill for that — `session-insight` ends at the discovery.
 - **Just absorb it** for the next few turns and answer better, without writing anything. This is often the right move for one-off recall.

@@ -13,7 +13,7 @@
 ## Current Phase Model
 
 ```text
-Phase 1: Plan    -> clarify what to build, produce prd.md and required research
+Phase 1: Plan    -> clarify why and what to build, produce intent.md / prd.md and required research
 Phase 2: Execute -> implement against the PRD and specs, then check
 Phase 3: Finish  -> final verification, preserve lessons, and wrap up
 ```

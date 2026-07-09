@@ -41,6 +41,11 @@ function getImplementContext(ctx, taskDir) {
     parts.push(ctx.buildContextFromEntries(entries))
   }
 
+  const intent = ctx.readFile(join(taskDirFull, "intent.md"))
+  if (intent) {
+    parts.push(`=== ${taskDir}/intent.md (Intent) ===\n${intent}`)
+  }
+
   const prd = ctx.readFile(join(taskDirFull, "prd.md"))
   if (prd) {
     parts.push(`=== ${taskDir}/prd.md (Requirements) ===\n${prd}`)
@@ -71,6 +76,11 @@ function getCheckContext(ctx, taskDir) {
   const entries = ctx.readJsonlWithFiles(jsonlPath)
   if (entries.length > 0) {
     parts.push(ctx.buildContextFromEntries(entries))
+  }
+
+  const intent = ctx.readFile(join(taskDirFull, "intent.md"))
+  if (intent) {
+    parts.push(`=== ${taskDir}/intent.md (Intent) ===\n${intent}`)
   }
 
   const prd = ctx.readFile(join(taskDirFull, "prd.md"))
@@ -210,7 +220,7 @@ ${originalPrompt}
 ## Workflow
 
 1. **Review changes** - Run \`git diff --name-only\` to see all changed files
-2. **Verify task artifacts** - Check prd.md and, when present, design.md / implement.md
+2. **Verify task artifacts** - Check intent.md, prd.md, and, when present, design.md / implement.md
 3. **Spec sync** - Analyze whether changes introduce new patterns, contracts, or conventions
    - If new pattern/convention found: read target spec file → update it → update index.md if needed
    - If infra/cross-layer change: follow the 7-section mandatory template from update-spec.md
@@ -224,7 +234,7 @@ ${originalPrompt}
 - MUST read the target spec file BEFORE editing (avoid duplicating existing content)
 - Do NOT update specs for trivial changes (typos, formatting, obvious fixes)
 - If critical CODE issues found, report them clearly (fix specs, not code)
-- Verify all acceptance criteria in prd.md are met
+- Verify all acceptance criteria in intent.md / prd.md are met
 - Verify design.md and implement.md constraints when those files are present` :
       `<!-- trellis-hook-injected -->
 # Check Agent Task

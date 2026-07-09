@@ -171,10 +171,6 @@ def _default_prd_content(title: str, description: str | None = None) -> str:
     heading = title.strip() or "Untitled task"
     return f"""# {heading}
 
-## Intent
-
-TBD. Capture the user/business intent, source link, cached document path, or explicit confirmation that authorizes this work.
-
 ## Goal
 
 {goal}
@@ -195,8 +191,40 @@ TBD. Capture the user/business intent, source link, cached document path, or exp
 ## Notes
 
 - Keep `prd.md` focused on requirements, constraints, and acceptance criteria.
-- Lightweight tasks can remain PRD-only.
+- Keep `intent.md` as the authoritative Intent document for why this work is allowed to proceed.
+- Lightweight tasks can use `intent.md` + `prd.md` only.
 - For complex tasks, add `design.md` for technical design and `implement.md` for execution planning before `task.py start`.
+"""
+
+
+def _default_intent_content(title: str, description: str | None = None) -> str:
+    """Return the default Intent document skeleton created with every task."""
+    heading = title.strip() or "Untitled task"
+    source = (description or "").strip() or "TBD."
+    return f"""# Intent: {heading}
+
+## Intent
+
+TBD. Capture the user/business reason this work is needed and authorized.
+
+## Source
+
+- User request or source document: {source}
+- Reference link or cached document path: TBD
+
+## Scope
+
+- In scope: TBD
+- Out of scope: TBD
+
+## Acceptance Criteria
+
+- [ ] TBD
+
+## Risk
+
+- Level: TBD (Low / Medium / High / Critical)
+- Approval: TBD
 """
 
 
@@ -344,6 +372,13 @@ def cmd_create(args: argparse.Namespace) -> int:
             encoding="utf-8",
         )
 
+    intent_path = task_dir / "intent.md"
+    if not intent_path.exists():
+        intent_path.write_text(
+            _default_intent_content(args.title, args.description),
+            encoding="utf-8",
+        )
+
     # Seed implement.jsonl / check.jsonl for sub-agent-capable platforms.
     # Agent curates real entries during planning when the task needs them.
     # Agent-less platforms (Kilo / Antigravity / Devin) skip this — they
@@ -397,8 +432,9 @@ def cmd_create(args: argparse.Namespace) -> int:
     print(colored(f"Created task: {dir_name}", Colors.GREEN), file=sys.stderr)
     print("", file=sys.stderr)
     print(colored("Next steps:", Colors.BLUE), file=sys.stderr)
+    print("  - Fill intent.md with the user/business Intent before implementation", file=sys.stderr)
     print("  - Fill prd.md with requirements and acceptance criteria", file=sys.stderr)
-    print("  - Lightweight task: PRD-only is valid", file=sys.stderr)
+    print("  - Lightweight task: intent.md + prd.md is valid", file=sys.stderr)
     print("  - Complex task: add design.md and implement.md before task.py start", file=sys.stderr)
     if seeded_jsonl:
         print(

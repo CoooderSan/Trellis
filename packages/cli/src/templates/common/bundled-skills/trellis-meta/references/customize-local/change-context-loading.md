@@ -17,6 +17,7 @@ Context loading determines when AI reads workflow, task, spec, research, workspa
 | Source | Purpose |
 | --- | --- |
 | `.trellis/workflow.md` | Workflow and next-action hints. |
+| `.trellis/tasks/<task>/intent.md` | Current task Intent and scope. |
 | `.trellis/tasks/<task>/prd.md` | Current task requirements. |
 | `.trellis/tasks/<task>/design.md` | Complex task technical design. |
 | `.trellis/tasks/<task>/implement.md` | Complex task execution plan. |
@@ -68,9 +69,10 @@ In both modes, make sure the agent ultimately reads:
 1. active task
 2. the corresponding JSONL
 3. spec/research referenced by the JSONL
-4. `prd.md`
-5. `design.md` if present
-6. `implement.md` if present
+4. `intent.md`
+5. `prd.md`
+6. `design.md` if present
+7. `implement.md` if present
 
 ## Troubleshooting Order
 

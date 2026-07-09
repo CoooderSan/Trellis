@@ -566,11 +566,16 @@ def get_context_text(repo_root: Path | None = None) -> str:
             if ct.description:
                 lines.append(f"Description: {ct.description}")
 
+        intent_file = current_task_dir / "intent.md"
+        if intent_file.is_file():
+            lines.append("")
+            lines.append("[!] This task has intent.md - read it before implementation")
+
         # Check for prd.md
         prd_file = current_task_dir / "prd.md"
         if prd_file.is_file():
             lines.append("")
-            lines.append("[!] This task has prd.md - read it for task details")
+            lines.append("[!] This task has prd.md - read it for requirements")
     else:
         lines.append("(none)")
     lines.append("")

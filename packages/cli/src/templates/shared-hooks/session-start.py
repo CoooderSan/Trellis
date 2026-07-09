@@ -355,7 +355,7 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
 
     task_title = task_data.get("title", task_ref)
     task_status = task_data.get("status", "unknown")
-    artifact_names = ("prd.md", "design.md", "implement.md", "implement.jsonl", "check.jsonl")
+    artifact_names = ("intent.md", "prd.md", "design.md", "implement.md", "implement.jsonl", "check.jsonl")
     present = [name for name in artifact_names if (task_dir / name).is_file()]
     if (task_dir / "research").is_dir():
         present.append("research/")
@@ -368,6 +368,7 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
             "Next-Action: Run `/trellis:finish-work`. If the working tree is dirty, return to Phase 3.4 first."
         )
 
+    has_intent = (task_dir / "intent.md").is_file()
     has_prd = (task_dir / "prd.md").is_file()
     has_design = (task_dir / "design.md").is_file()
     has_implement_plan = (task_dir / "implement.md").is_file()
@@ -378,11 +379,11 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
         and (not check_jsonl.is_file() or _has_curated_jsonl_entry(check_jsonl))
     )
 
-    if task_status == "planning" and not has_prd:
+    if task_status == "planning" and (not has_intent or not has_prd):
         return (
             f"Status: PLANNING\nTask: {task_title}\n"
             f"Present: {present_line}\n"
-            "Next-Action: Load `trellis-brainstorm` and write `prd.md`. Stay in planning."
+            "Next-Action: Load `trellis-brainstorm` and write `intent.md` / `prd.md`. Stay in planning."
         )
 
     if task_status == "planning":
@@ -396,7 +397,7 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
         next_bits: list[str] = []
         if missing_complex:
             next_bits.append(
-                "Lightweight task can request start review with PRD-only; "
+                "Lightweight task can request start review with `intent.md` + `prd.md`; "
                 f"complex task must add {', '.join(missing_complex)} before start"
             )
         else:
@@ -413,7 +414,7 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
         f"Status: {str(task_status).upper()}\nTask: {task_title}\n"
         f"Present: {present_line}\n"
         "Next-Action: Follow the matching per-turn workflow-state. "
-        "Implementation/check context order is jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`."
+        "Implementation/check context order is jsonl entries -> `intent.md` -> `prd.md` -> `design.md if present` -> `implement.md if present`."
     )
 
 
@@ -792,7 +793,7 @@ Trellis compact SessionStart context. Use it to orient the session; load details
 
     output.write("<guidelines>\n")
     output.write(
-        "Task context order for implementation/check: jsonl entries -> `prd.md` -> "
+        "Task context order for implementation/check: jsonl entries -> `intent.md` -> `prd.md` -> "
         "`design.md if present` -> `implement.md if present`. Missing optional artifacts "
         "are skipped for lightweight tasks.\n\n"
     )

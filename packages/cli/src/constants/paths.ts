@@ -33,6 +33,8 @@ export const FILE_NAMES = {
   CURRENT_TASK: ".current-task",
   /** Task metadata */
   TASK_JSON: "task.json",
+  /** Intent document */
+  INTENT: "intent.md",
   /** Requirements document */
   PRD: "prd.md",
   /** Workflow guide */

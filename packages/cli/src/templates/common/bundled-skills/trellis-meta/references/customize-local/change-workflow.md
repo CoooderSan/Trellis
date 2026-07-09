@@ -6,7 +6,7 @@ When the user wants to change Trellis phases, next-action hints, whether to crea
 
 1. `.trellis/workflow.md`
 2. Entry files for the current platform, such as skills/commands/prompts/workflows
-3. The current task's `task.json` and `prd.md`
+3. The current task.s `task.json`, `intent.md`, and `prd.md`
 
 ## Common Needs And Edit Points
 
@@ -49,10 +49,10 @@ If the user wants only one platform to avoid sub-agents, first confirm whether t
 
 | `status` | Artifact state | Resume at |
 | --- | --- | --- |
-| `planning` | `prd.md` missing | Phase 1.1 (load `trellis-brainstorm`) |
-| `planning` | lightweight task with `prd.md` complete | ask for start review, then run `task.py start` |
+| `planning` | `intent.md` or `prd.md` missing | Phase 1.1 (load `trellis-brainstorm`) |
+| `planning` | lightweight task with `intent.md` and `prd.md` complete | ask for start review, then run `task.py start` |
 | `planning` | complex task missing `design.md` or `implement.md` | complete missing planning artifacts |
-| `planning` | complex task has `prd.md`, `design.md`, and `implement.md` | ask for start review, then run `task.py start` |
+| `planning` | complex task has `intent.md`, `prd.md`, `design.md`, and `implement.md` | ask for start review, then run `task.py start` |
 | `in_progress` | no implementation in conversation history | Phase 2.1 (`trellis-implement`) |
 | `in_progress` | implementation done, no `trellis-check` run | Phase 2.2 (`trellis-check`) |
 | `in_progress` | check passed | Phase 3.3 (spec update) → 3.4 (commit) |

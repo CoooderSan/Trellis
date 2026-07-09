@@ -1027,6 +1027,11 @@ describe("init() integration", () => {
     expect(taskJson.relatedFiles).toContain(".trellis/spec/core/");
     expect(taskJson.relatedFiles).toContain(".trellis/spec/ui/");
 
+    const intent = fs.readFileSync(path.join(taskDir, "intent.md"), "utf-8");
+    expect(intent).toContain("## Intent");
+    expect(intent).toContain("## Scope");
+    expect(intent).toContain("core, ui");
+
     // prd.md mentions packages + renders per-package checklist items
     const prd = fs.readFileSync(path.join(taskDir, "prd.md"), "utf-8");
     const expectedPythonCmd =

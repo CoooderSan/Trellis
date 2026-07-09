@@ -39,7 +39,7 @@ python3 ./.trellis/scripts/get_context.py --mode packages   # list packages / la
 
 ### Task System
 
-Every task has its own directory under `.trellis/tasks/{MM-DD-name}/` holding `task.json`, `prd.md`, optional `design.md`, optional `implement.md`, optional `research/`, and context manifests (`implement.jsonl`, `check.jsonl`) for sub-agent-capable platforms.
+Every task has its own directory under `.trellis/tasks/{MM-DD-name}/` holding `task.json`, `intent.md`, `prd.md`, optional `design.md`, optional `implement.md`, optional `research/`, and context manifests (`implement.jsonl`, `check.jsonl`) for sub-agent-capable platforms.
 
 ```bash
 # Task lifecycle
@@ -151,17 +151,20 @@ Phase 3: Finish  → verify, update spec, commit, and wrap up
 
 ### Request Triage
 
-- Simple conversation or small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
-- Complex task: ask whether you may create a Trellis task and enter planning. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
+- Simple conversation, readonly investigation, or operational commands can proceed without a Trellis task when no code will be changed.
+- Any development work that may write code, tests, schemas, configs, migrations, or specs requires a Trellis task and an Intent document before implementation.
+- Complex task: ask whether you may create a Trellis task and enter planning. If the user says no, hard-stop development. You may only do readonly research or draft the smallest viable Intent for review.
 - User approval to create a task is not approval to start implementation. Planning still happens first.
+- Trellis-owned constraint replies use Dazz voice for the first blocking sentence. Example: `先停下。这个前置还没过，Dazz 现在不会让你直接进实现。先把 Intent 文档补好。`
 
 ### Planning Artifacts
 
-- `prd.md` — the task's Intent/Plan: user/business intent, goal, requirements, constraints, acceptance criteria, and optional risk notes. Do not put technical design or execution checklists here.
+- `intent.md` — the task's Intent document: user/business reason, source, scope, acceptance signal, and risk. This is the first planning artifact for development work.
+- `prd.md` — the task's requirement plan: goal, requirements, constraints, acceptance criteria, and optional risk notes. Do not put technical design or execution checklists here.
 - `design.md` — technical design for complex tasks: boundaries, contracts, data flow, tradeoffs, compatibility, rollout / rollback shape.
 - `implement.md` — execution plan for complex tasks: ordered checklist, validation commands, review gates, and rollback points.
 - `implement.jsonl` / `check.jsonl` — spec and research manifests for sub-agent context. They do not replace `implement.md`.
-- Lightweight tasks may be PRD-only. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start`.
+- Lightweight tasks may use only `intent.md` + `prd.md`. Complex tasks must also have `design.md` and `implement.md` before `task.py start`.
 
 ### Parent / Child Task Trees
 
@@ -175,13 +178,14 @@ Create new children with `task.py create "<title>" --slug <name> --parent <paren
 
 [workflow-state:no_task]
 No active task. First classify the current turn and ask for task-creation consent before creating any Trellis task.
-Simple conversation / small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
-Complex task: ask the user if you can create a Trellis task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
+Simple conversation, readonly investigation, and operational commands can continue without a task only when no project files will be changed.
+Development work requires a Trellis task and `intent.md`; do not offer direct implementation, even as a smaller slice, before Intent exists and the task is started.
+Complex task: ask the user if you can create a Trellis task and enter the planning phase. If the user says no, hard-stop development in Dazz voice; offer only readonly research or drafting a minimal Intent.
 [/workflow-state:no_task]
 
 ### Phase 1: Plan
 - 1.0 Create task `[required · once]` (only after task-creation consent)
-- 1.1 Requirement exploration `[required · repeatable]` (`prd.md`; complex tasks also need `design.md` + `implement.md`)
+- 1.1 Requirement exploration `[required · repeatable]` (`intent.md` + `prd.md`; complex tasks also need `design.md` + `implement.md`)
 - 1.2 Research `[optional · repeatable]`
 - 1.3 Configure context `[required · once]` — Claude Code, Cursor, OpenCode, Codex, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, ZCode, Reasonix (sub-agent-dispatch platforms only; inline platforms skip)
 - 1.4 Activate task `[required · once]` (review gate, then `task.py start`; status → in_progress)
@@ -191,8 +195,8 @@ Complex task: ask the user if you can create a Trellis task and enter the planni
 
 [workflow-state:planning]
 Load `trellis-brainstorm`; stay in planning.
-Treat `prd.md` as the Intent/Plan artifact. Until it has real Intent, Goal, Requirements, and Acceptance Criteria, only clarify, research, and draft planning docs; do not imply implementation has started.
-Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
+Treat `intent.md` as the Intent document and `prd.md` as the requirement plan. Until both contain real task-specific content, only clarify, research, and draft planning docs; do not imply implementation has started.
+Lightweight: `intent.md` + `prd.md` can be enough. Complex: finish `intent.md`, `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start.
 [/workflow-state:planning]
@@ -205,8 +209,8 @@ Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research mani
 
 [workflow-state:planning-inline]
 Load `trellis-brainstorm`; stay in planning.
-Treat `prd.md` as the Intent/Plan artifact. Until it has real Intent, Goal, Requirements, and Acceptance Criteria, only clarify, research, and draft planning docs; do not imply implementation has started.
-Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
+Treat `intent.md` as the Intent document and `prd.md` as the requirement plan. Until both contain real task-specific content, only clarify, research, and draft planning docs; do not imply implementation has started.
+Lightweight: `intent.md` + `prd.md` can be enough. Complex: finish `intent.md`, `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `trellis-before-dev`.
 [/workflow-state:planning-inline]
@@ -228,7 +232,7 @@ Sub-agent dispatch protocol applies to all platforms and all sub-agents, includi
 Tools: `trellis-implement` / `trellis-research` are sub-agent types only (Task/Agent tool, NOT Skill; there is no skill by these names). `trellis-update-spec` is a skill. `trellis-check` exists as both; prefer the Agent form when verifying after code changes.
 Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
 Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `trellis-implement`, do NOT spawn another `trellis-implement` or `trellis-check`; if already running as `trellis-check`, do NOT spawn another `trellis-check` or `trellis-implement`. Dispatch is main session only.
-Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
+Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `intent.md` -> `prd.md` -> `design.md if present` -> `implement.md if present`.
 [/workflow-state:in_progress]
 
 <!-- Per-turn breadcrumb: shown while status='in_progress' when
@@ -239,7 +243,7 @@ Dispatch prompt starts with `Active task: <task path from task.py current>`. Rea
 [workflow-state:in_progress-inline]
 Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
 Do not dispatch implement/check sub-agents in inline mode.
-Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
+Read context: `intent.md` -> `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
 [/workflow-state:in_progress-inline]
 
 ### Phase 3: Finish
@@ -293,7 +297,8 @@ When a user request matches one of these intents inside an active task, route fi
 ### Guardrails
 
 - Task creation approval is not implementation approval; implementation waits for `task.py start` after artifact review.
-- PRD-only is valid for lightweight tasks; complex tasks need `design.md` + `implement.md`.
+- Development work must have a real `intent.md` before implementation; if the user refuses, do readonly research or draft Intent, but do not code.
+- `intent.md` + `prd.md` is valid for lightweight tasks; complex tasks need `design.md` + `implement.md` too.
 - Planning must be persisted to task artifacts; checks must run before reporting completion.
 
 ### Loading Step Detail
@@ -313,7 +318,7 @@ Goal: classify the request, get task-creation consent when a task is needed, and
 
 #### 1.0 Create task `[required · once]`
 
-Create the task directory only after task-creation consent. The command sets status to `planning`, writes `task.json`, creates a default `prd.md`, and auto-targets the new task when session identity is available:
+Create the task directory only after task-creation consent. The command sets status to `planning`, writes `task.json`, creates default `intent.md` and `prd.md`, and auto-targets the new task when session identity is available:
 
 ```bash
 python3 ./.trellis/scripts/task.py create "<task title>" --slug <name>
@@ -337,9 +342,10 @@ The brainstorm skill will guide you to:
 - Ask one question at a time
 - Prefer researching over asking the user
 - Prefer offering options over open-ended questions
-- Update `prd.md` immediately after each user answer
+- Update `intent.md` / `prd.md` immediately after each user answer
 - Split large scopes into a parent task plus child tasks when the deliverables can be verified independently
-- Keep `prd.md` focused on Intent, Goal, Requirements, Acceptance Criteria, and risk notes
+- Keep `intent.md` focused on the user/business Intent, source, scope, acceptance signal, and risk
+- Keep `prd.md` focused on Goal, Requirements, Acceptance Criteria, and constraints
 - For complex tasks, produce `design.md` and `implement.md` before implementation starts
 
 When considering a parent/child split:
@@ -443,9 +449,9 @@ After artifact review, flip the task status to `in_progress`:
 python3 ./.trellis/scripts/task.py start <task-dir>
 ```
 
-For lightweight tasks, `prd.md` can be enough, but it must be a real Intent/Plan: Intent, Goal, Requirements, and Acceptance Criteria are filled with task-specific content, not template placeholders. For complex tasks, `prd.md`, `design.md`, and `implement.md` must exist and be reviewed before start. On sub-agent-dispatch platforms, `implement.jsonl` and `check.jsonl` must both have real curated entries before start. Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
+For lightweight tasks, `intent.md` + `prd.md` can be enough, but both must contain real task-specific content, not template placeholders. For complex tasks, `intent.md`, `prd.md`, `design.md`, and `implement.md` must exist and be reviewed before start. On sub-agent-dispatch platforms, `implement.jsonl` and `check.jsonl` must both have real curated entries before start. Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
 
-If governance `plan_gate` is enabled, `task.py start` enforces this boundary: incomplete Intent/Plan artifacts keep the task in Phase 1, where only clarification, readonly research, and planning doc edits are allowed.
+If governance `plan_gate` is enabled, `task.py start` enforces this boundary: missing or incomplete `intent.md` / `prd.md` keeps the task in Phase 1, where only clarification, readonly research, and planning doc edits are allowed.
 
 After this command succeeds, the breadcrumb auto-switches to `[workflow-state:in_progress]`, and the rest of Phase 2 / 3 follows.
 
@@ -455,7 +461,8 @@ If `task.py start` errors with a session-identity message (no context key from h
 
 | Condition | Required |
 |------|:---:|
-| `prd.md` exists | ✅ |
+| `intent.md` exists with real Intent content | ✅ |
+| `prd.md` exists with real requirements | ✅ |
 | User confirms task should enter implementation | ✅ |
 | `task.py start` has been run (status = in_progress) | ✅ |
 | `research/` has artifacts (complex tasks) | recommended |
@@ -486,7 +493,7 @@ Spawn the implement sub-agent:
 
 The platform hook/plugin auto-handles:
 - Reads `implement.jsonl` and injects referenced spec/research files into the agent prompt
-- Injects `prd.md`, `design.md` if present, and `implement.md` if present
+- Injects `intent.md`, `prd.md`, `design.md` if present, and `implement.md` if present
 
 [/Claude Code, Cursor, OpenCode, CodeBuddy, Droid, Pi]
 
@@ -499,7 +506,7 @@ Spawn the implement sub-agent:
 - **Dispatch prompt guard**: The prompt MUST start with `Active task: <task path>`, then explicitly say the spawned agent is already `trellis-implement` and must implement directly without spawning another `trellis-implement` / `trellis-check`.
 
 The pull-based sub-agent definition auto-handles the context load requirement:
-- Resolves the active task with `task.py current --source`, then reads `prd.md`, `design.md` if present, and `implement.md` if present
+- Resolves the active task with `task.py current --source`, then reads `intent.md`, `prd.md`, `design.md` if present, and `implement.md` if present
 - Reads `implement.jsonl` and requires the agent to load each referenced spec/research file before coding
 
 [/codex-sub-agent, Gemini, Qoder, Copilot, ZCode, Reasonix, Trae]
@@ -514,14 +521,14 @@ Spawn the implement sub-agent:
 
 The platform prelude auto-handles the context load requirement:
 - Reads `implement.jsonl` and injects referenced spec/research files into the agent prompt
-- Injects `prd.md`, `design.md` if present, and `implement.md` if present
+- Injects `intent.md`, `prd.md`, `design.md` if present, and `implement.md` if present
 
 [/Kiro]
 
 [codex-inline, Kilo, Antigravity, Devin]
 
 1. Load the `trellis-before-dev` skill to read project guidelines
-2. Read `{TASK_DIR}/prd.md`, then `design.md` if present, then `implement.md` if present
+2. Read `{TASK_DIR}/intent.md`, then `prd.md`, then `design.md` if present, then `implement.md` if present
 3. Consult materials under `{TASK_DIR}/research/`
 4. Implement the code per reviewed artifacts
 5. Run project lint and type-check
@@ -540,7 +547,7 @@ Spawn the check sub-agent:
 
 The check agent's job:
 - Review code changes against specs
-- Review code changes against `prd.md`, `design.md` if present, and `implement.md` if present
+- Review code changes against `intent.md`, `prd.md`, `design.md` if present, and `implement.md` if present
 - Auto-fix issues it finds
 - Run lint and typecheck to verify
 
@@ -655,7 +662,7 @@ This section is for developers who want to modify the Trellis workflow itself. A
 
 Edit the corresponding step's walkthrough body in the Phase 1 / 2 / 3 sections above. Critical invariants:
 - No active task must triage first and ask for task-creation consent before creating a Trellis task.
-- Planning must distinguish lightweight PRD-only tasks from complex tasks that require `prd.md`, `design.md`, and `implement.md` before start.
+- Planning must distinguish lightweight `intent.md` + `prd.md` tasks from complex tasks that require `intent.md`, `prd.md`, `design.md`, and `implement.md` before start.
 - Every required execution path must keep the Phase 3.4 commit reminder reachable before `/trellis:finish-work`.
 
 All tag blocks live in the `## Phase Index` section above, immediately after each phase summary:

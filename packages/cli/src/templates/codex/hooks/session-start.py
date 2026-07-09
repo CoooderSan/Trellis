@@ -255,20 +255,21 @@ def _get_task_status(trellis_dir: Path, hook_input: dict) -> str:
             "or start a new task."
         )
 
+    has_intent = (task_dir / "intent.md").is_file()
     has_prd = (task_dir / "prd.md").is_file()
     has_design = (task_dir / "design.md").is_file()
     has_implement = (task_dir / "implement.md").is_file()
     present = [
         name
-        for name in ("prd.md", "design.md", "implement.md", "implement.jsonl", "check.jsonl")
+        for name in ("intent.md", "prd.md", "design.md", "implement.md", "implement.jsonl", "check.jsonl")
         if (task_dir / name).is_file()
     ]
     present_line = ", ".join(present) if present else "none"
 
-    if not has_prd:
+    if not has_intent or not has_prd:
         return (
             f"Status: PLANNING\nTask: {task_title}\nPresent: {present_line}\n"
-            "Next: Load trellis-brainstorm and write prd.md. Stay in planning."
+            "Next: Load trellis-brainstorm and write intent.md / prd.md. Stay in planning."
         )
 
     if task_status == "planning":
@@ -276,7 +277,7 @@ def _get_task_status(trellis_dir: Path, hook_input: dict) -> str:
             next_action = "Review planning artifacts with the user before `task.py start`."
         else:
             next_action = (
-                "Lightweight task can ask for start review with PRD-only; "
+                "Lightweight task can ask for start review with intent.md + prd.md; "
                 "complex task must add design.md and implement.md before `task.py start`."
             )
         return (
@@ -287,7 +288,7 @@ def _get_task_status(trellis_dir: Path, hook_input: dict) -> str:
     return (
         f"Status: {task_status.upper()}\nTask: {task_title}\nPresent: {present_line}\n"
         "Next: Follow the matching per-turn workflow-state. Context order is jsonl entries, "
-        "prd.md, design.md if present, implement.md if present."
+        "intent.md, prd.md, design.md if present, implement.md if present."
     )
 
 
@@ -504,7 +505,7 @@ Trellis compact SessionStart context. Use it to orient the session; load details
 
     output.write("<guidelines>\n")
     output.write(
-        "Task context order for implementation/check: jsonl entries -> `prd.md` -> "
+        "Task context order for implementation/check: jsonl entries -> `intent.md` -> `prd.md` -> "
         "`design.md if present` -> `implement.md if present`. Missing optional artifacts "
         "are skipped for lightweight tasks.\n\n"
     )

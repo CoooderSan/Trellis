@@ -15,6 +15,7 @@ git status
 
 Read the current task artifacts in order:
 
+- `intent.md`
 - `prd.md`
 - `design.md` if present
 - `implement.md` if present

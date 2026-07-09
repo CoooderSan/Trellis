@@ -25,7 +25,9 @@ from .session_gate import load_gate_state, summarize_gate_state
 
 
 PASS_STATUSES = {"ready", "not_required"}
-DEFAULT_PLAN_REQUIRED_SECTIONS = ["Intent", "Goal", "Requirements", "Acceptance Criteria"]
+DEFAULT_PLAN_REQUIRED_SECTIONS = ["Goal", "Requirements", "Acceptance Criteria"]
+DEFAULT_INTENT_REQUIRED_SECTIONS = ["Intent", "Scope", "Acceptance Criteria"]
+DEFAULT_INTENT_DOCUMENT_PATH = "intent.md"
 TBD_RE = re.compile(r"\b(TBD|TODO)\b|待定|未填写|未确认", re.IGNORECASE)
 
 
@@ -60,6 +62,14 @@ def _is_true(value: object) -> bool:
         return value
     if isinstance(value, str):
         return value.strip().lower() in {"true", "yes", "1", "on"}
+    return False
+
+
+def _is_false(value: object) -> bool:
+    if isinstance(value, bool):
+        return not value
+    if isinstance(value, str):
+        return value.strip().lower() in {"false", "no", "0", "off"}
     return False
 
 
@@ -115,6 +125,13 @@ def _normalize_heading(value: str) -> str:
     return " ".join(value.split())
 
 
+def _format_repo_path(path: Path, repo_root: Path) -> str:
+    try:
+        return path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def _extract_h2_sections(content: str) -> dict[str, str]:
     sections: dict[str, list[str]] = {}
     current: str | None = None
@@ -157,6 +174,41 @@ def _configured_required_sections(plan_gate: dict) -> list[str]:
     return DEFAULT_PLAN_REQUIRED_SECTIONS
 
 
+def _configured_intent_sections(plan_gate: dict) -> list[str]:
+    raw_sections = plan_gate.get("intent_required_sections")
+    if isinstance(raw_sections, list):
+        sections = [str(item).strip() for item in raw_sections if str(item).strip()]
+        if sections:
+            return sections
+    return DEFAULT_INTENT_REQUIRED_SECTIONS
+
+
+def _is_intent_document_required(plan_gate: dict) -> bool:
+    intent_document = plan_gate.get("intent_document")
+    if isinstance(intent_document, dict):
+        return not _is_false(intent_document.get("enabled", True))
+
+    raw_required = plan_gate.get("require_intent_document")
+    if raw_required is not None:
+        return _is_true(raw_required)
+
+    return True
+
+
+def _configured_intent_document_path(plan_gate: dict) -> str:
+    intent_document = plan_gate.get("intent_document")
+    if isinstance(intent_document, dict):
+        path = intent_document.get("path")
+        if isinstance(path, str) and path.strip():
+            return path.strip()
+
+    path = plan_gate.get("intent_document_path")
+    if isinstance(path, str) and path.strip():
+        return path.strip()
+
+    return DEFAULT_INTENT_DOCUMENT_PATH
+
+
 def _is_plan_gate_enabled(repo_root: Path) -> bool:
     governance = get_governance_config(repo_root)
     plan_gate = governance.get("plan_gate")
@@ -182,14 +234,42 @@ def _result_from_plan_gate(repo_root: Path, task_dir: str | None) -> GateResult:
     if not task_path.is_absolute():
         task_path = repo_root / task_path
 
+    blockers: list[str] = []
+
+    if _is_intent_document_required(plan_gate):
+        intent_relative_path = _configured_intent_document_path(plan_gate)
+        intent_path = Path(intent_relative_path)
+        if not intent_path.is_absolute():
+            intent_path = task_path / intent_path
+
+        if not intent_path.is_file():
+            blockers.append(
+                "Missing required Intent document: "
+                f"{_format_repo_path(intent_path, repo_root)}"
+            )
+        else:
+            try:
+                intent_content = intent_path.read_text(encoding="utf-8")
+            except OSError as exc:
+                blockers.append(f"Intent document could not be read: {exc}")
+            else:
+                intent_sections = _extract_h2_sections(intent_content)
+                for section in _configured_intent_sections(plan_gate):
+                    key = _normalize_heading(section)
+                    body = intent_sections.get(key)
+                    if body is None:
+                        blockers.append(f"Missing required intent.md section: ## {section}")
+                    elif not _section_has_meaningful_content(body):
+                        blockers.append(f"Required intent.md section is still empty/TBD: ## {section}")
+
     prd_path = task_path / "prd.md"
     if not prd_path.is_file():
         return GateResult(
             allowed=False,
             status="blocked",
             summary="Plan/Intent is missing.",
-            blockers=[f"Missing required planning artifact: {prd_path.relative_to(repo_root).as_posix() if prd_path.is_absolute() else prd_path}"],
-            next_step="Create prd.md with Intent, Goal, Requirements, and Acceptance Criteria before task.py start.",
+            blockers=[*blockers, f"Missing required planning artifact: {_format_repo_path(prd_path, repo_root)}"],
+            next_step="Create intent.md and prd.md with real Intent, Goal, Requirements, and Acceptance Criteria before task.py start.",
             source="plan_gate",
         )
 
@@ -206,8 +286,18 @@ def _result_from_plan_gate(repo_root: Path, task_dir: str | None) -> GateResult:
         )
 
     sections = _extract_h2_sections(content)
-    blockers: list[str] = []
-    for section in _configured_required_sections(plan_gate):
+    required_sections = _configured_required_sections(plan_gate)
+    if _is_intent_document_required(plan_gate):
+        # Older configs listed `Intent` under prd.md required_sections. Once
+        # intent.md is enabled, that section belongs to the Intent document so
+        # existing projects do not have to rewrite local config immediately.
+        required_sections = [
+            section
+            for section in required_sections
+            if _normalize_heading(section).lower() != "intent"
+        ]
+
+    for section in required_sections:
         key = _normalize_heading(section)
         body = sections.get(key)
         if body is None:

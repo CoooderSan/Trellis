@@ -21,6 +21,7 @@ You are already the `trellis-implement` sub-agent that the main session dispatch
 Before implementing, read:
 - `.trellis/workflow.md` - Project workflow
 - `.trellis/spec/` - Development guidelines
+- Task `intent.md` - Intent document
 - Task `prd.md` - Requirements document
 - Task `info.md` - Technical design (if exists)
 
@@ -53,7 +54,7 @@ Read relevant specs based on task type:
 
 ### 2. Understand Requirements
 
-Read the task's prd.md and info.md:
+Read task intent.md, prd.md, and info.md:
 
 - What are the core requirements
 - Key points of technical design

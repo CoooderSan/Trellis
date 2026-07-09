@@ -68,10 +68,11 @@ function getTaskStatus(ctx, platformInput = null) {
     return `Status: COMPLETED\nTask: ${taskTitle}\nNext-Action: Run /trellis:finish-work. If the working tree is dirty, return to Phase 3.4 first.`
   }
 
+  const hasIntent = existsSync(join(taskDir, "intent.md"))
   const hasPrd = existsSync(join(taskDir, "prd.md"))
   const hasDesign = existsSync(join(taskDir, "design.md"))
   const hasImplementPlan = existsSync(join(taskDir, "implement.md"))
-  const artifactNames = ["prd.md", "design.md", "implement.md", "implement.jsonl", "check.jsonl"]
+  const artifactNames = ["intent.md", "prd.md", "design.md", "implement.md", "implement.jsonl", "check.jsonl"]
   const present = artifactNames.filter(name => existsSync(join(taskDir, name)))
   if (existsSync(join(taskDir, "research"))) present.push("research/")
   const presentLine = present.length > 0 ? present.join(", ") : "(none)"
@@ -81,8 +82,8 @@ function getTaskStatus(ctx, platformInput = null) {
     (!existsSync(implementJsonl) || hasCuratedJsonlEntry(implementJsonl)) &&
     (!existsSync(checkJsonl) || hasCuratedJsonlEntry(checkJsonl))
 
-  if (taskStatus === "planning" && !hasPrd) {
-    return `Status: PLANNING\nTask: ${taskTitle}\nPresent: ${presentLine}\nNext-Action: Load trellis-brainstorm and write prd.md. Stay in planning.`
+  if (taskStatus === "planning" && (!hasIntent || !hasPrd)) {
+    return `Status: PLANNING\nTask: ${taskTitle}\nPresent: ${presentLine}\nNext-Action: Load trellis-brainstorm and write intent.md / prd.md. Stay in planning.`
   }
 
   if (taskStatus === "planning") {
@@ -92,7 +93,7 @@ function getTaskStatus(ctx, platformInput = null) {
     const nextBits = []
     if (missingComplex.length > 0) {
       nextBits.push(
-        `Lightweight task can request start review with PRD-only; complex task must add ${missingComplex.join(", ")} before start`,
+        `Lightweight task can request start review with intent.md + prd.md; complex task must add ${missingComplex.join(", ")} before start`,
       )
     } else {
       nextBits.push("Planning artifacts are present; ask for review before `task.py start`")
@@ -107,7 +108,7 @@ function getTaskStatus(ctx, platformInput = null) {
     `Status: ${String(taskStatus).toUpperCase()}\nTask: ${taskTitle}\n` +
     `Present: ${presentLine}\n` +
     "Next-Action: Follow the matching per-turn workflow-state. " +
-    "Implementation/check context order is jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`."
+    "Implementation/check context order is jsonl entries -> `intent.md` -> `prd.md` -> `design.md if present` -> `implement.md if present`."
   )
 }
 
@@ -421,7 +422,7 @@ Trellis compact SessionStart context. Use it to orient the session; load details
 
   parts.push("<guidelines>")
   parts.push(
-    "Task context order for implementation/check: jsonl entries -> `prd.md` -> " +
+    "Task context order for implementation/check: jsonl entries -> `intent.md` -> `prd.md` -> " +
     "`design.md if present` -> `implement.md if present`. Missing optional artifacts " +
     "are skipped for lightweight tasks.\n"
   )

@@ -936,6 +936,7 @@ function buildContext(root: string, agent: string, key: string | null): string {
   const dir = readTaskDir(root, key);
   if (!dir)
     return "No active Trellis task found. Read .trellis/ before proceeding.";
+  const intent = readText(join(dir, "intent.md"));
   const prd = readText(join(dir, "prd.md"));
   const design = readText(join(dir, "design.md"));
   const impl = readText(join(dir, "implement.md"));
@@ -960,6 +961,9 @@ function buildContext(root: string, agent: string, key: string | null): string {
   return [
     `## Trellis Task Context`,
     `Task directory: ${dir}`,
+    "",
+    "### intent.md",
+    intent || "(missing)",
     "",
     "### prd.md",
     prd || "(missing)",

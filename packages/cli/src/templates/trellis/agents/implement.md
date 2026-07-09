@@ -15,7 +15,7 @@ You are the Implement Agent spawned by `trellis channel spawn --agent implement`
 Before implementing, read in this order:
 
 1. `<task-path>/implement.jsonl` if present — spec manifest curated for this turn; read every listed file
-2. `<task-path>/prd.md` — requirements
+2. `<task-path>/intent.md`, `<task-path>/prd.md` — requirements
 3. `<task-path>/design.md` if present — technical design
 4. `<task-path>/implement.md` if present — execution plan
 5. `.trellis/spec/` — project-wide guidelines (load only what is relevant to the diff you are about to write)
@@ -38,7 +38,7 @@ The supervising main session owns commits. Report what changed; do not commit on
 ## Workflow
 
 1. Read relevant specs based on task type and the files in `implement.jsonl` if present
-2. Read the task's `prd.md`, `design.md` if present, and `implement.md` if present
+2. Read task `intent.md`, `prd.md`, `design.md` if present, and `implement.md` if present
 3. Implement features following specs and existing patterns
 4. Run the project's lint and typecheck commands on the changed scope
 5. Report files touched, key decisions, and verification results back to the channel
@@ -47,7 +47,7 @@ The supervising main session owns commits. Report what changed; do not commit on
 
 - Follow existing code patterns
 - Don't add unnecessary abstractions
-- Only do what the PRD asks for; no speculative scope expansion
+- Only do what the Intent/PRD asks for; no speculative scope expansion
 - Surface uncertainty back to the channel rather than guessing
 
 ## Report Format

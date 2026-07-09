@@ -16,11 +16,15 @@ Do not ask the user to confirm facts that the repository can answer. Ask only fo
 
 ---
 
-Use this skill during Phase 1 planning to turn the user's request into clear requirements and planning artifacts.
+Use this skill during Phase 1 planning to turn the user's request into a concrete Intent document and clear planning artifacts.
 
 ## Preconditions
 
-Use this skill only after task-creation consent has been given and the user is ready to enter Trellis planning.
+Use this skill only after task-creation consent has been given and the user is ready to enter Trellis planning. If the user asks for development but refuses task/Intent planning, hard-stop development: only readonly research or drafting the smallest viable Intent is allowed.
+
+For Trellis-owned blocking moments, the first user-facing sentence should be Dazz's direct fatherly correction. Do not expose internal mechanism names. Do not offer direct implementation or a smaller coding slice before the Intent document exists and the task has been started.
+
+Example: `先停下。这个前置还没过，Dazz 现在不会让你直接进实现。先把 Intent 文档补好。`
 
 If no task exists yet, create one:
 
@@ -30,11 +34,11 @@ TASK_DIR=$({{PYTHON_CMD}} ./.trellis/scripts/task.py create "<short task title>"
 
 Use a concise title from the user's request. Use a slug without a date prefix. `task.py create` adds the `MM-DD-` directory prefix automatically.
 
-`task.py create` creates the default `prd.md`. Update that file with the current understanding before asking follow-up questions.
+`task.py create` creates default `intent.md` and `prd.md`. Update both files with the current understanding before asking follow-up questions.
 
 ## Planning Flow
 
-1. Capture the user's request and initial known facts in `prd.md`.
+1. Capture the user's request, source, scope, and authorization signal in `intent.md`; capture requirements and acceptance criteria in `prd.md`.
 2. Inspect available evidence before asking questions:
    - code, tests, fixtures, and configs
    - README files, docs, existing specs, and domain notes
@@ -46,7 +50,7 @@ Use a concise title from the user's request. Use a slug without a date prefix. `
    - likely out-of-scope items
 4. Ask the single highest-value remaining question.
 5. Include your recommended answer with the question.
-6. After each user answer, update `prd.md` before continuing.
+6. After each user answer, update `intent.md` and/or `prd.md` before continuing.
 7. For complex tasks, create or update `design.md` and `implement.md` before implementation starts.
 8. Before final review or `task.py start`, run the PRD convergence pass below.
 
@@ -110,6 +114,14 @@ For each component of the current plan:
 
 ## Artifact Rules
 
+`intent.md` records the development authorization and scope:
+
+- user/business intent
+- source document, link, or explicit user confirmation
+- in-scope and out-of-scope boundaries
+- acceptance signal
+- risk level and approval notes
+
 `prd.md` records requirements and acceptance:
 
 - goal and user value
@@ -134,13 +146,13 @@ For each component of the current plan:
 - risky files or rollback points
 - follow-up checks before `task.py start`
 
-Lightweight tasks may have only `prd.md`. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start`.
+Lightweight tasks may have only `intent.md` and `prd.md`. Complex tasks must have `intent.md`, `prd.md`, `design.md`, and `implement.md` before `task.py start`.
 
 `implement.md` is not a replacement for `implement.jsonl`. On sub-agent-dispatch workflows, `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; the seed `_example` row does not count. Inline workflows skip this JSONL gate because Phase 2 loads context through `trellis-before-dev`.
 
 ## PRD Convergence Pass
 
-Before declaring planning ready or running `task.py start`, rewrite `prd.md` once against the final structure described in the artifact rules above. This is not optional cleanup; it is the final planning gate.
+Before declaring planning ready or running `task.py start`, rewrite `intent.md` and `prd.md` once against the final structure described in the artifact rules above. This is not optional cleanup; it is the final planning gate.
 
 The pass must be lossless:
 
@@ -151,13 +163,14 @@ The pass must be lossless:
 - Preserve every file:line anchor, decision, constraint, requirement ID, and acceptance-criteria mapping.
 - Keep only genuinely blocking open questions.
 
-After the pass, read `prd.md` top to bottom and verify that no fact is repeated across sections unless the repetition adds new information.
+After the pass, read `intent.md` and `prd.md` top to bottom and verify that no fact is repeated across sections unless the repetition adds new information.
 
 ## Quality Bar
 
 Before declaring planning ready:
 
 - `prd.md` contains testable acceptance criteria.
+- `intent.md` contains real task-specific Intent, Scope, and Acceptance Criteria content.
 - `prd.md` has passed the PRD convergence pass: no unresolved temporary brainstorm sections, no duplicate facts across sections, and no lost anchors, decisions, or acceptance mappings.
 - Repository-answerable questions have already been answered through inspection.
 - Remaining open questions are genuinely about user intent or scope.

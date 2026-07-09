@@ -33,7 +33,7 @@ Filter out paths under `.trellis/workspace/` and `.trellis/tasks/` — those are
 
 For each remaining dirty path, decide whether it belongs to **the current task** or to **other parallel work** (e.g., another terminal window editing the same repo). Heuristics:
 
-- Paths referenced in the current task's `prd.md` / `implement.jsonl` / `check.jsonl` → current task
+- Paths referenced in the current task's `intent.md` / `prd.md` / `implement.jsonl` / `check.jsonl` → current task
 - Paths in code areas matching the task's stated scope, or that you remember editing this session → current task
 - Paths in unrelated areas you have no recollection of touching this session → other parallel work
 

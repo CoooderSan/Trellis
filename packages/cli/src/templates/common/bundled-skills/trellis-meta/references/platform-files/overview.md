@@ -29,14 +29,14 @@ Common capabilities:
 
 - session-start injection of a `.trellis/` overview.
 - workflow-state hints for each user turn.
-- PRD/spec/research injection when sub-agents start.
+- Intent/PRD/spec/research injection when sub-agents start.
 - Shell commands inheriting session identity.
 
 To change "when the AI knows what," inspect hooks/plugins/extensions and settings first.
 
 ### 2. Agent Prelude / Pull-Based
 
-Some platforms cannot reliably let hooks rewrite sub-agent prompts, so the agent file itself instructs the agent to read the active task, PRD, and JSONL context after startup.
+Some platforms cannot reliably let hooks rewrite sub-agent prompts, so the agent file itself instructs the agent to read the active task, Intent, PRD, and JSONL context after startup.
 
 To change how sub-agents load context, inspect the agent files themselves.
 

@@ -15,6 +15,7 @@ Trigger: PreToolUse (before Task tool call)
 Context Source: Trellis active task resolver points to task directory
 - implement.jsonl - Implement agent dedicated context
 - check.jsonl     - Check agent dedicated context
+- intent.md       - Intent document
 - prd.md          - Requirements document
 - design.md       - Technical design for complex tasks
 - implement.md    - Execution plan for complex tasks
@@ -278,9 +279,10 @@ def get_implement_context(repo_root: str, task_dir: str) -> str:
 
     Read order:
     1. All files in implement.jsonl (spec/research manifests)
-    2. prd.md (requirements)
-    3. design.md if present (technical design)
-    4. implement.md if present (execution plan)
+    2. intent.md (Intent document)
+    3. prd.md (requirements)
+    4. design.md if present (technical design)
+    5. implement.md if present (execution plan)
     """
     context_parts = []
 
@@ -289,19 +291,24 @@ def get_implement_context(repo_root: str, task_dir: str) -> str:
     if base_context:
         context_parts.append(base_context)
 
-    # 2. Requirements document
+    # 2. Intent document
+    intent_content = read_file_content(repo_root, f"{task_dir}/intent.md")
+    if intent_content:
+        context_parts.append(f"=== {task_dir}/intent.md (Intent) ===\n{intent_content}")
+
+    # 3. Requirements document
     prd_content = read_file_content(repo_root, f"{task_dir}/prd.md")
     if prd_content:
         context_parts.append(f"=== {task_dir}/prd.md (Requirements) ===\n{prd_content}")
 
-    # 3. Technical design for complex tasks
+    # 4. Technical design for complex tasks
     design_content = read_file_content(repo_root, f"{task_dir}/design.md")
     if design_content:
         context_parts.append(
             f"=== {task_dir}/design.md (Technical Design) ===\n{design_content}"
         )
 
-    # 4. Execution plan for complex tasks
+    # 5. Execution plan for complex tasks
     implement_plan_content = read_file_content(repo_root, f"{task_dir}/implement.md")
     if implement_plan_content:
         context_parts.append(
@@ -319,6 +326,10 @@ def get_check_context(repo_root: str, task_dir: str) -> str:
 
     for file_path, content in read_jsonl_entries(repo_root, f"{task_dir}/check.jsonl"):
         context_parts.append(f"=== {file_path} ===\n{content}")
+
+    intent_content = read_file_content(repo_root, f"{task_dir}/intent.md")
+    if intent_content:
+        context_parts.append(f"=== {task_dir}/intent.md (Intent) ===\n{intent_content}")
 
     prd_content = read_file_content(repo_root, f"{task_dir}/prd.md")
     if prd_content:
@@ -341,7 +352,7 @@ def get_check_context(repo_root: str, task_dir: str) -> str:
 
 def get_finish_context(repo_root: str, task_dir: str) -> str:
     """
-    Context for Finish phase: reuses check.jsonl + prd.md
+    Context for Finish phase: reuses check.jsonl + intent.md + prd.md
     (Finish is a final check, same context source.)
     """
     return get_check_context(repo_root, task_dir)
@@ -442,7 +453,7 @@ Finish checklist and requirements:
 ## Workflow
 
 1. **Review changes** - Run `git diff --name-only` to see all changed files
-	2. **Verify task artifacts** - Check requirements in prd.md and, when present, design.md / implement.md
+	2. **Verify task artifacts** - Check intent.md, requirements in prd.md, and, when present, design.md / implement.md
 3. **Spec sync** - Analyze whether changes introduce new patterns, contracts, or conventions
    - If new pattern/convention found: read target spec file → update it → update index.md if needed
    - If infra/cross-layer change: follow the 7-section mandatory template from update-spec.md
@@ -456,7 +467,7 @@ Finish checklist and requirements:
 - MUST read the target spec file BEFORE editing (avoid duplicating existing content)
 - Do NOT update specs for trivial changes (typos, formatting, obvious fixes)
 - If critical CODE issues found, report them clearly (fix specs, not code)
-- Verify all acceptance criteria in prd.md are met
+- Verify all acceptance criteria in intent.md / prd.md are met
 - Verify design.md and implement.md constraints when those files are present"""
 
 
