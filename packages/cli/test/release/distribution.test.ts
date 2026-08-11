@@ -42,6 +42,7 @@ describe("Ecochain distribution contracts", () => {
     for (const relativePath of [
       "packages/cli/scripts/create-manifest.js",
       "packages/cli/scripts/check-manifest-continuity.js",
+      "packages/cli/scripts/npm-invocation.js",
       "packages/cli/scripts/release-preflight.js",
       "packages/cli/src/commands/upgrade.ts",
       "packages/cli/src/commands/update.ts",

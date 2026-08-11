@@ -16,6 +16,10 @@ const sourceScript = path.join(
   repoRoot,
   "packages/cli/scripts/release-preflight.js",
 );
+const sourceNpmInvocation = path.join(
+  repoRoot,
+  "packages/cli/scripts/npm-invocation.js",
+);
 
 interface PackageIdentity {
   cliName?: string;
@@ -64,6 +68,10 @@ function createFixture(identity: PackageIdentity = {}): PreflightFixture {
   fs.mkdirSync(path.dirname(script), { recursive: true });
   fs.mkdirSync(binDir, { recursive: true });
   fs.copyFileSync(sourceScript, script);
+  fs.copyFileSync(
+    sourceNpmInvocation,
+    path.join(path.dirname(script), "npm-invocation.js"),
+  );
   writeJson(cliManifest, {
     name: identity.cliName ?? "@ecochain/trellis",
     type: "module",

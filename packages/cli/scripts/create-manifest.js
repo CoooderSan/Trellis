@@ -41,6 +41,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import { npmInvocation } from "./npm-invocation.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MANIFESTS_DIR = path.join(__dirname, "../src/migrations/manifests");
@@ -51,11 +52,19 @@ const PACKAGE_NAME = "@ecochain/trellis";
  * error so we fail open (don't block dev flow when npm is unreachable); the
  * release-time continuity check is the authoritative gate.
  */
-function versionOnNpm(version) {
+export function versionOnNpm(
+  version,
+  {
+    platform = process.platform,
+    comSpec = process.env.ComSpec || "cmd.exe",
+    execFile = execFileSync,
+  } = {},
+) {
   try {
-    const out = execFileSync(
-      "npm",
-      ["view", `${PACKAGE_NAME}@${version}`, "version"],
+    const invocation = npmInvocation(platform, comSpec);
+    const out = execFile(
+      invocation.executable,
+      [...invocation.args, "view", `${PACKAGE_NAME}@${version}`, "version"],
       {
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
@@ -410,4 +419,9 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+if (
+  process.argv[1] &&
+  fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main().catch(console.error);
+}

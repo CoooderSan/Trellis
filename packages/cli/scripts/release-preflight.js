@@ -44,6 +44,9 @@ import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { npmInvocation } from "./npm-invocation.js";
+
+export { npmExecutable, npmInvocation } from "./npm-invocation.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../../..");
@@ -89,22 +92,6 @@ export function computeNpmTag(version) {
   if (/-rc\./.test(version)) return "rc";
   if (/-alpha\./.test(version)) return "alpha";
   return "latest";
-}
-
-export function npmExecutable(platform = process.platform) {
-  return platform === "win32" ? "npm.cmd" : "npm";
-}
-
-export function npmInvocation(
-  platform = process.platform,
-  comSpec = process.env.ComSpec || "cmd.exe",
-) {
-  const executable = npmExecutable(platform);
-  // Windows cannot execute .cmd shims through execFileSync directly. Invoke
-  // npm.cmd through cmd.exe while keeping Unix on the shell-free path.
-  return platform === "win32"
-    ? { executable: comSpec, args: ["/d", "/s", "/c", executable] }
-    : { executable, args: [] };
 }
 
 function npmView(args) {

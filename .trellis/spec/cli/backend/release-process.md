@@ -219,6 +219,79 @@ git commit -m "chore: restore manifest <version> from main"
 
 Restore published manifests deliberately. Do not auto-merge whole manifest directories across release branches, because branch-specific manifests can mention files that do not exist on the other branch.
 
+### Scenario: invoking npm from release scripts on Windows
+
+#### 1. Scope / Trigger
+
+This contract applies whenever a Node release script calls npm through
+`execFileSync` or an injected equivalent. Windows installs npm as a `.cmd`
+shim, which cannot be executed directly by `execFileSync`.
+
+#### 2. Signatures
+
+```js
+npmExecutable((platform = process.platform));
+npmInvocation(
+  (platform = process.platform),
+  (comSpec = process.env.ComSpec || "cmd.exe"),
+);
+```
+
+All release-script npm calls use the shared
+`packages/cli/scripts/npm-invocation.js` helper.
+
+#### 3. Contracts
+
+- Windows returns `{ executable: comSpec, args: ["/d", "/s", "/c", "npm.cmd"] }`.
+- Unix-like platforms return `{ executable: "npm", args: [] }`.
+- The caller appends its npm arguments to `args`; it must not construct a shell
+  command string.
+- `ComSpec` is optional and falls back to `cmd.exe`.
+
+#### 4. Validation & Error Matrix
+
+| Call site                      | Registry result                        | Required behavior                                                        |
+| ------------------------------ | -------------------------------------- | ------------------------------------------------------------------------ |
+| `check-manifest-continuity.js` | npm E404                               | Treat as no published versions                                           |
+| `check-manifest-continuity.js` | auth, network, parse, or other failure | Rethrow and fail the release gate closed                                 |
+| `create-manifest.js`           | published version returned             | Refuse to overwrite the published manifest                               |
+| `create-manifest.js`           | lookup or network failure              | Return false and preserve the existing development-time fail-open policy |
+
+#### 5. Good / Base / Bad Cases
+
+- Good: Windows invokes `cmd.exe /d /s /c npm.cmd view ...` and honors
+  `ComSpec`.
+- Base: macOS and Linux invoke `npm view ...` directly without a shell.
+- Bad: calling `execFileSync("npm", ...)` or `execFileSync("npm.cmd", ...)`
+  directly on Windows, or weakening continuity failures while fixing process
+  invocation.
+
+#### 6. Tests Required
+
+- Assert exact executable and argv shapes for Windows and Unix.
+- Exercise both continuity lookup and published-manifest protection through
+  injectable process runners.
+- Assert continuity maps E404 to an empty version list but propagates other
+  failures; assert manifest creation keeps its fail-open lookup behavior.
+- Fixtures that copy a release script must also copy `npm-invocation.js`.
+
+#### 7. Wrong vs Correct
+
+```js
+// Wrong: Windows .cmd shims are not directly executable by execFileSync.
+execFileSync("npm", ["view", packageName, "versions", "--json"]);
+
+// Correct: use one shared prefix and append call-site-specific arguments.
+const invocation = npmInvocation();
+execFileSync(invocation.executable, [
+  ...invocation.args,
+  "view",
+  packageName,
+  "versions",
+  "--json",
+]);
+```
+
 ---
 
 ## Release command sequence

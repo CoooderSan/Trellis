@@ -28,6 +28,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { npmInvocation } from "./npm-invocation.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MANIFESTS_DIR = path.join(__dirname, "../src/migrations/manifests");
@@ -83,11 +84,16 @@ function readLocalManifestVersions() {
   );
 }
 
-function fetchNpmVersions() {
+export function fetchNpmVersions({
+  platform = process.platform,
+  comSpec = process.env.ComSpec || "cmd.exe",
+  execFile = execFileSync,
+} = {}) {
   try {
-    const output = execFileSync(
-      "npm",
-      ["view", PACKAGE_NAME, "versions", "--json"],
+    const invocation = npmInvocation(platform, comSpec);
+    const output = execFile(
+      invocation.executable,
+      [...invocation.args, "view", PACKAGE_NAME, "versions", "--json"],
       {
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
@@ -155,4 +161,9 @@ function main() {
   );
 }
 
-main();
+if (
+  process.argv[1] &&
+  fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main();
+}
