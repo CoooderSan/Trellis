@@ -35,6 +35,10 @@ function setupRepo(tmp: string): void {
   const scriptsDest = path.join(tmp, ".trellis", "scripts");
   fs.mkdirSync(scriptsDest, { recursive: true });
   fs.cpSync(TEMPLATE_SCRIPTS, scriptsDest, { recursive: true });
+  fs.writeFileSync(
+    path.join(tmp, ".trellis", "config.yaml"),
+    "governance:\n  enabled: false\n",
+  );
 
   const r = spawnSync(
     "python3",

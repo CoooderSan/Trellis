@@ -14,6 +14,7 @@ import {
   resolveBundledSkills,
   collectSkillTemplates,
   collectSharedHooks,
+  composeSharedCheckContract,
   renderTemplateMap,
   writeTemplateMap,
 } from "./shared.js";
@@ -168,7 +169,11 @@ export function collectCodexTemplates(): Map<string, string> {
     files.set(filePath, content);
   }
   for (const agent of getAllAgents()) {
-    files.set(`.codex/agents/${agent.name}.toml`, agent.content);
+    const content =
+      agent.name === "trellis-check"
+        ? composeSharedCheckContract(agent.content, ctx)
+        : agent.content;
+    files.set(`.codex/agents/${agent.name}.toml`, content);
   }
   for (const hook of getAllHooks()) {
     files.set(`.codex/hooks/${hook.name}`, hook.content);

@@ -47,6 +47,7 @@ import {
   homedirBypassEnabled,
 } from "../utils/cwd-guard.js";
 import {
+  loadSpecRegistryConfig,
   writeSpecRegistryConfig,
   type SpecRegistryConfig,
 } from "../utils/registry-config.js";
@@ -88,6 +89,31 @@ function collectSpecPaths(cwd: string): Set<string> {
   };
   walk(specRoot);
   return paths;
+}
+
+function hasMeaningfulSpecBaseline(cwd: string): boolean {
+  const nonEmptySpecPaths = [...collectSpecPaths(cwd)].filter(
+    (relativePath) => {
+      if (path.posix.extname(relativePath).toLowerCase() !== ".md")
+        return false;
+      try {
+        return (
+          fs.readFileSync(path.join(cwd, relativePath), "utf-8").trim().length >
+          0
+        );
+      } catch {
+        return false;
+      }
+    },
+  );
+  if (nonEmptySpecPaths.length === 0) return false;
+
+  // A registry-backed baseline may intentionally consist of a single root
+  // index. Without provenance, a lone index is too weak to distinguish a
+  // loaded team baseline from an aborted or placeholder-only init.
+  if (loadSpecRegistryConfig(cwd)) return true;
+  const rootIndex = path.posix.join(toPosix(PATHS.SPEC), "index.md");
+  return nonEmptySpecPaths.some((relativePath) => relativePath !== rootIndex);
 }
 
 export function isSupportedPythonVersion(versionOutput: string): boolean {
@@ -291,6 +317,11 @@ function logPythonAdaptationNotice(command: string): void {
 // =============================================================================
 
 const BOOTSTRAP_TASK_NAME = "00-bootstrap-guidelines";
+const AUTO_ONBOARDING_CLASSIFICATION = "maintenance";
+const AUTO_ONBOARDING_PRODUCT_INTENT_REASON =
+  "Trellis bootstrap and onboarding maintain engineering workflow context without adding a business-facing product capability.";
+
+type AutoOnboardingTaskKind = "creator-bootstrap" | "joiner-onboarding";
 
 /**
  * Slugify a developer name for safe use in task directory names.
@@ -311,7 +342,7 @@ export function slugifyDeveloperName(name: string): string {
 }
 
 /**
- * Write a task skeleton (task.json + prd.md).
+ * Write a classified planning task skeleton.
  *
  * Idempotent: if the task dir already exists, returns true without touching
  * anything. Shared by both creator bootstrap and joiner onboarding flows.
@@ -321,6 +352,7 @@ function writeTaskSkeleton(
   taskName: string,
   taskJson: TaskJson,
   prdContent: string,
+  intentContent: string,
 ): boolean {
   const taskDir = path.join(cwd, PATHS.TASKS, taskName);
   if (fs.existsSync(taskDir)) return true; // idempotent
@@ -333,10 +365,59 @@ function writeTaskSkeleton(
       "utf-8",
     );
     fs.writeFileSync(path.join(taskDir, FILE_NAMES.PRD), prdContent, "utf-8");
+    fs.writeFileSync(path.join(taskDir, "intent.md"), intentContent, "utf-8");
     return true;
   } catch {
     return false;
   }
+}
+
+function getAutoOnboardingTaskBasis(
+  kind: AutoOnboardingTaskKind,
+  developer: string,
+): string {
+  const requestedOutcome =
+    kind === "creator-bootstrap"
+      ? "Review the loaded Trellis spec baseline and resolve only evidence-backed project-specific gaps."
+      : `Orient ${developer} to the existing Trellis workflow and project specifications without changing the team's baseline.`;
+  const inScope =
+    kind === "creator-bootstrap"
+      ? "Inspect the loaded spec baseline, compare it with repository evidence, and record genuine project-specific gaps or a no-gap conclusion."
+      : "Read and summarize the existing workflow, specifications, archived-task rhythm, and assigned work for the joining developer.";
+  const outOfScope =
+    kind === "creator-bootstrap"
+      ? "Business product changes and generic rules that are not supported by repository evidence."
+      : "Changing project specifications, implementing product work, or creating practice tasks without developer approval.";
+  const verification =
+    kind === "creator-bootstrap"
+      ? "The fit/gap review records repository evidence, resolves each credible gap, and explicitly records when no project-specific gap exists."
+      : "The developer can explain the workflow entry point, locate the project specifications, and identify their assigned work or confirm that none exists.";
+
+  return `# Task Basis
+
+## Classification
+
+${AUTO_ONBOARDING_CLASSIFICATION}
+
+## Product Intent
+
+Status: NOT_REQUIRED
+Link:
+Reason: ${AUTO_ONBOARDING_PRODUCT_INTENT_REASON}
+
+## Requested Outcome
+
+${requestedOutcome}
+
+## In Scope / Out of Scope
+
+- In scope: ${inScope}
+- Out of scope: ${outOfScope}
+
+## Acceptance or Verification Basis
+
+- ${verification}
+`;
 }
 
 /**
@@ -349,69 +430,121 @@ function writeTaskSkeleton(
 function getBootstrapChecklistItems(
   projectType: ProjectType,
   packages?: DetectedPackage[],
+  loadedSpecSource?: string,
+  specSourceLoaded = false,
+  specPaths: readonly string[] = [],
 ): string[] {
-  if (packages && packages.length > 0) {
-    const items = packages.map((pkg) => `Fill guidelines for ${pkg.name}`);
-    items.push("Add code examples");
-    return items;
-  }
-  if (projectType === "frontend") {
-    return ["Fill frontend guidelines", "Add code examples"];
-  }
-  if (projectType === "backend") {
-    return ["Fill backend guidelines", "Add code examples"];
-  }
+  const scope =
+    packages && packages.length > 0
+      ? `packages: ${packages.map((pkg) => pkg.name).join(", ")}`
+      : `${projectType} project`;
+
   return [
-    "Fill backend guidelines",
-    "Fill frontend guidelines",
-    "Add code examples",
+    loadedSpecSource && specSourceLoaded && specPaths.length > 0
+      ? `Confirm the loaded spec source and its coverage (${loadedSpecSource})`
+      : loadedSpecSource
+        ? `Verify or repair the configured spec source because it was not loaded during this init (${loadedSpecSource})`
+        : "Inventory existing project guidance and generated spec scaffolding",
+    `Review project-specific fit and gaps for ${scope}`,
+    "Add or adjust only evidence-backed project rules where gaps exist",
+    "Record either the resolved gaps or an explicit no-gap conclusion",
   ];
 }
 
-function getBootstrapRelatedFiles(
-  projectType: ProjectType,
-  packages?: DetectedPackage[],
-): string[] {
-  if (packages && packages.length > 0) {
-    return packages.map((pkg) => `.trellis/spec/${sanitizePkgName(pkg.name)}/`);
+function getBootstrapRelatedFiles(specPaths: readonly string[]): string[] {
+  if (specPaths.length === 0) return [`${PATHS.SPEC}/`];
+
+  const specRoot = `${toPosix(PATHS.SPEC).replace(/\/$/, "")}/`;
+  const reviewAreas = new Set<string>();
+  for (const specPath of specPaths) {
+    const normalized = toPosix(specPath);
+    const relative = normalized.startsWith(specRoot)
+      ? normalized.slice(specRoot.length)
+      : normalized;
+    const segments = relative.split("/").filter(Boolean);
+    reviewAreas.add(
+      segments.length > 1 ? `${specRoot}${segments[0]}/` : normalized,
+    );
   }
-  if (projectType === "frontend") {
-    return [".trellis/spec/frontend/"];
-  }
-  if (projectType === "backend") {
-    return [".trellis/spec/backend/"];
-  }
-  return [".trellis/spec/backend/", ".trellis/spec/frontend/"];
+  return [...reviewAreas].sort();
 }
 
 function getBootstrapPrdContent(
   projectType: ProjectType,
   pythonCmd: string,
   packages?: DetectedPackage[],
+  loadedSpecSource?: string,
+  specSourceLoaded = false,
+  specPaths: readonly string[] = [],
 ): string {
-  const checklistItems = getBootstrapChecklistItems(projectType, packages);
+  const checklistItems = getBootstrapChecklistItems(
+    projectType,
+    packages,
+    loadedSpecSource,
+    specSourceLoaded,
+    specPaths,
+  );
   const checklistMarkdown = checklistItems
     .map((item) => `- [ ] ${item}`)
     .join("\n");
 
-  const header = `# Bootstrap Task: Fill Project Development Guidelines
+  const sourceStatus = loadedSpecSource
+    ? specSourceLoaded && specPaths.length > 0
+      ? `A spec registry or template was loaded during init: **${loadedSpecSource}**. Treat it as the starting point and review only this repository's differences.`
+      : `A spec source is configured as **${loadedSpecSource}**, but this init did not confirm a successful load from it. Treat the source-backed baseline as missing or partial, verify or repair it, and distinguish any generated fallback files from team-owned guidance.`
+    : specPaths.length > 0
+      ? `No external spec registry or template was loaded during init. Treat the generated files as scaffolding, then add only conventions supported by repository evidence.`
+      : `No spec files were detected. Establish or repair the baseline before reviewing project-specific gaps.`;
+  const specInventory =
+    specPaths.length > 0
+      ? specPaths.map((specPath) => `- \`${specPath}\``).join("\n")
+      : "- No spec files detected.";
+
+  const header = `# Bootstrap Task: Review Project Spec Fit and Gaps
 
 **You (the AI) are running this task. The developer does not read this file.**
 
 The developer just ran \`trellis init\` on this project for the first time.
-\`.trellis/\` now exists with empty spec scaffolding, and this bootstrap task
-exists under \`.trellis/tasks/\`. When they want to work on it, they should start
-this task from a session that provides Trellis session identity.
+\`.trellis/\` now exists, and this bootstrap task lives under
+\`.trellis/tasks/\`. When they want to work on it, they should start this task
+from a session that provides Trellis session identity.
 
-**Your job**: help them populate \`.trellis/spec/\` with the team's real
-coding conventions. Every future AI session — this project's
-\`trellis-implement\` and \`trellis-check\` sub-agents — auto-loads spec files
-listed in per-task jsonl manifests. Empty spec = sub-agents write generic
-code. Real spec = sub-agents match the team's actual patterns.
+**Detected spec state**: ${sourceStatus}
+
+**Your job**: run a project-spec fit/gap review. First establish what team
+spec, registry, template, or existing project guidance is already present.
+Then inspect only the project-specific differences: technology stack, build
+and verification commands, module boundaries, domain patterns, and local
+exceptions. Do not copy a general company or framework rulebook into this
+repository.
 
 Don't dump instructions. Open with a short greeting, figure out if the repo
 has any existing convention docs (CLAUDE.md, .cursorrules, etc.), and drive
 the rest conversationally.
+
+---
+
+## Goal
+
+Review the loaded Trellis spec baseline against repository evidence and resolve
+only genuine project-specific gaps.
+
+## Requirements
+
+- Establish which registry, template, team spec, or project guidance is the
+  current baseline.
+- Check the repository's stack, module boundaries, domain patterns, and
+  verification commands against that baseline.
+- Add or adjust rules only when repository evidence demonstrates a real gap;
+  an explicit no-gap conclusion is valid.
+
+## Acceptance Criteria
+
+- [ ] The loaded baseline and its coverage are recorded.
+- [ ] Every reported project-specific gap cites repository evidence and is
+  resolved with the smallest appropriate spec change.
+- [ ] If no credible gap exists, the task records that conclusion without
+  manufacturing boilerplate.
 
 ---
 
@@ -421,52 +554,28 @@ ${checklistMarkdown}
 
 ---
 
-## Spec files to populate
-`;
+## Detected spec inventory
 
-  const backendSection = `
+This list comes from the files actually present after initialization. Review
+these paths; do not assume generic backend/frontend files exist when a registry
+or template uses a different layout.
 
-### Backend guidelines
-
-| File | What to document |
-|------|------------------|
-| \`.trellis/spec/backend/directory-structure.md\` | Where different file types go (routes, services, utils) |
-| \`.trellis/spec/backend/database-guidelines.md\` | ORM, migrations, query patterns, naming conventions |
-| \`.trellis/spec/backend/error-handling.md\` | How errors are caught, logged, and returned |
-| \`.trellis/spec/backend/logging-guidelines.md\` | Log levels, format, what to log |
-| \`.trellis/spec/backend/quality-guidelines.md\` | Code review standards, testing requirements |
-`;
-
-  const frontendSection = `
-
-### Frontend guidelines
-
-| File | What to document |
-|------|------------------|
-| \`.trellis/spec/frontend/directory-structure.md\` | Component/page/hook organization |
-| \`.trellis/spec/frontend/component-guidelines.md\` | Component patterns, props conventions |
-| \`.trellis/spec/frontend/hook-guidelines.md\` | Custom hook naming, patterns |
-| \`.trellis/spec/frontend/state-management.md\` | State library, patterns, what goes where |
-| \`.trellis/spec/frontend/type-safety.md\` | TypeScript conventions, type organization |
-| \`.trellis/spec/frontend/quality-guidelines.md\` | Linting, testing, accessibility |
-`;
-
-  const footer = `
-
-### Thinking guides (already populated)
-
-\`.trellis/spec/guides/\` contains general thinking guides pre-filled with
-best practices. Customize only if something clearly doesn't fit this project.
+${specInventory}
 
 ---
 
-## How to fill the spec
+## How to review the spec
 
-### Step 1: Import from existing convention files first (preferred)
+### Step 1: Establish the loaded baseline
+
+Inspect \`.trellis/config.yaml\` for a registry-backed spec source, then read
+the current \`.trellis/spec/\` indexes and relevant files. Also search for
+existing convention documents. A loaded team template is already the baseline;
+do not rewrite or duplicate it merely to prove bootstrap happened.
 
 Search the repo for existing convention docs. If any exist, read them and
-extract the relevant rules into the matching \`.trellis/spec/\` files —
-usually much faster than documenting from scratch.
+use them as evidence when checking whether the loaded baseline fits this
+project.
 
 | File / Directory | Tool |
 |------|------|
@@ -483,18 +592,25 @@ usually much faster than documenting from scratch.
 | \`CONTRIBUTING.md\` | General project conventions |
 | \`.editorconfig\` | Editor formatting rules |
 
-### Step 2: Analyze the codebase for anything not covered by existing docs
+### Step 2: Review only project-specific fit and gaps
 
-Scan real code to discover patterns. Before writing each spec file:
+Check the actual technology stack, build and verification commands, package or
+module boundaries, domain-specific patterns, and deliberate local exceptions.
+Before changing a spec file:
 - Find 2-3 real examples of each pattern in the codebase.
 - Reference real file paths (not hypothetical ones).
-- Document anti-patterns the team clearly avoids.
+- Confirm the rule is missing or materially inaccurate in the loaded baseline.
 
-### Step 3: Document reality, not ideals
+### Step 3: Resolve gaps, or finish with no gaps
 
-**Critical**: write what the code *actually does*, not what it should do.
-Sub-agents match the spec, so aspirational patterns that don't exist in the
-codebase will cause sub-agents to write code that looks out of place.
+If a real gap exists, make the smallest evidence-backed addition or correction.
+If no gap exists, record that conclusion in this task and complete bootstrap
+without changing spec files. Never manufacture content to make the checklist
+look filled.
+
+**Critical**: document what the code *actually does*, not what it should do.
+Aspirational patterns that don't exist in the codebase will cause future agents
+to write code that looks out of place.
 
 If the team has known tech debt, document the current state — improvement
 is a separate conversation, not a bootstrap concern.
@@ -503,13 +619,12 @@ is a separate conversation, not a bootstrap concern.
 
 ## Quick explainer of the runtime (share when they ask "why do we need spec at all")
 
-- Every AI coding task spawns two sub-agents: \`trellis-implement\` (writes
-  code) and \`trellis-check\` (verifies quality).
-- Each task has \`implement.jsonl\` / \`check.jsonl\` manifests listing which
-  spec files to load.
-- The platform hook auto-injects those spec files + the task's \`prd.md\`
-  into every sub-agent prompt, so the sub-agent codes/reviews per team
-  conventions without anyone pasting them manually.
+- Trellis routes work from the natural-language request and current task state.
+- In sub-agent dispatch mode, curated \`implement.jsonl\` / \`check.jsonl\`
+  manifests list the task-specific spec context for implement/check workers.
+- In inline mode, the main agent reads the applicable task and spec context
+  directly; it does not spawn implement/check workers merely to follow a fixed
+  ritual.
 - Source of truth: \`.trellis/spec/\`. That's why filling it well now pays
   off forever.
 
@@ -517,8 +632,17 @@ is a separate conversation, not a bootstrap concern.
 
 ## Completion
 
-When the developer confirms the checklist items above are done with real
-examples (not placeholders), guide them to run:
+This task is intentionally created in \`planning\` status. Before doing the
+fit/gap review, activate it through the normal lifecycle and governance gate:
+
+\`\`\`bash
+${pythonCmd} ./.trellis/scripts/task.py start 00-bootstrap-guidelines
+\`\`\`
+
+When the fit/gap review has evidence and every real gap is resolved — including
+the valid conclusion that there are no project-specific gaps — complete and
+archive this task through the normal Trellis lifecycle. If direct commands are
+needed on the current host, use:
 
 \`\`\`bash
 ${pythonCmd} ./.trellis/scripts/task.py finish
@@ -532,49 +656,24 @@ After archive, every new developer who joins this project will get a
 
 ## Suggested opening line
 
-"Welcome to Trellis! Your init just set me up to help you fill the project
-spec — a one-time setup so every future AI session follows the team's
-conventions instead of writing generic code. Before we start, do you have
-any existing convention docs (CLAUDE.md, .cursorrules, CONTRIBUTING.md,
-etc.) I can pull from, or should I scan the codebase from scratch?"
+"Welcome to Trellis! I'll first check which team specs or templates are already
+loaded, then review only this project's stack, modules, domain patterns, and
+verification commands for genuine gaps. If the baseline already fits, we can
+finish without inventing new spec content."
 `;
 
-  let content = header;
-
-  if (packages && packages.length > 0) {
-    // Monorepo: generate per-package sections
-    for (const pkg of packages) {
-      const pkgType = pkg.type === "unknown" ? "fullstack" : pkg.type;
-      const specName = sanitizePkgName(pkg.name);
-      content += `\n### Package: ${pkg.name} (\`spec/${specName}/\`)\n`;
-      if (pkgType !== "frontend") {
-        content += `\n- Backend guidelines: \`.trellis/spec/${specName}/backend/\`\n`;
-      }
-      if (pkgType !== "backend") {
-        content += `\n- Frontend guidelines: \`.trellis/spec/${specName}/frontend/\`\n`;
-      }
-    }
-  } else if (projectType === "frontend") {
-    content += frontendSection;
-  } else if (projectType === "backend") {
-    content += backendSection;
-  } else {
-    // fullstack
-    content += backendSection;
-    content += frontendSection;
-  }
-  content += footer;
-
-  return content;
+  return header;
 }
 
 function getBootstrapTaskJson(
   developer: string,
   projectType: ProjectType,
-  packages?: DetectedPackage[],
+  loadedSpecSource?: string,
+  specSourceLoaded = false,
+  specPaths: readonly string[] = [],
 ): TaskJson {
   const today = new Date().toISOString().split("T")[0];
-  const relatedFiles = getBootstrapRelatedFiles(projectType, packages);
+  const relatedFiles = getBootstrapRelatedFiles(specPaths);
 
   // Canonical 24-field shape via emptyTaskJson factory.
   // Checklist items (previously stored as structured `subtasks`) are now
@@ -583,16 +682,24 @@ function getBootstrapTaskJson(
   return emptyTaskJson({
     id: BOOTSTRAP_TASK_NAME,
     name: BOOTSTRAP_TASK_NAME,
-    title: "Bootstrap Guidelines",
-    description: "Fill in project development guidelines for AI agents",
-    status: "in_progress",
+    title: "Review Project Spec Fit and Gaps",
+    description:
+      "Review loaded team specs and add only evidence-backed project-specific gaps",
+    status: "planning",
     dev_type: "docs",
     priority: "P1",
     creator: developer,
     assignee: developer,
     createdAt: today,
     relatedFiles,
-    notes: `First-time setup task created by trellis init (${projectType} project)`,
+    meta: {
+      classification: AUTO_ONBOARDING_CLASSIFICATION,
+      product_intent: "NOT_REQUIRED",
+      product_intent_reason: AUTO_ONBOARDING_PRODUCT_INTENT_REASON,
+    },
+    notes: loadedSpecSource
+      ? `First-time fit/gap review created by trellis init (${projectType} project); spec source: ${loadedSpecSource}; load status: ${specSourceLoaded ? "loaded" : "configured but unconfirmed"}; detected ${specPaths.length} spec file(s)`
+      : `First-time fit/gap review created by trellis init (${projectType} project); no external spec source detected; detected ${specPaths.length} spec file(s)`,
   });
 }
 
@@ -605,10 +712,36 @@ function createBootstrapTask(
   pythonCmd: string,
   projectType: ProjectType,
   packages?: DetectedPackage[],
+  loadedSpecSource?: string,
+  specSourceLoaded = false,
+  specPaths: readonly string[] = [],
 ): boolean {
-  const taskJson = getBootstrapTaskJson(developer, projectType, packages);
-  const prdContent = getBootstrapPrdContent(projectType, pythonCmd, packages);
-  return writeTaskSkeleton(cwd, BOOTSTRAP_TASK_NAME, taskJson, prdContent);
+  const taskJson = getBootstrapTaskJson(
+    developer,
+    projectType,
+    loadedSpecSource,
+    specSourceLoaded,
+    specPaths,
+  );
+  const prdContent = getBootstrapPrdContent(
+    projectType,
+    pythonCmd,
+    packages,
+    loadedSpecSource,
+    specSourceLoaded,
+    specPaths,
+  );
+  const intentContent = getAutoOnboardingTaskBasis(
+    "creator-bootstrap",
+    developer,
+  );
+  return writeTaskSkeleton(
+    cwd,
+    BOOTSTRAP_TASK_NAME,
+    taskJson,
+    prdContent,
+    intentContent,
+  );
 }
 
 // =============================================================================
@@ -628,12 +761,17 @@ function getJoinerTaskJson(developer: string, taskName: string): TaskJson {
     title: `Joining: Onboard to this Trellis project (${developer})`,
     description:
       "Onboard a new developer to an existing Trellis project: learn the workflow, conventions, and find assigned work",
-    status: "in_progress",
+    status: "planning",
     dev_type: "docs",
     priority: "P1",
     creator: developer,
     assignee: developer,
     createdAt: today,
+    meta: {
+      classification: AUTO_ONBOARDING_CLASSIFICATION,
+      product_intent: "NOT_REQUIRED",
+      product_intent_reason: AUTO_ONBOARDING_PRODUCT_INTENT_REASON,
+    },
     notes:
       "Generated by trellis init for a new developer joining an existing Trellis project",
   });
@@ -660,6 +798,35 @@ they engage.
 
 ---
 
+## Goal
+
+Orient ${developer} to this project's existing Trellis workflow and coding
+specifications so they can begin assigned work without rewriting the baseline.
+
+## Requirements
+
+- Explain the natural-language workflow entry point and task lifecycle.
+- Read and summarize the existing project specifications without editing them.
+- Show the developer how to find archived-task examples and assigned work.
+- Start a separate maintenance or product task for any newly discovered work;
+  onboarding itself remains read-only with respect to project specifications.
+
+## Acceptance Criteria
+
+- [ ] ${developer} can describe how normal work enters the Trellis workflow.
+- [ ] ${developer} knows where project specifications and task history live.
+- [ ] Assigned work is identified, or the onboarding records that none exists.
+- [ ] No project spec or product implementation was changed during onboarding.
+
+---
+
+## Onboarding boundary
+
+This is a joiner flow, not creator bootstrap. The project already owns its
+\`.trellis/spec/\` baseline. Read and summarize it; do not recreate, rewrite,
+or bulk-copy general coding standards during onboarding. If you find a credible
+project-spec gap, report the evidence and suggest a separate maintenance task.
+
 ## Topics to cover (adapt order to their questions)
 
 ### 1. What Trellis is + the workflow
@@ -668,32 +835,27 @@ Trellis is a workflow layer over Claude Code / Cursor / etc. that keeps AI
 agents consistent with project-specific conventions instead of writing generic
 code every session.
 
-- **Three phases**: Plan (brainstorm → \`prd.md\`) → Execute (code + check) →
+- **Three phases**: Plan (task basis and planning as needed) → Execute (code + check) →
   Finish (capture + wrap). Full reference: \`.trellis/workflow.md\`.
 - **Task lifecycle**: planning → in_progress → done → archive, under
   \`.trellis/tasks/\`.
-- **Core slash commands**:
-  - \`/trellis:continue\` — resume the current session's active task
-  - \`/trellis:finish-work\` — wrap up a finished task
-  - \`/trellis:start\` — session boot from scratch (not needed here; the
-    SessionStart hook does its job automatically)
+- **Normal entry point**: the developer describes the work in natural language;
+  the agent uses the current workflow/task state to select the relevant skill
+  and asks for confirmation where a gate requires it.
+- **Explicit commands or skills** are optional controls for recovery,
+  correction, standalone operations, or hosts without automatic routing. Do
+  not teach a mandatory slash-command sequence.
 
 ### 2. Runtime mechanics (explain when they ask "how does it know what to do")
 
-- **SessionStart hook** runs \`get_context.py\` and injects identity, git
-  status, session active task, active tasks, and workflow phase into the AI
-  conversation at every session start.
-- **\`<workflow-state>\` tag** is auto-injected with every user message,
-  carrying the current task + phase hint.
-- **\`/trellis:continue\`** loads the Phase Index, reads \`prd.md\` + recent
-  activity, and routes to the right skill (\`trellis-brainstorm\` for planning,
-  \`trellis-implement\` for coding, \`trellis-check\` for verification).
-- **\`trellis-implement\` sub-agent** is spawned when code needs to be written.
-  The platform hook reads \`{TASK_DIR}/implement.jsonl\` and auto-injects those
-  spec files + \`prd.md\` into the sub-agent's prompt so it codes per project
-  conventions.
-- **\`trellis-check\` sub-agent** follows the same pattern with \`check.jsonl\`
-  — reviews changes against specs, auto-fixes issues, runs lint/typecheck.
+- Supported hosts expose session and workflow context through their available
+  hook, skill, or startup mechanism. Consult \`.trellis/workflow.md\` for this
+  project's authoritative routing.
+- In sub-agent dispatch mode, implement/check workers receive curated task
+  context from \`implement.jsonl\` / \`check.jsonl\` plus task artifacts.
+- In inline mode, the main agent reads applicable specs and task artifacts
+  directly and performs implementation/verification without mandatory worker
+  spawning.
 
 File layout (mention when they ask "where does what live"):
 - \`.trellis/.runtime/sessions/<session>.json\` — session active-task state, gitignored
@@ -702,10 +864,10 @@ File layout (mention when they ask "where does what live"):
 - \`.trellis/workspace/${developer}/journal-*.md\` — their session log,
   rotated at ~2000 lines
 
-### 3. This project's actual conventions
+### 3. This project's actual conventions (read-only onboarding)
 
 - Summarize \`.trellis/spec/\` for them — what coding conventions this
-  specific team enforces.
+  specific team enforces. Do not edit those files as part of joiner onboarding.
 - Point at the last 5 entries in \`.trellis/tasks/archive/\` as a rhythm
   example of how people actually work here. **If archive is empty** (the
   project just started), skip this — don't invent examples.
@@ -723,15 +885,24 @@ File layout (mention when they ask "where does what live"):
 
 ---
 
-## Optional: walk through a small task end-to-end
+## Optional: discuss a small task end-to-end
 
 If they want to practice before touching real work, offer to pick a tiny
-P3 task or a typo fix and run the full cycle together: \`/trellis:continue\`
-→ you implement via sub-agents → \`/trellis:finish-work\`.
+P3 task or a typo fix and describe how natural-language routing, the selected
+execution mode, applicable verification, and completion would work. Start a
+separate task only with their approval; onboarding itself does not require a
+practice implementation.
 
 ---
 
 ## Completion
+
+This task is intentionally created in \`planning\` status. Before doing the
+onboarding work, activate it through the normal lifecycle and governance gate:
+
+\`\`\`bash
+${pythonCmd} ./.trellis/scripts/task.py start 00-join-${slug}
+\`\`\`
 
 When they feel oriented (or after you've covered the four topics with
 reasonable back-and-forth), guide them to run:
@@ -766,7 +937,11 @@ function createJoinerOnboardingTask(
   const taskName = `00-join-${slug}`;
   const taskJson = getJoinerTaskJson(developer, taskName);
   const prdContent = getJoinerPrdContent(developer, pythonCmd);
-  return writeTaskSkeleton(cwd, taskName, taskJson, prdContent);
+  const intentContent = getAutoOnboardingTaskBasis(
+    "joiner-onboarding",
+    developer,
+  );
+  return writeTaskSkeleton(cwd, taskName, taskJson, prdContent, intentContent);
 }
 
 /**
@@ -1118,6 +1293,7 @@ export async function init(options: InitOptions): Promise<void> {
 
   const cwd = process.cwd();
   const isFirstInit = !fs.existsSync(path.join(cwd, DIR_NAMES.WORKFLOW));
+  const hadSpecBaselineAtStart = !isFirstInit && hasMeaningfulSpecBaseline(cwd);
   // Captured here (before createWorkflowStructure + init_developer run) so
   // the three-branch dispatch at the bottom can tell "fresh clone joiner"
   // (.trellis/ exists, .developer missing) apart from "creator first init".
@@ -1197,6 +1373,7 @@ export async function init(options: InitOptions): Promise<void> {
     !options.force &&
     !options.skipExisting &&
     !tasksEmptyEarly &&
+    hadSpecBaselineAtStart &&
     !hasTemplateRequest
   ) {
     const reinitDone = await handleReinit(
@@ -1967,8 +2144,15 @@ export async function init(options: InitOptions): Promise<void> {
     writeSpecRegistryConfig(cwd, registrySpecConfigToPersist);
   }
 
-  // Initialize template hashes for modification tracking
-  const hashedCount = initializeHashes(cwd, { trackedPaths: writtenPaths });
+  // Initialize template hashes for modification tracking. A full re-init of
+  // an existing checkout may skip byte-identical platform files, so its write
+  // recorder is intentionally incomplete. Preserve the checkout's existing
+  // ownership entries in that case; only a true first init starts a manifest
+  // from scratch.
+  const hashedCount = initializeHashes(cwd, {
+    trackedPaths: writtenPaths,
+    merge: !isFirstInit,
+  });
   if (useRemoteTemplate) {
     const specFilesToHash = new Map<string, string>();
     for (const relativePath of collectSpecPaths(cwd)) {
@@ -2024,13 +2208,33 @@ export async function init(options: InitOptions): Promise<void> {
     const tasksEmpty =
       !fs.existsSync(tasksDir) || fs.readdirSync(tasksDir).length === 0;
 
-    if (isFirstInit || tasksEmpty) {
+    if (isFirstInit || tasksEmpty || !hadSpecBaselineAtStart) {
+      const persistedSpecRegistry = loadSpecRegistryConfig(cwd);
+      const loadedSpecSource = persistedSpecRegistry
+        ? persistedSpecRegistry.template
+          ? `${persistedSpecRegistry.source} (template: ${persistedSpecRegistry.template})`
+          : persistedSpecRegistry.source
+        : remoteSpecPackages && remoteSpecPackages.size > 0
+          ? `remote templates for ${[...remoteSpecPackages].join(", ")}`
+          : useRemoteTemplate
+            ? selectedTemplate
+              ? `template: ${selectedTemplate}`
+              : "remote spec template"
+            : undefined;
+      const specPaths = [...collectSpecPaths(cwd)].sort();
+      const specSourceLoaded =
+        useRemoteTemplate ||
+        (remoteSpecPackages !== undefined && remoteSpecPackages.size > 0);
+
       createBootstrapTask(
         cwd,
         developerName,
         pythonCmd,
         projectType,
         monorepoPackages,
+        loadedSpecSource,
+        specSourceLoaded,
+        specPaths,
       );
     } else if (!hadDeveloperFileAtStart) {
       try {

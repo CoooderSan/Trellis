@@ -1,18 +1,18 @@
-name: Publish to npm
+name: Manual npmjs recovery publish
 
-# Both event sources stay wired so a published GitHub Release and a raw
-# `v*` tag push both fire a publish. The shared release-preflight script
-# makes reruns idempotent: if a package version is already on npm it is
-# skipped, so duplicate triggers do not produce duplicate publishes.
+# GitLab is the source of truth for Ecochain releases. Keep this workflow as a
+# manual recovery path only so mirroring tags or releases to GitHub cannot
+# publish packages a second time.
 on:
-  release:
-    types: [published]
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing Ecochain release tag (for example, ecochain-v0.6.14)"
+        required: true
+        type: string
 
 concurrency:
-  group: publish-${{ github.ref_name || github.ref }}
+  group: publish-${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -23,17 +23,40 @@ jobs:
       # Required for npm provenance attestations.
       id-token: write
     steps:
-      - name: Checkout
+      - name: Validate Ecochain release tag input
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^ecochain-v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+-]+)?$ ]]; then
+            echo "Invalid Ecochain release tag: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Checkout exact release tag
         uses: actions/checkout@v4
         with:
+          ref: refs/tags/${{ inputs.tag }}
           fetch-depth: 0
           submodules: recursive
 
-      - name: Setup Node.js
+      - name: Verify exact immutable release tag checkout
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}" >/dev/null
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+
+      - name: Verify Ecochain package identities
+        run: |
+          test "$(node -p "require('./packages/cli/package.json').name")" = "@ecochain/trellis"
+          test "$(node -p "require('./packages/core/package.json').name")" = "@ecochain/trellis-core"
+
+      - name: Setup Node.js for npmjs recovery
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+          scope: "@ecochain"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -45,6 +68,8 @@ jobs:
 
       - name: Verify version alignment (core, cli, git tag)
         run: node packages/cli/scripts/release-preflight.js check-versions --require-tag
+        env:
+          GITHUB_REF_NAME: ${{ inputs.tag }}
 
       - name: Typecheck (core + cli)
         run: pnpm typecheck
@@ -64,7 +89,7 @@ jobs:
         id: plan
         run: node packages/cli/scripts/release-preflight.js publish-plan --github
 
-      - name: Publish @mindfoldhq/trellis-core
+      - name: Publish @ecochain/trellis-core to npmjs
         if: steps.plan.outputs.core_publish == 'true'
         run: pnpm publish --access public --no-git-checks --tag ${{ steps.plan.outputs.tag }}
         working-directory: packages/core
@@ -72,11 +97,11 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
 
-      - name: Skip @mindfoldhq/trellis-core (already on npm)
+      - name: Skip @ecochain/trellis-core (already on npmjs)
         if: steps.plan.outputs.core_publish != 'true'
-        run: echo "@mindfoldhq/trellis-core@${{ steps.plan.outputs.version }} already published; skipping."
+        run: echo "@ecochain/trellis-core@${{ steps.plan.outputs.version }} already published; skipping."
 
-      - name: Publish @mindfoldhq/trellis
+      - name: Publish @ecochain/trellis to npmjs
         if: steps.plan.outputs.cli_publish == 'true'
         run: pnpm publish --access public --no-git-checks --tag ${{ steps.plan.outputs.tag }}
         working-directory: packages/cli
@@ -84,9 +109,9 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
 
-      - name: Skip @mindfoldhq/trellis (already on npm)
+      - name: Skip @ecochain/trellis (already on npmjs)
         if: steps.plan.outputs.cli_publish != 'true'
-        run: echo "@mindfoldhq/trellis@${{ steps.plan.outputs.version }} already published; skipping."
+        run: echo "@ecochain/trellis@${{ steps.plan.outputs.version }} already published; skipping."
 
-      - name: Verify published packages on public npm
+      - name: Verify published packages on npmjs
         run: node packages/cli/scripts/release-preflight.js verify-npm --package all

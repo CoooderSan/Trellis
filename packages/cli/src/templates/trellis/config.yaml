@@ -51,6 +51,26 @@ max_journal_lines: 2000
 #     - "echo 'Task archived'"
 
 #-------------------------------------------------------------------------------
+# Classified Governance Gate
+#-------------------------------------------------------------------------------
+
+# Enabled by default in the Ecochain distribution. The agent classifies the
+# natural-language request before calling task.py; hooks do not create tasks.
+# Readonly and ordinary operational work should not create development tasks.
+# Business features require an approved Product Intent before task creation.
+# Bugfix, maintenance, and review revision tasks may use NOT_REQUIRED but must
+# complete intent.md as a structured Task Basis before task start.
+# Set `enabled: false` to opt out explicitly.
+governance:
+  enabled: true
+  enforce:
+    task_create: true
+    task_start: true
+  # Optional external evaluator. When configured it replaces the local
+  # classified Task Basis evaluator while retaining these lifecycle choke points.
+  # command: "python3 ./ai-governance/scripts/evaluate_gate.py --json"
+
+#-------------------------------------------------------------------------------
 # Monorepo / Packages
 #-------------------------------------------------------------------------------
 

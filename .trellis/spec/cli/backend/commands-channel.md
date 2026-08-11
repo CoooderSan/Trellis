@@ -9,18 +9,18 @@ integration via env wiring and storage layout).
 
 ## 1. Scope / Trigger
 
-| Trigger | Why this requires code-spec depth |
-|---------|------------------------------------|
-| New top-level `channel` command tree (14 subcommands) | New CLI surface — signatures must be locked |
-| Event-stream protocol (events.jsonl, fixed kind taxonomy) | Cross-component contract: workers, supervisor, CLI all parse the same payloads |
-| Per-worker subprocess supervision (claude / codex) | Infra integration: process lifecycle + signal handling |
-| Disk layout migration (legacy flat → project buckets) | Infra: irreversible filesystem move + cross-tool path conventions (claude code parity) |
-| Worker provider plugin (`WorkerAdapter`) | Extension contract: future providers depend on shape stability |
-| Env wiring (`TRELLIS_CHANNEL_ROOT/PROJECT/AS`) | Cross-process configuration |
+| Trigger                                                   | Why this requires code-spec depth                                                      |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| New top-level `channel` command tree (14 subcommands)     | New CLI surface — signatures must be locked                                            |
+| Event-stream protocol (events.jsonl, fixed kind taxonomy) | Cross-component contract: workers, supervisor, CLI all parse the same payloads         |
+| Per-worker subprocess supervision (claude / codex)        | Infra integration: process lifecycle + signal handling                                 |
+| Disk layout migration (legacy flat → project buckets)     | Infra: irreversible filesystem move + cross-tool path conventions (claude code parity) |
+| Worker provider plugin (`WorkerAdapter`)                  | Extension contract: future providers depend on shape stability                         |
+| Env wiring (`TRELLIS_CHANNEL_ROOT/PROJECT/AS`)            | Cross-process configuration                                                            |
 
 ### Current Core / CLI Boundary
 
-`@mindfoldhq/trellis-core/channel` owns reusable channel domain behavior:
+`@ecochain/trellis-core/channel` owns reusable channel domain behavior:
 event schemas, reducers, durable mutation APIs, idempotency, worker registry,
 inbox policy, and public SDK contracts.
 
@@ -292,7 +292,7 @@ isCreateEvent(ev): ev is CreateChannelEvent
 isThreadEvent(ev): ev is ThreadChannelEvent
 metadataFromCreateEvent(ev?): ChannelMetadata
   // Internal legacy compatibility helper only. Do not export from
-  // @mindfoldhq/trellis-core/channel and do not call from CLI renderers.
+  // @ecochain/trellis-core/channel and do not call from CLI renderers.
 
 watchEvents(name, filter: WatchFilter, opts?: {signal?, fromStart?, sinceSeq?, project?}): AsyncGenerator<ChannelEvent>
   // Default: from EOF (live tail). fromStart: from byte 0. sinceSeq: skip seq <= N.
@@ -345,35 +345,53 @@ All events carry: `seq: number` (monotonic ≥ 1), `ts: string` (ISO 8601),
 are kind-specific.
 
 ```ts
-type ChannelEventKind = "create" | "join" | "leave" | "message" | "thread" | "context" | "channel" | "spawned"
-  | "killed" | "respawned" | "progress" | "done" | "error" | "waiting" | "awake"
-  | "undeliverable" | "interrupt_requested" | "turn_started" | "turn_finished" | "interrupted"
+type ChannelEventKind =
+  | "create"
+  | "join"
+  | "leave"
+  | "message"
+  | "thread"
+  | "context"
+  | "channel"
+  | "spawned"
+  | "killed"
+  | "respawned"
+  | "progress"
+  | "done"
+  | "error"
+  | "waiting"
+  | "awake"
+  | "undeliverable"
+  | "interrupt_requested"
+  | "turn_started"
+  | "turn_finished"
+  | "interrupted"
   | "supervisor_warning";
 ```
 
-| Kind | Required (beyond base) | Optional | Producer |
-|------|------------------------|----------|----------|
-| `create` | `cwd: string`, `scope: "project"\|"global"`, `type: "chat"\|"forum"` | `task: string`, `project: string`, `labels: string[]`, `description: string`, `context: ContextEntry[]`, `ephemeral: true`, `origin: "cli"`, `meta: object` | CLI |
-| `spawned` | `as: string`, `provider: "claude"\|"codex"`, `pid: number` | `agent: string`, `files: string[]`, `manifests: string[]`, `inboxPolicy: "explicitOnly"\|"broadcastAndExplicit"` | supervisor / core `spawnWorker` |
-| `message` | `text: string` | `to: string \| string[]` | any |
-| `thread` | `action: ThreadAction`, `thread: string` | `title`, `text`, `description`, `status`, `labels`, `assignees`, `summary`, `context`, `newThread` | CLI / agents |
-| `context` | `target: "channel"\|"thread"`, `action: "add"\|"delete"`, `context: ContextEntry[]` | `thread` when `target="thread"` | CLI / agents |
-| `channel` | `action: "title"` | `title: string \| null` | CLI / agents |
-| `progress` | `detail: object` (free-form) | — | adapter |
-| `done` | — | `duration_ms: number`, `total_cost_usd: number`, `num_turns: number`, `synthesized: true`, `exit_code: number` | adapter (real) / supervisor (synthesised) |
-| `error` | `message: string` | `detail: object`, `provider: string`, `synthesized: true`, `exit_code`, `exit_signal` | supervisor / adapter |
-| `killed` | `reason: "explicit-kill"\|"timeout"\|"crash"\|"idle-timeout"`, `signal: NodeJS.Signals` | `timeout_ms: number` (if reason="timeout"), `idle_timeout_ms: number` (if reason="idle-timeout"), `worker: string` | supervisor / cli:kill |
-| `supervisor_warning` | `worker: string`, `reason: "approaching_timeout"`, `timeout_ms: number`, `remaining_ms: number` | — | supervisor |
-| `respawned` | (reserved, no fields yet) | — | (future) |
-| `undeliverable` | `targetWorker: string`, `messageSeq: number`, `reason: "worker-terminal"\|"worker-unknown"` | — | core `sendMessage` (strict delivery modes only) |
-| `interrupt_requested` | `worker: string` | `turnId: string`, `reason: "user"\|"system"\|"timeout"\|"superseded"`, `message: string` | core `requestInterrupt` / `interruptWorker` |
-| `turn_started` | `worker: string`, `inputSeq: number` | `turnId: string` | adapter / supervisor |
-| `turn_finished` | `worker: string` | `inputSeq: number`, `turnId: string`, `outcome: "done"\|"error"\|"aborted"` | adapter / supervisor |
-| `interrupted` | `worker: string`, `method: "provider"\|"stdin"\|"signal"\|"none"`, `outcome: "interrupted"\|"queued"\|"unsupported"\|"no-active-turn"\|"failed"` | `turnId: string`, `reason`, `message: string` | core `interruptWorker` / CLI supervisor |
+| Kind                  | Required (beyond base)                                                                                                                           | Optional                                                                                                                                                    | Producer                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `create`              | `cwd: string`, `scope: "project"\|"global"`, `type: "chat"\|"forum"`                                                                             | `task: string`, `project: string`, `labels: string[]`, `description: string`, `context: ContextEntry[]`, `ephemeral: true`, `origin: "cli"`, `meta: object` | CLI                                             |
+| `spawned`             | `as: string`, `provider: "claude"\|"codex"`, `pid: number`                                                                                       | `agent: string`, `files: string[]`, `manifests: string[]`, `inboxPolicy: "explicitOnly"\|"broadcastAndExplicit"`                                            | supervisor / core `spawnWorker`                 |
+| `message`             | `text: string`                                                                                                                                   | `to: string \| string[]`                                                                                                                                    | any                                             |
+| `thread`              | `action: ThreadAction`, `thread: string`                                                                                                         | `title`, `text`, `description`, `status`, `labels`, `assignees`, `summary`, `context`, `newThread`                                                          | CLI / agents                                    |
+| `context`             | `target: "channel"\|"thread"`, `action: "add"\|"delete"`, `context: ContextEntry[]`                                                              | `thread` when `target="thread"`                                                                                                                             | CLI / agents                                    |
+| `channel`             | `action: "title"`                                                                                                                                | `title: string \| null`                                                                                                                                     | CLI / agents                                    |
+| `progress`            | `detail: object` (free-form)                                                                                                                     | —                                                                                                                                                           | adapter                                         |
+| `done`                | —                                                                                                                                                | `duration_ms: number`, `total_cost_usd: number`, `num_turns: number`, `synthesized: true`, `exit_code: number`                                              | adapter (real) / supervisor (synthesised)       |
+| `error`               | `message: string`                                                                                                                                | `detail: object`, `provider: string`, `synthesized: true`, `exit_code`, `exit_signal`                                                                       | supervisor / adapter                            |
+| `killed`              | `reason: "explicit-kill"\|"timeout"\|"crash"\|"idle-timeout"`, `signal: NodeJS.Signals`                                                          | `timeout_ms: number` (if reason="timeout"), `idle_timeout_ms: number` (if reason="idle-timeout"), `worker: string`                                          | supervisor / cli:kill                           |
+| `supervisor_warning`  | `worker: string`, `reason: "approaching_timeout"`, `timeout_ms: number`, `remaining_ms: number`                                                  | —                                                                                                                                                           | supervisor                                      |
+| `respawned`           | (reserved, no fields yet)                                                                                                                        | —                                                                                                                                                           | (future)                                        |
+| `undeliverable`       | `targetWorker: string`, `messageSeq: number`, `reason: "worker-terminal"\|"worker-unknown"`                                                      | —                                                                                                                                                           | core `sendMessage` (strict delivery modes only) |
+| `interrupt_requested` | `worker: string`                                                                                                                                 | `turnId: string`, `reason: "user"\|"system"\|"timeout"\|"superseded"`, `message: string`                                                                    | core `requestInterrupt` / `interruptWorker`     |
+| `turn_started`        | `worker: string`, `inputSeq: number`                                                                                                             | `turnId: string`                                                                                                                                            | adapter / supervisor                            |
+| `turn_finished`       | `worker: string`                                                                                                                                 | `inputSeq: number`, `turnId: string`, `outcome: "done"\|"error"\|"aborted"`                                                                                 | adapter / supervisor                            |
+| `interrupted`         | `worker: string`, `method: "provider"\|"stdin"\|"signal"\|"none"`, `outcome: "interrupted"\|"queued"\|"unsupported"\|"no-active-turn"\|"failed"` | `turnId: string`, `reason`, `message: string`                                                                                                               | core `interruptWorker` / CLI supervisor         |
 
 **Author identity (`by`) shape**: `"main"`, `"<worker-name>"`, `"supervisor:<worker>"`, or `"cli:<command>"` (e.g. `cli:kill`).
 
-**Worker lifecycle / inbox / delivery contracts** (owned by `@mindfoldhq/trellis-core`):
+**Worker lifecycle / inbox / delivery contracts** (owned by `@ecochain/trellis-core`):
 
 - `reduceWorkerRegistry(events, channel?)` is the SOT worker projection. Worker
   lifecycle (`starting`/`running`/`done`/`error`/`killed`/`crashed`) and turn
@@ -393,7 +411,7 @@ type ChannelEventKind = "create" | "join" | "leave" | "message" | "thread" | "co
   append the `message` event first, then append `undeliverable` for targeted
   workers failing the selected condition. Broadcast messages never produce
   `undeliverable`. CLI exposes this through `trellis channel send
-  --delivery-mode <mode>`.
+--delivery-mode <mode>`.
 - Interrupt is a first-class API, not a magic tag. `requestInterrupt` appends
   `interrupt_requested` only; `interruptWorker(input, runtime)` appends
   `interrupt_requested`, calls the injected `WorkerRuntime`, then appends
@@ -431,7 +449,7 @@ type ChannelEventKind = "create" | "join" | "leave" | "message" | "thread" | "co
 
 #### 1. Scope / Trigger
 
-- Trigger: `@mindfoldhq/trellis-core` mutation APIs need replay safety for
+- Trigger: `@ecochain/trellis-core` mutation APIs need replay safety for
   daemon/API callers that may retry a logical command after a crash or lost
   receipt.
 - This is an event-log storage contract: the physical `events.jsonl` append
@@ -493,14 +511,14 @@ API writes the key and has replay tests.
 
 #### 4. Validation & Error Matrix
 
-| Condition | Behavior |
-|-----------|----------|
-| `idempotencyKey` omitted | Append a new event exactly as before. |
-| `idempotencyKey` is `""` or whitespace-only | Throw `idempotencyKey must be a non-empty string`. |
-| Same channel/key/kind already exists | Return the existing event; do not append or advance seq. |
-| Same channel/key exists with another kind | Throw a cross-kind reuse error naming the existing kind. |
-| Same key used in another channel | Treat as independent; append according to that channel's log. |
-| `sendMessage` strict replay for same failed target | Return original message and do not duplicate `undeliverable`. |
+| Condition                                             | Behavior                                                             |
+| ----------------------------------------------------- | -------------------------------------------------------------------- |
+| `idempotencyKey` omitted                              | Append a new event exactly as before.                                |
+| `idempotencyKey` is `""` or whitespace-only           | Throw `idempotencyKey must be a non-empty string`.                   |
+| Same channel/key/kind already exists                  | Return the existing event; do not append or advance seq.             |
+| Same channel/key exists with another kind             | Throw a cross-kind reuse error naming the existing kind.             |
+| Same key used in another channel                      | Treat as independent; append according to that channel's log.        |
+| `sendMessage` strict replay for same failed target    | Return original message and do not duplicate `undeliverable`.        |
 | `sendMessage` strict replay with different retry `to` | Ignore retry target drift; classify only the persisted message `to`. |
 
 #### 5. Good/Base/Bad Cases
@@ -566,8 +584,8 @@ CLI-owned safeguard against unbounded resident-worker accumulation.
 
 ```ts
 type WorkerGuardConfig = {
-  idleTimeoutMs: number;    // default 300_000; 0 disables idle cleanup
-  maxLiveWorkers: number;   // default 6; 0 disables spawn budget
+  idleTimeoutMs: number; // default 300_000; 0 disables idle cleanup
+  maxLiveWorkers: number; // default 6; 0 disables spawn budget
 };
 ```
 
@@ -625,17 +643,17 @@ TRELLIS_CHANNEL_MAX_LIVE_WORKERS=6
 
 #### 4. Validation & Error Matrix
 
-| Condition | Behavior |
-|-----------|----------|
-| `--idle-timeout` invalid duration | commander rejects using the existing duration parser |
-| `--max-live-workers <n>` is negative / non-integer | commander rejects with an argument error |
-| `idle_timeout: 0` or `TRELLIS_CHANNEL_WORKER_IDLE_TIMEOUT=0` | idle cleanup disabled; workers are still counted for budget unless budget is also disabled |
-| `max_live_workers: 0` or `TRELLIS_CHANNEL_MAX_LIVE_WORKERS=0` | budget check disabled; supervisor idle self-termination still works if TTL > 0 |
-| Live count after expired-idle cleanup is `>= maxLiveWorkers` | reject `spawn` with live worker list, `trellis channel kill` hints, and override hint |
-| Idle worker pid is live but command line is unverified | count it; do not auto-signal it |
-| Worker is running a turn when idle TTL expires | do nothing until it returns to idle |
-| Supervisor receives external SIGTERM with `shutdown-reason=idle-timeout` | append `killed` with `reason:"idle-timeout"` and `idle_timeout_ms` |
-| Supervisor receives SIGTERM without sidecar | append `killed` with `reason:"explicit-kill"` |
+| Condition                                                                | Behavior                                                                                   |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `--idle-timeout` invalid duration                                        | commander rejects using the existing duration parser                                       |
+| `--max-live-workers <n>` is negative / non-integer                       | commander rejects with an argument error                                                   |
+| `idle_timeout: 0` or `TRELLIS_CHANNEL_WORKER_IDLE_TIMEOUT=0`             | idle cleanup disabled; workers are still counted for budget unless budget is also disabled |
+| `max_live_workers: 0` or `TRELLIS_CHANNEL_MAX_LIVE_WORKERS=0`            | budget check disabled; supervisor idle self-termination still works if TTL > 0             |
+| Live count after expired-idle cleanup is `>= maxLiveWorkers`             | reject `spawn` with live worker list, `trellis channel kill` hints, and override hint      |
+| Idle worker pid is live but command line is unverified                   | count it; do not auto-signal it                                                            |
+| Worker is running a turn when idle TTL expires                           | do nothing until it returns to idle                                                        |
+| Supervisor receives external SIGTERM with `shutdown-reason=idle-timeout` | append `killed` with `reason:"idle-timeout"` and `idle_timeout_ms`                         |
+| Supervisor receives SIGTERM without sidecar                              | append `killed` with `reason:"explicit-kill"`                                              |
 
 #### 5. Good/Base/Bad Cases
 
@@ -699,14 +717,14 @@ if (
 ```ts
 type CodexProgressDeltaDetail = {
   kind: "output" | "commentary" | "reasoning";
-  text_delta: string;          // backward-compatible streamed token/chunk
-  stream_id?: string;          // Codex params.itemId when present
-  phase?: string;              // Codex item.phase when known
+  text_delta: string; // backward-compatible streamed token/chunk
+  stream_id?: string; // Codex params.itemId when present
+  phase?: string; // Codex item.phase when known
 };
 
 type CodexItemMeta = {
-  type?: string;               // item.type from item/started or item/completed
-  phase?: string;              // item.phase from item/started or item/completed
+  type?: string; // item.type from item/started or item/completed
+  phase?: string; // item.phase from item/started or item/completed
 };
 ```
 
@@ -723,17 +741,17 @@ interface CodexCtx {
 
 #### 3. Contracts
 
-| Codex input | Required adapter behavior |
-|-------------|---------------------------|
-| `item/started` with `item.id` | Store `item.id -> {type, phase}` in `ctx.items`; do not emit an event for plain `agentMessage`, `reasoning`, `plan`, or prompt scaffolding items. |
-| `item/completed` with `item.id` | Refresh `ctx.items` before projecting completed events, so later deltas for the same id still have metadata. |
-| `item/agentMessage/delta` with `params.delta` or `params.text` | Emit one `progress` event with `detail.text_delta` unchanged. |
-| `item/agentMessage/delta` with `params.itemId` | Add `detail.stream_id = params.itemId`. |
-| Known `phase:"commentary"` | Add `detail.kind = "commentary"` and `detail.phase = "commentary"`. |
-| Known `phase:"final_answer"` or unknown phase on `agentMessage` | Add `detail.kind = "output"`; add `detail.phase` only when known. |
-| Known `type:"reasoning"` | Add `detail.kind = "reasoning"`. |
-| Completed `agentMessage` with `phase:"commentary"` | Continue projecting it as `progress.detail.kind = "commentary"` with summarized `text_delta`. |
-| Completed `agentMessage` with `phase:"final_answer"` or no phase | Continue projecting it as `kind:"message"`; this remains the canonical completed assistant answer. |
+| Codex input                                                      | Required adapter behavior                                                                                                                         |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `item/started` with `item.id`                                    | Store `item.id -> {type, phase}` in `ctx.items`; do not emit an event for plain `agentMessage`, `reasoning`, `plan`, or prompt scaffolding items. |
+| `item/completed` with `item.id`                                  | Refresh `ctx.items` before projecting completed events, so later deltas for the same id still have metadata.                                      |
+| `item/agentMessage/delta` with `params.delta` or `params.text`   | Emit one `progress` event with `detail.text_delta` unchanged.                                                                                     |
+| `item/agentMessage/delta` with `params.itemId`                   | Add `detail.stream_id = params.itemId`.                                                                                                           |
+| Known `phase:"commentary"`                                       | Add `detail.kind = "commentary"` and `detail.phase = "commentary"`.                                                                               |
+| Known `phase:"final_answer"` or unknown phase on `agentMessage`  | Add `detail.kind = "output"`; add `detail.phase` only when known.                                                                                 |
+| Known `type:"reasoning"`                                         | Add `detail.kind = "reasoning"`.                                                                                                                  |
+| Completed `agentMessage` with `phase:"commentary"`               | Continue projecting it as `progress.detail.kind = "commentary"` with summarized `text_delta`.                                                     |
+| Completed `agentMessage` with `phase:"final_answer"` or no phase | Continue projecting it as `kind:"message"`; this remains the canonical completed assistant answer.                                                |
 
 Consumer contract:
 
@@ -744,14 +762,14 @@ Consumer contract:
 
 #### 4. Validation & Error Matrix
 
-| Condition | Behavior |
-|-----------|----------|
-| Delta event has no `delta` and no `text` | Emit no event. |
-| Delta event has `itemId` but no remembered metadata | Emit `detail.kind = "output"`, keep `detail.stream_id`, keep `detail.text_delta`. |
-| Delta event has inline `params.item` | Record that item metadata before classification. |
-| `item.id` is missing or not a string | Do not write to `ctx.items`; continue normal event projection. |
-| Unknown `item.type` / unknown `phase` | Do not throw; default streamed delta kind to `output`. |
-| Multiple streams interleave in one turn | Do not buffer/reorder globally; preserve event order and make streams separable through `stream_id`. |
+| Condition                                           | Behavior                                                                                             |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Delta event has no `delta` and no `text`            | Emit no event.                                                                                       |
+| Delta event has `itemId` but no remembered metadata | Emit `detail.kind = "output"`, keep `detail.stream_id`, keep `detail.text_delta`.                    |
+| Delta event has inline `params.item`                | Record that item metadata before classification.                                                     |
+| `item.id` is missing or not a string                | Do not write to `ctx.items`; continue normal event projection.                                       |
+| Unknown `item.type` / unknown `phase`               | Do not throw; default streamed delta kind to `output`.                                               |
+| Multiple streams interleave in one turn             | Do not buffer/reorder globally; preserve event order and make streams separable through `stream_id`. |
 
 #### 5. Good/Base/Bad Cases
 
@@ -794,6 +812,7 @@ return { events: [{ kind: "progress", payload: { detail } }] };
 ```
 
 **Channel type semantics**:
+
 - `chat` is the default and remains timeline-first.
 - `forum` is thread-list-first (a topic area whose threads are individual topics): `messages <channel>` pretty output starts with a reduced thread list unless event filters are set; `messages --raw` always prints one event per JSONL line.
 - Legacy event logs with `type:"thread"` / `type:"threads"` are NOT upgraded to `forum`; they project to `chat`, so forum/thread APIs reject them as non-forum channels. New CLI writes and accepts only `forum`; `--type thread` and `--type threads` both throw with a clear "Use '--type forum'" error.
@@ -847,9 +866,10 @@ mode marker to `meta.trellis.createMode = "run"` or an equivalent
 non-conflicting field.
 
 **Context shape**:
+
 ```ts
 type ContextEntry =
-  | { type: "file"; path: string }   // absolute path only
+  | { type: "file"; path: string } // absolute path only
   | { type: "raw"; text: string };
 ```
 
@@ -889,11 +909,13 @@ Legacy event logs may still contain `linkedContext`; readers normalize it to
 ```
 
 **Bucket discovery rules**:
+
 - Top-level dir is a bucket iff it has `.bucket` file OR name is `_legacy` / `_default` / `_global`
 - Any other top-level dir with `events.jsonl` inside is a legacy channel → auto-migrated
 - Reserved bucket names: `_legacy`, `_default`, `_global` (never written as projectKey output because projectKey never starts with `_`)
 
 **Cleanup contract** (`cleanup(channel, worker)` in supervisor.ts):
+
 - ALWAYS removes: `pid`, `worker-pid`, `config`, `spawnlock`,
   `shutdown-reason`, `reservation`
 - NEVER removes: `log`, `session-id`, `thread-id`, `inbox-cursor`, `events.jsonl`, `.seq`
@@ -903,16 +925,17 @@ only applies to per-worker supervisor cleanup.
 
 ### Env wiring
 
-| Variable | Required? | Default | Used by |
-|----------|-----------|---------|---------|
-| `TRELLIS_CHANNEL_ROOT` | optional | `~/.trellis/channels` | `channelRoot()` — override storage root |
-| `TRELLIS_CHANNEL_PROJECT` | optional | `projectKey(process.cwd())` | `currentProjectKey()` — lock current project bucket |
-| `TRELLIS_CHANNEL_AS` | optional | `"main"` | `spawn.ts` — default for `spawnedBy` on `spawned` event (lets workers spawning workers record correct lineage) |
-| `TRELLIS_CHANNEL_WORKER_IDLE_TIMEOUT` | optional | `.trellis/config.yaml` then `5m` | worker OOM guard idle-cleanup TTL; duration string, `0` disables |
-| `TRELLIS_CHANNEL_MAX_LIVE_WORKERS` | optional | `.trellis/config.yaml` then `6` | worker OOM guard live-worker budget; non-negative integer, `0` disables |
-| `TRELLIS_HOOKS` | set to `"0"` by supervisor | n/a | supervised workers — disables trellis hooks inside the worker process (prevents recursive hook injection) |
+| Variable                              | Required?                  | Default                          | Used by                                                                                                        |
+| ------------------------------------- | -------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `TRELLIS_CHANNEL_ROOT`                | optional                   | `~/.trellis/channels`            | `channelRoot()` — override storage root                                                                        |
+| `TRELLIS_CHANNEL_PROJECT`             | optional                   | `projectKey(process.cwd())`      | `currentProjectKey()` — lock current project bucket                                                            |
+| `TRELLIS_CHANNEL_AS`                  | optional                   | `"main"`                         | `spawn.ts` — default for `spawnedBy` on `spawned` event (lets workers spawning workers record correct lineage) |
+| `TRELLIS_CHANNEL_WORKER_IDLE_TIMEOUT` | optional                   | `.trellis/config.yaml` then `5m` | worker OOM guard idle-cleanup TTL; duration string, `0` disables                                               |
+| `TRELLIS_CHANNEL_MAX_LIVE_WORKERS`    | optional                   | `.trellis/config.yaml` then `6`  | worker OOM guard live-worker budget; non-negative integer, `0` disables                                        |
+| `TRELLIS_HOOKS`                       | set to `"0"` by supervisor | n/a                              | supervised workers — disables trellis hooks inside the worker process (prevents recursive hook injection)      |
 
 **Env precedence**:
+
 - `TRELLIS_CHANNEL_PROJECT` set externally → that bucket (advanced)
 - `TRELLIS_CHANNEL_PROJECT` not set → derive from `process.cwd()`
 - `selectExistingChannelProject(name)` may **mutate `process.env.TRELLIS_CHANNEL_PROJECT`** when falling back to a unique cross-bucket match, so the rest of the CLI invocation lands on the same bucket
@@ -923,56 +946,56 @@ only applies to per-worker supervisor cleanup.
 
 ### CLI-level
 
-| Condition | Behavior |
-|-----------|----------|
-| `create <name>` and channel exists, no `--force` | throw `"Channel '<name>' already exists at <dir>. Use --force to overwrite."` |
-| `create --force` with live workers | killLiveWorkers (SIGTERM → 1.5s → SIGKILL) → rmrf → recreate |
-| `spawn` and channel not found | throw `"Channel '<name>' not found at <dir>"` |
-| `spawn` with no `--provider` and no `--agent` providing it | throw `"Missing --provider (and the agent definition has no \`provider:\` frontmatter)"` |
-| `spawn` with no `--as` and no `--agent` providing fallback name | throw `"Missing --as (no agent name to fall back to)"` |
-| `spawn` and worker name already has a live pid | throw `"Worker '<as>' is already running in channel '<name>' (pid <N>)"` |
-| `spawn` and `--provider` not in REGISTRY | exit 1, stderr `"--provider must be one of: claude, codex"` |
-| `send` with none of `--stdin`/`--text-file`/`[text]` | throw (missing body) |
+| Condition                                                                                                    | Behavior                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `create <name>` and channel exists, no `--force`                                                             | throw `"Channel '<name>' already exists at <dir>. Use --force to overwrite."`                                         |
+| `create --force` with live workers                                                                           | killLiveWorkers (SIGTERM → 1.5s → SIGKILL) → rmrf → recreate                                                          |
+| `spawn` and channel not found                                                                                | throw `"Channel '<name>' not found at <dir>"`                                                                         |
+| `spawn` with no `--provider` and no `--agent` providing it                                                   | throw `"Missing --provider (and the agent definition has no \`provider:\` frontmatter)"`                              |
+| `spawn` with no `--as` and no `--agent` providing fallback name                                              | throw `"Missing --as (no agent name to fall back to)"`                                                                |
+| `spawn` and worker name already has a live pid                                                               | throw `"Worker '<as>' is already running in channel '<name>' (pid <N>)"`                                              |
+| `spawn` and `--provider` not in REGISTRY                                                                     | exit 1, stderr `"--provider must be one of: claude, codex"`                                                           |
+| `send` with none of `--stdin`/`--text-file`/`[text]`                                                         | throw (missing body)                                                                                                  |
 | `send`/`spawn`/`wait`/`messages`/`kill`/`rm` with channel in both project and global scopes but no `--scope` | throw `"Channel '<name>' exists in global and project scopes. Use --scope global or --scope project."` before writing |
-| `post` against a `chat` channel | throw `"Channel '<name>' is type 'chat'. 'post' requires a forum channel."` |
-| `post <action>` with invalid action | throw `"Invalid thread action '<action>'..."` |
-| `post` without `--thread` for non-`opened` action | throw `"--thread is required unless action is 'opened'"` |
-| `--context-file <path>` with relative path | throw `"--context-file must be absolute: <path>"` |
-| `wait --all` without `--from` | throw `"--all requires --from <a,b,...>"` |
-| `wait` timeout | exit 124; if `--all`, stderr `"timeout: still waiting on <csv>"` |
-| `prune` with >1 of `--all/--empty/--idle/--ephemeral` | throw `"prune flags are mutually exclusive: <flags>. Pick one."` |
-| `prune` without `--yes` | print candidates + `(dry-run)` notice; exit 0 without deleting |
-| `run` worker exits with `error` or `killed` before `done` | exit 1, stderr `"channel kept for inspection: <path>"` |
-| `selectExistingChannelProject(name)` channel exists in ≥2 project buckets | throw `"Channel '<name>' exists in multiple project buckets: <csv>. Run from the owning project cwd or use --scope."` |
-| `selectExistingChannelProject(name)` not found anywhere | throw `"Channel '<name>' not found in current project bucket (<key>) or any known project bucket"` |
+| `post` against a `chat` channel                                                                              | throw `"Channel '<name>' is type 'chat'. 'post' requires a forum channel."`                                           |
+| `post <action>` with invalid action                                                                          | throw `"Invalid thread action '<action>'..."`                                                                         |
+| `post` without `--thread` for non-`opened` action                                                            | throw `"--thread is required unless action is 'opened'"`                                                              |
+| `--context-file <path>` with relative path                                                                   | throw `"--context-file must be absolute: <path>"`                                                                     |
+| `wait --all` without `--from`                                                                                | throw `"--all requires --from <a,b,...>"`                                                                             |
+| `wait` timeout                                                                                               | exit 124; if `--all`, stderr `"timeout: still waiting on <csv>"`                                                      |
+| `prune` with >1 of `--all/--empty/--idle/--ephemeral`                                                        | throw `"prune flags are mutually exclusive: <flags>. Pick one."`                                                      |
+| `prune` without `--yes`                                                                                      | print candidates + `(dry-run)` notice; exit 0 without deleting                                                        |
+| `run` worker exits with `error` or `killed` before `done`                                                    | exit 1, stderr `"channel kept for inspection: <path>"`                                                                |
+| `selectExistingChannelProject(name)` channel exists in ≥2 project buckets                                    | throw `"Channel '<name>' exists in multiple project buckets: <csv>. Run from the owning project cwd or use --scope."` |
+| `selectExistingChannelProject(name)` not found anywhere                                                      | throw `"Channel '<name>' not found in current project bucket (<key>) or any known project bucket"`                    |
 
 ### Supervisor-level
 
-| Condition | Behavior |
-|-----------|----------|
-| `child.on("error")` before `child.once("spawn")` (ENOENT etc.) | emit ONE `error{message:"worker spawn failed: ..."}`, run `cleanup()`, `process.exit(1)` — NO `spawned` event |
-| Duplicate `child.on("error")` fire after spawn-fail handled | guard with `if (spawnFailed) return` — no double event |
-| Post-spawn `error` (worker died after start) | `await appendEvent({kind:"error", message})` THEN `await shutdown.request("SIGTERM", "crash")` — ordering enforced via async IIFE |
-| Adapter handshake throws | `await appendEvent({kind:"error", detail:{source:"handshake"}, message})` THEN `shutdown.request("SIGTERM", "crash")` |
-| Shutdown requested during `await spawnSettled` | after settle, check `shutdown.isShuttingDown()` — if true, `await shutdown.awaitFinalize()` and return (no `spawned` event written) |
-| `child.on("exit")` and adapter never emitted done/error | `finalizeOnExit` synthesises `done{synthesized:true, exit_code:0}` (code=0) or `error{synthesized:true, exit_code, exit_signal}` (otherwise). `by` = worker name (NOT `supervisor:<worker>`) so `wait --from <worker>` wakes. |
-| `child.on("exit")` and shutdown was requested | NO synthesis (`killed` event already serves as terminal). `finalizeOnExit` only `await killedPromise` then exits. |
-| Kill ladder liveness check | `child.exitCode === null && child.signalCode === null` (NOT `child.killed` — that means "kill() called", not "process exited") |
+| Condition                                                      | Behavior                                                                                                                                                                                                                      |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `child.on("error")` before `child.once("spawn")` (ENOENT etc.) | emit ONE `error{message:"worker spawn failed: ..."}`, run `cleanup()`, `process.exit(1)` — NO `spawned` event                                                                                                                 |
+| Duplicate `child.on("error")` fire after spawn-fail handled    | guard with `if (spawnFailed) return` — no double event                                                                                                                                                                        |
+| Post-spawn `error` (worker died after start)                   | `await appendEvent({kind:"error", message})` THEN `await shutdown.request("SIGTERM", "crash")` — ordering enforced via async IIFE                                                                                             |
+| Adapter handshake throws                                       | `await appendEvent({kind:"error", detail:{source:"handshake"}, message})` THEN `shutdown.request("SIGTERM", "crash")`                                                                                                         |
+| Shutdown requested during `await spawnSettled`                 | after settle, check `shutdown.isShuttingDown()` — if true, `await shutdown.awaitFinalize()` and return (no `spawned` event written)                                                                                           |
+| `child.on("exit")` and adapter never emitted done/error        | `finalizeOnExit` synthesises `done{synthesized:true, exit_code:0}` (code=0) or `error{synthesized:true, exit_code, exit_signal}` (otherwise). `by` = worker name (NOT `supervisor:<worker>`) so `wait --from <worker>` wakes. |
+| `child.on("exit")` and shutdown was requested                  | NO synthesis (`killed` event already serves as terminal). `finalizeOnExit` only `await killedPromise` then exits.                                                                                                             |
+| Kill ladder liveness check                                     | `child.exitCode === null && child.signalCode === null` (NOT `child.killed` — that means "kill() called", not "process exited")                                                                                                |
 
 ### Security boundaries
 
-| Surface | Validator | Reject behavior |
-|---------|-----------|-----------------|
-| Channel / worker name as a path segment (create/rm/run/spawn/…) | `assertSafeName(name, kind)` — `^[A-Za-z0-9._-]+$`, rejects `.`/`..` — called inside `channelDir` (and `workerFile`/`workerLockPath` for the worker segment), the one chokepoint every path helper routes through | throw `"Invalid <kind> name: ..."` before any filesystem call (see [Filesystem Safety](./filesystem-safety.md) §2) |
-| Worker / channel name in protocol prompt | `safeIdentifier(s)` strips `/[\r\n\x00-\x08\x0b-\x1f\x7f]/` | silent strip (still produces a valid string) — defense-in-depth on top of the `assertSafeName` chokepoint above, not a substitute for it |
-| `--file <path>` | `jailedRealpath(path, cwd)` requires `realpath(path).startsWith(realpath(cwd) + sep)` | skip file, stderr warn |
-| `--jsonl <path>` | same jail | skip manifest entry, stderr warn |
-| Symlink swap during read | `lstat` BEFORE `stat` to detect symlinks before resolve | treat as not found |
-| `--agent <name>` | `/^[A-Za-z0-9._-]+$/` regex | throw |
-| `--agent` resolved path | `realpath(path).startsWith(realpath(agentsRoot) + sep)` | throw |
-| Frontmatter parse | `Object.create(null)`, reject keys in `["__proto__","prototype","constructor"]` | skip key |
-| Context file per-file size | `MAX_PER_FILE_BYTES = 1_000_000` (1MB) | truncate + stderr warn |
-| Context total size | `WARN_TOTAL_BYTES = 500_000` (500KB) | stderr warn (still loads) |
+| Surface                                                         | Validator                                                                                                                                                                                                         | Reject behavior                                                                                                                          |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Channel / worker name as a path segment (create/rm/run/spawn/…) | `assertSafeName(name, kind)` — `^[A-Za-z0-9._-]+$`, rejects `.`/`..` — called inside `channelDir` (and `workerFile`/`workerLockPath` for the worker segment), the one chokepoint every path helper routes through | throw `"Invalid <kind> name: ..."` before any filesystem call (see [Filesystem Safety](./filesystem-safety.md) §2)                       |
+| Worker / channel name in protocol prompt                        | `safeIdentifier(s)` strips `/[\r\n\x00-\x08\x0b-\x1f\x7f]/`                                                                                                                                                       | silent strip (still produces a valid string) — defense-in-depth on top of the `assertSafeName` chokepoint above, not a substitute for it |
+| `--file <path>`                                                 | `jailedRealpath(path, cwd)` requires `realpath(path).startsWith(realpath(cwd) + sep)`                                                                                                                             | skip file, stderr warn                                                                                                                   |
+| `--jsonl <path>`                                                | same jail                                                                                                                                                                                                         | skip manifest entry, stderr warn                                                                                                         |
+| Symlink swap during read                                        | `lstat` BEFORE `stat` to detect symlinks before resolve                                                                                                                                                           | treat as not found                                                                                                                       |
+| `--agent <name>`                                                | `/^[A-Za-z0-9._-]+$/` regex                                                                                                                                                                                       | throw                                                                                                                                    |
+| `--agent` resolved path                                         | `realpath(path).startsWith(realpath(agentsRoot) + sep)`                                                                                                                                                           | throw                                                                                                                                    |
+| Frontmatter parse                                               | `Object.create(null)`, reject keys in `["__proto__","prototype","constructor"]`                                                                                                                                   | skip key                                                                                                                                 |
+| Context file per-file size                                      | `MAX_PER_FILE_BYTES = 1_000_000` (1MB)                                                                                                                                                                            | truncate + stderr warn                                                                                                                   |
+| Context total size                                              | `WARN_TOTAL_BYTES = 500_000` (500KB)                                                                                                                                                                              | stderr warn (still loads)                                                                                                                |
 
 ---
 
@@ -981,6 +1004,7 @@ only applies to per-worker supervisor cleanup.
 ### Case A — `channel run` happy path
 
 **Good** (typical short task):
+
 ```bash
 $ TRELLIS_CHANNEL_ROOT=/tmp/test trellis channel run --provider codex --message "say hi in 3 words"
 Hi, glad you're here.
@@ -991,6 +1015,7 @@ ls: ... No such file or directory
 ```
 
 **Base** (normal CR with single worker):
+
 ```bash
 $ trellis channel run --agent check --message-file /tmp/cr-brief.md --timeout 15m
 ## Files Checked
@@ -1002,6 +1027,7 @@ $ echo $?
 ```
 
 **Bad** (provider missing → spawn-fail → channel kept for inspection):
+
 ```bash
 $ PATH=/usr/bin trellis channel run --provider claude --message "hi" --timeout 30s
 channel kept for inspection: /Users/.../-.../-run-4a520e0f
@@ -1015,6 +1041,7 @@ $ echo $?
 ### Case B — Multi-worker review with `wait --all`
 
 **Good**:
+
 ```bash
 trellis channel create cr-feature --ephemeral
 trellis channel spawn cr-feature --agent check
@@ -1027,6 +1054,7 @@ trellis channel wait cr-feature --as main --kind done --from check,check-cx --al
 ```
 
 **Bad** (one worker times out):
+
 ```bash
 trellis channel wait cr-feature --as main --kind done --from check,check-cx --all --timeout 30s
 # stdout: only `done` from check (if any)
@@ -1037,6 +1065,7 @@ trellis channel wait cr-feature --as main --kind done --from check,check-cx --al
 ### Case C — Cross-cwd addressing
 
 **Good** (channel created in trellis repo, accessed from /tmp via unique-match fallback):
+
 ```bash
 $ cd /Users/me/work/trellis && trellis channel create unique-name
 $ cd /tmp && trellis channel send unique-name --as main --text "hi"
@@ -1044,6 +1073,7 @@ $ cd /tmp && trellis channel send unique-name --as main --text "hi"
 ```
 
 **Bad** (same name exists in multiple buckets):
+
 ```bash
 $ cd /tmp && trellis channel send cr-r1 --as main --text "hi"
 Error: Channel 'cr-r1' exists in multiple project buckets: -Users-me-work-trellis, -Users-me-work-app. Run from the owning project cwd or use --scope.
@@ -1052,6 +1082,7 @@ Error: Channel 'cr-r1' exists in multiple project buckets: -Users-me-work-trelli
 ### Case D — Global forum channel
 
 **Good** (local feedback channel shared across projects):
+
 ```bash
 trellis channel create trellis-issue --scope global --type forum \
   --description "Local Trellis feedback channel" \
@@ -1069,6 +1100,7 @@ trellis channel messages trellis-issue --scope global
 ```
 
 **Bad** (`send` is not a thread primitive):
+
 ```bash
 trellis channel send trellis-issue --scope global --as main --thread forum-mode "hi"
 # Error: unknown option '--thread'
@@ -1077,6 +1109,7 @@ trellis channel send trellis-issue --scope global --as main --thread forum-mode 
 ### Case E — Spawn-fail event sequence
 
 **Wrong** (pre-r5 behavior, never ship):
+
 ```
 [create]
 [spawned] pid=undefined        ← misleading, worker never started
@@ -1086,6 +1119,7 @@ trellis channel send trellis-issue --scope global --as main --thread forum-mode 
 ```
 
 **Correct** (post-r5):
+
 ```
 [create]
 [error] message="worker spawn failed: spawn claude ENOENT"
@@ -1096,43 +1130,43 @@ trellis channel send trellis-issue --scope global --as main --thread forum-mode 
 
 ## 6. Tests Required
 
-| Surface | Test type | Assertion points |
-|---------|-----------|-------------------|
-| `paths.projectKey(cwd)` | unit | (a) `"/Users/x"` → `"-Users-x"`, (b) backslash → `-`, (c) CJK/spaces/`#` → `-`, (d) idempotent on re-sanitized input |
-| `TRELLIS_CHANNEL_ROOT` override | integration | create a channel with env override; assert events land under that root, not `~/.trellis/channels` |
-| Global/project scope collision | integration | create same name in `_global` and current project; unscoped write throws before appending, explicit `--scope global` succeeds |
-| Thread reducer | unit/integration | create `type=forum`; post `opened` + `comment` + `status`; assert reduced state has title/status/labels/assignees/comment count |
-| Thread reducer cursor | unit/integration | reduced state records `lastSeq` from the last thread event applied |
-| Thread pretty output | integration | default thread list prints the thread-view hint; create/thread event views print description and context summaries |
-| `matchesEventFilter` | unit | kind/from/thread/action/progress/to semantics match both `messages` and `watchEvents` consumers |
-| `parseCsv` helper | unit | comma-separated options share trimming and empty-entry behavior |
-| `post` chat rejection | integration | create default `chat`; `post opened` throws and events.jsonl remains unchanged |
-| `context` validation | unit/integration | absolute file path accepted; relative file path rejected; raw empty rejected; legacy `linkedContext` reads into normalized `context` |
-| Metadata reducer | unit/integration | create metadata, legacy `linkedContext`, channel-level context add/delete, title set/clear, and legacy `type:"thread"` project through `reduceChannelMetadata` |
-| Thread rename reducer | unit/integration | conflict rejected; alias chain resolves; old-key `showThread` includes pre-rename and late old-key events; thread context follows alias resolver |
-| `paths.migrateLegacyChannels()` | integration | (a) flat dir with events.jsonl → moves to `_legacy/<name>/`, (b) bucket marker dir → skipped, (c) `_legacy`/`_default` → skipped, (d) idempotent (no-op second call) |
-| `paths.selectExistingChannelProject(name)` | integration | (a) current bucket has channel → returns currentProjectKey, (b) only one other bucket has it → mutates env + returns that bucket, (c) two buckets have it → throws with `Channel '<name>' exists in multiple` message, (d) none have it → throws with current bucket name in error |
-| `appendEvent` atomicity | concurrent | spawn N parallel `appendEvent` calls; assert seqs are strictly monotonic 1..N with no duplicates or gaps |
-| `appendEvent` sidecar recovery | unit/integration | (a) missing `.seq` rebuilds from JSONL, (b) non-integer `.seq` rebuilds from JSONL, (c) `.seq` lower than JSONL tail repairs without duplicate seq, (d) `.seq` higher than JSONL tail repairs without a gap |
-| `withLock` stale-lock recovery | unit | write lockfile with dead-pid contents; subsequent `withLock` call recovers and proceeds |
-| `watchEvents` modes | integration | (a) default reads from EOF, (b) `fromStart:true` reads from byte 0, (c) `sinceSeq:N` skips events with seq ≤ N |
-| `matchesFilter` `to` semantics | unit | (a) event with no `to` passes when filter.to set (broadcast OK), (b) event with `to=X` only passes filter.to=X, (c) `filter.to="exclusive"` requires explicit `to` |
-| Spawn-fail path (ENOENT) | e2e | `PATH=/no/claude trellis channel spawn ...` → events.jsonl has ONE error event, no spawned, no killed; supervisor exited; pid file removed |
-| Happy turn (claude / codex) | e2e | spawn → send "hi" → wait done; assert events sequence is `create → spawned → message(to) → ...progress... → message(by:worker) → done` with no synthesised events |
-| Codex streamed delta metadata | unit/fixture | `parseCodexLine` stores `item/started` metadata; deltas keep `text_delta`, add `kind`, add `stream_id` from `itemId`, and route interleaved `final_answer` / `commentary` streams into different lanes |
-| Cold-exit fallback synthesis | e2e | kill worker child PID directly (bypassing supervisor); assert `finalizeOnExit` synthesises terminal event with `by=workerName`, `synthesized:true` |
-| Kill ladder | e2e | `channel kill`, assert events.jsonl has `killed{reason:"explicit-kill", signal:"SIGTERM"}` AND supervisor process gone within 6s |
-| `markTerminalEmitted` race | concurrent | trigger adapter `done` and `child.on("exit")` near-simultaneously; assert exactly one terminal event (no duplicate synthesised one) |
-| `wait --all` satisfaction | integration | spawn 2 workers, send each a prompt; `wait --all --from a,b --kind done`; assert exit 0 after both done events seen |
-| `wait --all` timeout | integration | spawn 2 workers; kill one before it can done; `wait --all` exits 124 with `"timeout: still waiting on <killed-one>"` on stderr |
-| `channel run` success cleanup | e2e | run happy; assert channel directory does not exist after exit |
-| `channel run` failure preserves | e2e | run with bad provider; assert exit 1, stderr matches "channel kept for inspection:", channel directory still exists, `events.jsonl` has create+error |
-| `--ephemeral` create + list + prune | integration | (a) `list` default hides, (b) `list --all` shows with `*`, (c) `list` footer prints "(N ephemeral channels hidden ...)", (d) `prune --ephemeral` only deletes ephemeral, (e) `prune --ephemeral --idle 1h` throws mutex error |
-| Path-traversal jail | security | `--file /etc/passwd` from cwd `/tmp/work` → file skipped, stderr warn |
-| `assertSafeName` / `channelDir` traversal guard | security | (a) `".."`, `"."`, `"../x"`, `"../../x"`, `"a/b"`, `"a\b"` → throw `Invalid channel name`, (b) ordinary names (`"a"`, `"chat-only"`, `"a.b"`) accepted, (c) `channelDir("../../escape")` throws before resolving a path — duplicated in both `core` and `cli` copies of `paths.ts` |
-| Agent name validator | security | `--agent ../../evil` → throw |
-| Frontmatter prototype pollution | security | a `.trellis/agents/<name>.md` fixture with `__proto__: ...` frontmatter → key dropped, no pollution observable |
-| `safeIdentifier` | unit | newline / NUL / control chars stripped from worker name in protocol prompt |
+| Surface                                         | Test type        | Assertion points                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `paths.projectKey(cwd)`                         | unit             | (a) `"/Users/x"` → `"-Users-x"`, (b) backslash → `-`, (c) CJK/spaces/`#` → `-`, (d) idempotent on re-sanitized input                                                                                                                                                               |
+| `TRELLIS_CHANNEL_ROOT` override                 | integration      | create a channel with env override; assert events land under that root, not `~/.trellis/channels`                                                                                                                                                                                  |
+| Global/project scope collision                  | integration      | create same name in `_global` and current project; unscoped write throws before appending, explicit `--scope global` succeeds                                                                                                                                                      |
+| Thread reducer                                  | unit/integration | create `type=forum`; post `opened` + `comment` + `status`; assert reduced state has title/status/labels/assignees/comment count                                                                                                                                                    |
+| Thread reducer cursor                           | unit/integration | reduced state records `lastSeq` from the last thread event applied                                                                                                                                                                                                                 |
+| Thread pretty output                            | integration      | default thread list prints the thread-view hint; create/thread event views print description and context summaries                                                                                                                                                                 |
+| `matchesEventFilter`                            | unit             | kind/from/thread/action/progress/to semantics match both `messages` and `watchEvents` consumers                                                                                                                                                                                    |
+| `parseCsv` helper                               | unit             | comma-separated options share trimming and empty-entry behavior                                                                                                                                                                                                                    |
+| `post` chat rejection                           | integration      | create default `chat`; `post opened` throws and events.jsonl remains unchanged                                                                                                                                                                                                     |
+| `context` validation                            | unit/integration | absolute file path accepted; relative file path rejected; raw empty rejected; legacy `linkedContext` reads into normalized `context`                                                                                                                                               |
+| Metadata reducer                                | unit/integration | create metadata, legacy `linkedContext`, channel-level context add/delete, title set/clear, and legacy `type:"thread"` project through `reduceChannelMetadata`                                                                                                                     |
+| Thread rename reducer                           | unit/integration | conflict rejected; alias chain resolves; old-key `showThread` includes pre-rename and late old-key events; thread context follows alias resolver                                                                                                                                   |
+| `paths.migrateLegacyChannels()`                 | integration      | (a) flat dir with events.jsonl → moves to `_legacy/<name>/`, (b) bucket marker dir → skipped, (c) `_legacy`/`_default` → skipped, (d) idempotent (no-op second call)                                                                                                               |
+| `paths.selectExistingChannelProject(name)`      | integration      | (a) current bucket has channel → returns currentProjectKey, (b) only one other bucket has it → mutates env + returns that bucket, (c) two buckets have it → throws with `Channel '<name>' exists in multiple` message, (d) none have it → throws with current bucket name in error |
+| `appendEvent` atomicity                         | concurrent       | spawn N parallel `appendEvent` calls; assert seqs are strictly monotonic 1..N with no duplicates or gaps                                                                                                                                                                           |
+| `appendEvent` sidecar recovery                  | unit/integration | (a) missing `.seq` rebuilds from JSONL, (b) non-integer `.seq` rebuilds from JSONL, (c) `.seq` lower than JSONL tail repairs without duplicate seq, (d) `.seq` higher than JSONL tail repairs without a gap                                                                        |
+| `withLock` stale-lock recovery                  | unit             | write lockfile with dead-pid contents; subsequent `withLock` call recovers and proceeds                                                                                                                                                                                            |
+| `watchEvents` modes                             | integration      | (a) default reads from EOF, (b) `fromStart:true` reads from byte 0, (c) `sinceSeq:N` skips events with seq ≤ N                                                                                                                                                                     |
+| `matchesFilter` `to` semantics                  | unit             | (a) event with no `to` passes when filter.to set (broadcast OK), (b) event with `to=X` only passes filter.to=X, (c) `filter.to="exclusive"` requires explicit `to`                                                                                                                 |
+| Spawn-fail path (ENOENT)                        | e2e              | `PATH=/no/claude trellis channel spawn ...` → events.jsonl has ONE error event, no spawned, no killed; supervisor exited; pid file removed                                                                                                                                         |
+| Happy turn (claude / codex)                     | e2e              | spawn → send "hi" → wait done; assert events sequence is `create → spawned → message(to) → ...progress... → message(by:worker) → done` with no synthesised events                                                                                                                  |
+| Codex streamed delta metadata                   | unit/fixture     | `parseCodexLine` stores `item/started` metadata; deltas keep `text_delta`, add `kind`, add `stream_id` from `itemId`, and route interleaved `final_answer` / `commentary` streams into different lanes                                                                             |
+| Cold-exit fallback synthesis                    | e2e              | kill worker child PID directly (bypassing supervisor); assert `finalizeOnExit` synthesises terminal event with `by=workerName`, `synthesized:true`                                                                                                                                 |
+| Kill ladder                                     | e2e              | `channel kill`, assert events.jsonl has `killed{reason:"explicit-kill", signal:"SIGTERM"}` AND supervisor process gone within 6s                                                                                                                                                   |
+| `markTerminalEmitted` race                      | concurrent       | trigger adapter `done` and `child.on("exit")` near-simultaneously; assert exactly one terminal event (no duplicate synthesised one)                                                                                                                                                |
+| `wait --all` satisfaction                       | integration      | spawn 2 workers, send each a prompt; `wait --all --from a,b --kind done`; assert exit 0 after both done events seen                                                                                                                                                                |
+| `wait --all` timeout                            | integration      | spawn 2 workers; kill one before it can done; `wait --all` exits 124 with `"timeout: still waiting on <killed-one>"` on stderr                                                                                                                                                     |
+| `channel run` success cleanup                   | e2e              | run happy; assert channel directory does not exist after exit                                                                                                                                                                                                                      |
+| `channel run` failure preserves                 | e2e              | run with bad provider; assert exit 1, stderr matches "channel kept for inspection:", channel directory still exists, `events.jsonl` has create+error                                                                                                                               |
+| `--ephemeral` create + list + prune             | integration      | (a) `list` default hides, (b) `list --all` shows with `*`, (c) `list` footer prints "(N ephemeral channels hidden ...)", (d) `prune --ephemeral` only deletes ephemeral, (e) `prune --ephemeral --idle 1h` throws mutex error                                                      |
+| Path-traversal jail                             | security         | `--file /etc/passwd` from cwd `/tmp/work` → file skipped, stderr warn                                                                                                                                                                                                              |
+| `assertSafeName` / `channelDir` traversal guard | security         | (a) `".."`, `"."`, `"../x"`, `"../../x"`, `"a/b"`, `"a\b"` → throw `Invalid channel name`, (b) ordinary names (`"a"`, `"chat-only"`, `"a.b"`) accepted, (c) `channelDir("../../escape")` throws before resolving a path — duplicated in both `core` and `cli` copies of `paths.ts` |
+| Agent name validator                            | security         | `--agent ../../evil` → throw                                                                                                                                                                                                                                                       |
+| Frontmatter prototype pollution                 | security         | a `.trellis/agents/<name>.md` fixture with `__proto__: ...` frontmatter → key dropped, no pollution observable                                                                                                                                                                     |
+| `safeIdentifier`                                | unit             | newline / NUL / control chars stripped from worker name in protocol prompt                                                                                                                                                                                                         |
 
 ---
 
@@ -1141,20 +1175,22 @@ trellis channel send trellis-issue --scope global --as main --thread forum-mode 
 ### Pattern 1 — Marking adapter-emitted terminal events
 
 **Wrong** (race with `finalizeOnExit`):
+
 ```ts
 for (const ev of result.events) {
-  await appendEvent(channelName, ev);     // ← worker process may exit during this await
+  await appendEvent(channelName, ev); // ← worker process may exit during this await
   if (ev.kind === "done" || ev.kind === "error") {
-    shutdown.markTerminalEmitted();        // ← too late; finalizeOnExit already synthesised a fallback
+    shutdown.markTerminalEmitted(); // ← too late; finalizeOnExit already synthesised a fallback
   }
 }
 ```
 
 **Correct** (sync-prepend the claim):
+
 ```ts
 for (const ev of result.events) {
   if (ev.kind === "done" || ev.kind === "error") {
-    shutdown.markTerminalEmitted();        // ← sync; finalizeOnExit observes this immediately
+    shutdown.markTerminalEmitted(); // ← sync; finalizeOnExit observes this immediately
   }
   await appendEvent(channelName, ev);
 }
@@ -1163,22 +1199,26 @@ for (const ev of result.events) {
 ### Pattern 2 — Post-spawn error handler ordering
 
 **Wrong** (killed may land before error):
+
 ```ts
-child.on("error", err => {
-  void appendEvent({kind:"error", message: err.message});
-  void shutdown.request("SIGTERM", "crash");   // ← runs in parallel; killed-append may win the lock
+child.on("error", (err) => {
+  void appendEvent({ kind: "error", message: err.message });
+  void shutdown.request("SIGTERM", "crash"); // ← runs in parallel; killed-append may win the lock
 });
 ```
 
 **Correct** (await error first, then request shutdown):
+
 ```ts
-child.on("error", err => {
-  if (spawnFailed) return;                    // L1 fix: defend against double-fire
-  shutdown.claim("crash");                    // ← sync intent so concurrent code sees isShuttingDown
+child.on("error", (err) => {
+  if (spawnFailed) return; // L1 fix: defend against double-fire
+  shutdown.claim("crash"); // ← sync intent so concurrent code sees isShuttingDown
   void (async () => {
     try {
-      await appendEvent({kind:"error", message: err.message});
-    } catch { /* ignore — exiting anyway */ }
+      await appendEvent({ kind: "error", message: err.message });
+    } catch {
+      /* ignore — exiting anyway */
+    }
     await shutdown.request("SIGTERM", "crash");
   })();
 });
@@ -1187,13 +1227,15 @@ child.on("error", err => {
 ### Pattern 3 — Liveness check in kill ladder
 
 **Wrong** (`child.killed` is "kill() was called", not "process exited"):
+
 ```ts
 setTimeout(() => {
-  if (!child.killed) child.kill("SIGKILL");   // ← never fires, child.killed=true after first kill()
+  if (!child.killed) child.kill("SIGKILL"); // ← never fires, child.killed=true after first kill()
 }, GRACE_MS);
 ```
 
 **Correct**:
+
 ```ts
 setTimeout(() => {
   if (child.exitCode === null && child.signalCode === null) {
@@ -1205,32 +1247,36 @@ setTimeout(() => {
 ### Pattern 4 — Resolving a channel from a different cwd
 
 **Wrong** (assumes current bucket):
+
 ```ts
-const dir = channelDir(name);                 // ← uses cwd-derived bucket; throws if user is in /tmp
+const dir = channelDir(name); // ← uses cwd-derived bucket; throws if user is in /tmp
 ```
 
 **Correct** (resolve before using paths):
+
 ```ts
-selectExistingChannelProject(name);            // mutates TRELLIS_CHANNEL_PROJECT env if needed
-const dir = channelDir(name);                 // ← now reads the locked env
+selectExistingChannelProject(name); // mutates TRELLIS_CHANNEL_PROJECT env if needed
+const dir = channelDir(name); // ← now reads the locked env
 ```
 
 ### Pattern 5 — Synthesised terminal event author
 
 **Wrong** (breaks `wait --from <worker>`):
+
 ```ts
 await appendEvent({
   kind: "done",
-  by: `supervisor:${workerName}`,             // ← wait --from worker --kind done won't wake
+  by: `supervisor:${workerName}`, // ← wait --from worker --kind done won't wake
   synthesized: true,
 });
 ```
 
 **Correct**:
+
 ```ts
 await appendEvent({
   kind: "done",
-  by: workerName,                             // ← same `by` as adapter would have used
+  by: workerName, // ← same `by` as adapter would have used
   synthesized: true,
 });
 ```

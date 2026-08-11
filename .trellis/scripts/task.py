@@ -4,9 +4,10 @@
 Task Management Script.
 
 Usage:
-    python3 task.py create "<title>" [--slug <name>] [--assignee <dev>] [--priority P0|P1|P2|P3] [--parent <dir>] [--package <pkg>] [--no-start]
+    python3 task.py create "<title>" [--classification <class>] [--product-intent-link <id> | --product-intent-reason <reason>] [--slug <name>] [--assignee <dev>] [--priority P0|P1|P2|P3] [--parent <dir>] [--package <pkg>] [--no-start]
     python3 task.py add-context <dir> <file> <path> [reason] # Add jsonl entry
     python3 task.py validate <dir>              # Validate jsonl files
+    python3 task.py validate-role-context <dir> <implement|check>  # Dispatch gate
     python3 task.py list-context <dir>          # List jsonl entries
     python3 task.py start <dir>                 # Set active task
     python3 task.py current [--source] [--json] # Show active task
@@ -45,6 +46,7 @@ from common.active_task import (
     set_active_task,
 )
 from common.io import read_json, write_json
+from common.governance_gate import enforce_governance_gate
 from common.task_utils import resolve_task_dir, run_task_hooks
 from common.tasks import iter_active_tasks, children_progress
 
@@ -62,6 +64,7 @@ from common.task_store import (
 from common.task_context import (
     cmd_add_context,
     cmd_validate,
+    cmd_validate_role_context,
     cmd_list_context,
 )
 
@@ -94,6 +97,13 @@ def cmd_start(args: argparse.Namespace) -> int:
         task_dir = str(full_path)
 
     task_json_path = full_path / FILE_TASK_JSON
+
+    if not enforce_governance_gate(
+        "task_start",
+        task_dir=task_dir,
+        repo_root=repo_root,
+    ):
+        return 1
 
     if not resolve_context_key():
         # Degraded mode: no session identity available.
@@ -378,12 +388,13 @@ def show_usage() -> None:
     print("""Task Management Script
 
 Usage:
-  python3 task.py create <title>                     Create new task directory
-  python3 task.py create <title> --package <pkg>     Create task for a specific package
-  python3 task.py create <title> --parent <dir>      Create task as child of parent
-  python3 task.py create <title> --no-start          Create without making it active in this session
+  python3 task.py create <title> --classification <class> (--product-intent-link <id> | --product-intent-reason <reason>)                     Create new task directory
+  python3 task.py create <title> --package <pkg> --classification <class> (--product-intent-link <id> | --product-intent-reason <reason>)     Create task for a specific package
+  python3 task.py create <title> --parent <dir> --classification <class> (--product-intent-link <id> | --product-intent-reason <reason>)      Create task as child of parent
+  python3 task.py create <title> --no-start --classification <class> (--product-intent-link <id> | --product-intent-reason <reason>)          Create without making it active in this session
   python3 task.py add-context <dir> <jsonl> <path> [reason]  Add entry to jsonl
   python3 task.py validate <dir>                     Validate jsonl files
+  python3 task.py validate-role-context <dir> <role> Validate one dispatch role manifest
   python3 task.py list-context <dir>                 List jsonl entries
   python3 task.py start <dir>                        Set active task
   python3 task.py current [--source]                 Show active task
@@ -401,16 +412,21 @@ Usage:
 Monorepo options:
   --package <pkg>      Package name (validated against config.yaml packages)
 
+Governance options:
+  --classification <class>       business-feature, bugfix, maintenance, or review-revision
+  --product-intent-link <id>      Approved Product Intent for business-feature work
+  --product-intent-reason <text>  Why Product Intent is not required for bugfix/maintenance work
+
 List options:
   --mine, -m           Show only tasks assigned to current developer
   --status, -s <s>     Filter by status (planning, in_progress, review, completed)
   --json               Output machine-readable JSON (also available on `current`)
 
 Examples:
-  python3 task.py create "Add login feature" --slug add-login
-  python3 task.py create "Add login feature" --slug add-login --package cli
-  python3 task.py create "Add login feature" --meta linear=ENG-123 --meta epic=auth
-  python3 task.py create "Child task" --slug child --parent .trellis/tasks/01-21-parent
+  python3 task.py create "Add login feature" --slug add-login --classification business-feature --product-intent-link "<approved intent URL or document id>"
+  python3 task.py create "Add login feature" --slug add-login --package cli --classification business-feature --product-intent-link "<approved intent URL or document id>"
+  python3 task.py create "Add login feature" --meta linear=ENG-123 --meta epic=auth --classification business-feature --product-intent-link "<approved intent URL or document id>"
+  python3 task.py create "Child task" --slug child --parent .trellis/tasks/01-21-parent --classification maintenance --product-intent-reason "Internal child task with no product behavior change"
   python3 task.py add-context <dir> implement .trellis/spec/cli/backend/auth.md "Auth guidelines"
   python3 task.py set-branch <dir> task/add-login
   python3 task.py start .trellis/tasks/01-21-add-login
@@ -474,6 +490,19 @@ def main() -> int:
     p_create.add_argument("--assignee", "-a", help="Assignee developer")
     p_create.add_argument("--priority", "-p", default="P2", help="Priority (P0-P3)")
     p_create.add_argument("--description", "-d", help="Task description")
+    p_create.add_argument(
+        "--classification",
+        choices=("business-feature", "bugfix", "maintenance", "review-revision", "readonly", "operational"),
+        help="Request classification used by the Task Basis governance gate",
+    )
+    p_create.add_argument(
+        "--product-intent-link",
+        help="Approved Product Intent URL or document id (required for business-feature)",
+    )
+    p_create.add_argument(
+        "--product-intent-reason",
+        help="Reason Product Intent is NOT_REQUIRED for this task",
+    )
     p_create.add_argument("--parent", help="Parent task directory (establishes subtask link)")
     p_create.add_argument("--package", help="Package name for monorepo projects")
     p_create.add_argument(
@@ -501,6 +530,14 @@ def main() -> int:
     # validate
     p_validate = subparsers.add_parser("validate", help="Validate context files")
     p_validate.add_argument("dir", help="Task directory")
+
+    # validate-role-context
+    p_validate_role = subparsers.add_parser(
+        "validate-role-context",
+        help="Fail closed unless one role manifest is ready for dispatch",
+    )
+    p_validate_role.add_argument("dir", help="Task directory")
+    p_validate_role.add_argument("role", choices=("implement", "check"))
 
     # list-context
     p_listctx = subparsers.add_parser("list-context", help="List context entries")
@@ -576,6 +613,7 @@ def main() -> int:
         "create": cmd_create,
         "add-context": cmd_add_context,
         "validate": cmd_validate,
+        "validate-role-context": cmd_validate_role_context,
         "list-context": cmd_list_context,
         "start": cmd_start,
         "current": cmd_current,

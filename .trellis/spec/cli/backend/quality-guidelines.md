@@ -28,6 +28,7 @@ The project uses `strict: true` in `tsconfig.json`:
 ```
 
 This enables:
+
 - `strictNullChecks` - Null and undefined must be explicitly handled
 - `strictFunctionTypes` - Function parameter types are checked strictly
 - `strictPropertyInitialization` - Class properties must be initialized
@@ -40,20 +41,20 @@ This enables:
 
 ### Forbidden Patterns
 
-| Rule | Setting | Reason |
-|------|---------|--------|
-| `@typescript-eslint/no-explicit-any` | `error` | Forces proper typing |
+| Rule                                       | Setting | Reason                       |
+| ------------------------------------------ | ------- | ---------------------------- |
+| `@typescript-eslint/no-explicit-any`       | `error` | Forces proper typing         |
 | `@typescript-eslint/no-non-null-assertion` | `error` | Prevents runtime null errors |
-| `no-var` | `error` | Use `const` or `let` instead |
+| `no-var`                                   | `error` | Use `const` or `let` instead |
 
 ### Required Patterns
 
-| Rule | Setting | Description |
-|------|---------|-------------|
-| `@typescript-eslint/explicit-function-return-type` | `error` | All functions must declare return type |
-| `@typescript-eslint/prefer-nullish-coalescing` | `error` | Use `??` instead of `\|\|` for defaults |
-| `@typescript-eslint/prefer-optional-chain` | `error` | Use `?.` for optional access |
-| `prefer-const` | `error` | Use `const` when variable is not reassigned |
+| Rule                                               | Setting | Description                                 |
+| -------------------------------------------------- | ------- | ------------------------------------------- |
+| `@typescript-eslint/explicit-function-return-type` | `error` | All functions must declare return type      |
+| `@typescript-eslint/prefer-nullish-coalescing`     | `error` | Use `??` instead of `\|\|` for defaults     |
+| `@typescript-eslint/prefer-optional-chain`         | `error` | Use `?.` for optional access                |
+| `prefer-const`                                     | `error` | Use `const` when variable is not reassigned |
 
 ### Exceptions
 
@@ -144,7 +145,7 @@ if (!developerName) {
 }
 
 // Bad: let for non-reassigned
-let cwd = process.cwd();  // ESLint error: prefer-const
+let cwd = process.cwd(); // ESLint error: prefer-const
 ```
 
 ### Unused Variables
@@ -228,11 +229,11 @@ export function writeFile(path: string, content: string): Promise<boolean> {
 
 ```typescript
 // Bad: Explicit any
-function process(data: any): void { }
+function process(data: any): void {}
 
 // Good: Proper typing
-function process(data: Record<string, unknown>): void { }
-function process<T>(data: T): void { }
+function process(data: Record<string, unknown>): void {}
+function process<T>(data: T): void {}
 ```
 
 ### Never Use Non-Null Assertion
@@ -268,10 +269,12 @@ let mutableCount = 0;
 **Common mistake**: Remove the field from the creator (`cmd_create` / init) and the reader (normalize / load), but forget that **other writers** (hooks, triggers, sub-processes) still re-populate the field on every event. Net effect: field "deprecated" in docs, but still appears in newly-written files — you've declared a cleanup but haven't executed it.
 
 ### Scope / Trigger
+
 - Any commit that removes a field from a schema struct or JSON output.
 - Trigger is independent of whether the reader still tolerates the field.
 
 ### Audit Contract
+
 Before landing the removal, produce a writer inventory:
 
 ```bash
@@ -281,32 +284,37 @@ grep -rn "<field_name>" --include="*.py" --include="*.ts" --include="*.js" .
 
 Classify each hit:
 
-| Kind | Example | Action |
-|------|---------|--------|
-| **Schema / creator** | `task_store.cmd_create`, `@mindfoldhq/trellis-core/task:emptyTaskRecord` (re-exported by `utils/task-json.ts:emptyTaskJson` for legacy CLI call sites) | Drop field from output |
-| **Writer / updater** | `inject-subagent-context.py:update_current_phase`, OpenCode plugin equivalent | **Drop the write call OR delete the function entirely** |
-| **Reader / getter** | `tasks.py:load_task` (defaults via `data.get("field", default)` on `TaskInfo`) | Keep with tolerance default (`data.get("field", null)`) — handles legacy files |
-| **Docs / comments** | spec, README, PRDs | Update references |
-| **Tests** | Assertions on field presence | Flip to "must NOT contain field" |
+| Kind                 | Example                                                                                                                                              | Action                                                                         |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Schema / creator** | `task_store.cmd_create`, `@ecochain/trellis-core/task:emptyTaskRecord` (re-exported by `utils/task-json.ts:emptyTaskJson` for legacy CLI call sites) | Drop field from output                                                         |
+| **Writer / updater** | `inject-subagent-context.py:update_current_phase`, OpenCode plugin equivalent                                                                        | **Drop the write call OR delete the function entirely**                        |
+| **Reader / getter**  | `tasks.py:load_task` (defaults via `data.get("field", default)` on `TaskInfo`)                                                                       | Keep with tolerance default (`data.get("field", null)`) — handles legacy files |
+| **Docs / comments**  | spec, README, PRDs                                                                                                                                   | Update references                                                              |
+| **Tests**            | Assertions on field presence                                                                                                                         | Flip to "must NOT contain field"                                               |
 
 ### Validation & Error Matrix
-| Condition | Expected behaviour |
-|-----------|-------------------|
-| Fresh task: field present in `task.json` | ❌ regression — writer missed |
-| Old task still has field | ✅ tolerated (reader defaults) |
-| Two runs of the same lifecycle op | ✅ field never re-appears |
+
+| Condition                                | Expected behaviour             |
+| ---------------------------------------- | ------------------------------ |
+| Fresh task: field present in `task.json` | ❌ regression — writer missed  |
+| Old task still has field                 | ✅ tolerated (reader defaults) |
+| Two runs of the same lifecycle op        | ✅ field never re-appears      |
 
 ### Tests Required
+
 - **Writer regression**: call creator → assert field NOT in output. Example: `test task.py create does NOT write legacy current_phase / next_action`.
 - **Writer-after-event regression**: simulate the downstream event that historically re-wrote the field (e.g. spawn sub-agent → hook fires) → re-read file → assert field still absent.
 - **Reader compatibility**: mock a legacy file containing the field → assert reader does not raise.
 
 ### Wrong vs Correct
+
 #### Wrong — cleanup only touches the creator
+
 ```python
 # task_store.cmd_create — dropped current_phase
 task_data = {"status": "planning", ...}  # current_phase removed
 ```
+
 ```python
 # inject-subagent-context.py — still writes it on every spawn
 def update_current_phase(task_dir, subagent_type):
@@ -314,15 +322,20 @@ def update_current_phase(task_dir, subagent_type):
     task["current_phase"] = next_phase(...)  # ← re-populates deprecated field
     write_json(task_dir / "task.json", task)
 ```
+
 Net: after the first `implement` spawn, `task.json` contains `current_phase` again. Deprecation undone silently.
 
 #### Correct — delete every writer, or route through a single entry point
+
 Option A: delete the writer function.
+
 ```python
 # inject-subagent-context.py
 # (update_current_phase + its call removed; the hook no longer writes phase)
 ```
+
 Option B: keep the writer but have it stop emitting the field.
+
 ```python
 def update_task_state(task_dir, subagent_type):
     task = read_json(task_dir / "task.json")
@@ -332,18 +345,19 @@ def update_task_state(task_dir, subagent_type):
 ```
 
 ### Why
+
 A field is "gone" only after every code path that could produce it is removed. Silently leaving ghost writers makes the deprecation non-executable and forces future readers to keep supporting the field forever.
 
 ### Case Study (2026-04-22): `current_phase` / `next_action` drift across 4 writers + type declaration
 
 The task `04-21-task-schema-unify` ran a retroactive audit on the 0.5.0-beta.0 deprecation of `current_phase` / `next_action` and found **four** drift modes that the original cleanup missed, across **both TypeScript and Python**:
 
-| # | Location | Drift mode | Why the first audit missed it |
-|---|----------|------------|-------------------------------|
-| 1 | `packages/cli/src/commands/init.ts` (`interface TaskJson` + `getBootstrapTaskJson`) | Divergent 17-field TS interface + inline object literal | Audit grepped for field names, but this writer omitted them rather than writing them — it silently diverged in shape, not content |
-| 2 | `packages/cli/src/commands/update.ts` (migration-task inline literal) | Inline TS object still wrote `current_phase: 0` + `next_action: [...]` | Writer lives in a language the original Python-focused audit skipped |
-| 3 | Historical `create_bootstrap.py` script (removed in 0.5.0-beta.9) | Orphan Python CLI — its own 13-field shape incl. structured subtasks | Was not invoked by any command and was shipped as a dead template. It is now removed by hash-verified migration, but remains part of the case study because it explains why shipped-but-unused files count during schema audits |
-| 4 | `.trellis/scripts/common/types.py` — `TaskData` TypedDict declared `current_phase: int` + `next_action: list[dict]` | **Type-declaration writer**: no runtime code produces the field, but readers that annotate `TaskData` get IDE autocomplete for ghost fields, and code reviewers see "valid field" | A TypedDict is technically a declaration, not a writer — but to the reader-side contract, it IS a writer of expectations |
+| #   | Location                                                                                                            | Drift mode                                                                                                                                                                        | Why the first audit missed it                                                                                                                                                                                                   |
+| --- | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `packages/cli/src/commands/init.ts` (`interface TaskJson` + `getBootstrapTaskJson`)                                 | Divergent 17-field TS interface + inline object literal                                                                                                                           | Audit grepped for field names, but this writer omitted them rather than writing them — it silently diverged in shape, not content                                                                                               |
+| 2   | `packages/cli/src/commands/update.ts` (migration-task inline literal)                                               | Inline TS object still wrote `current_phase: 0` + `next_action: [...]`                                                                                                            | Writer lives in a language the original Python-focused audit skipped                                                                                                                                                            |
+| 3   | Historical `create_bootstrap.py` script (removed in 0.5.0-beta.9)                                                   | Orphan Python CLI — its own 13-field shape incl. structured subtasks                                                                                                              | Was not invoked by any command and was shipped as a dead template. It is now removed by hash-verified migration, but remains part of the case study because it explains why shipped-but-unused files count during schema audits |
+| 4   | `.trellis/scripts/common/types.py` — `TaskData` TypedDict declared `current_phase: int` + `next_action: list[dict]` | **Type-declaration writer**: no runtime code produces the field, but readers that annotate `TaskData` get IDE autocomplete for ghost fields, and code reviewers see "valid field" | A TypedDict is technically a declaration, not a writer — but to the reader-side contract, it IS a writer of expectations                                                                                                        |
 
 **Three lessons added to the audit discipline**:
 
@@ -352,7 +366,7 @@ The task `04-21-task-schema-unify` ran a retroactive audit on the 0.5.0-beta.0 d
 3. **Type declarations count as writers of the reader-side contract**: a TypedDict / TS interface that still declares the deprecated field misleads consumers the same way a runtime writer does. Prune declarations in the same PR as runtime writers.
 
 **Consolidation outcome**: the canonical TypeScript task shape now lives in
-`@mindfoldhq/trellis-core/task` as `TrellisTaskRecord` +
+`@ecochain/trellis-core/task` as `TrellisTaskRecord` +
 `emptyTaskRecord(overrides)`. `packages/cli/src/utils/task-json.ts` only
 re-exports those under the legacy `TaskJson` / `emptyTaskJson` names for CLI
 call sites. Both `init.ts` and `update.ts` route through that shared factory.
@@ -449,14 +463,14 @@ if (hasExplicitTools) {
 
 #### 4. Validation & Error Matrix
 
-| Condition | Required behavior |
-|-----------|-------------------|
-| `update --force --migrate` in non-TTY shell | exits 0 or a domain error; never crashes with readline/inquirer lifecycle errors |
-| `update --force` with modified template | overwrites, updates hash, no prompt |
-| `update --skip-all` with modified template | preserves file, no prompt |
-| `update --create-new` with modified template | writes `.new`, no prompt |
-| `update --migrate` without batch flag | may prompt interactively |
-| `update --dry-run` | no prompt, no backup, no writes |
+| Condition                                    | Required behavior                                                                |
+| -------------------------------------------- | -------------------------------------------------------------------------------- |
+| `update --force --migrate` in non-TTY shell  | exits 0 or a domain error; never crashes with readline/inquirer lifecycle errors |
+| `update --force` with modified template      | overwrites, updates hash, no prompt                                              |
+| `update --skip-all` with modified template   | preserves file, no prompt                                                        |
+| `update --create-new` with modified template | writes `.new`, no prompt                                                         |
+| `update --migrate` without batch flag        | may prompt interactively                                                         |
+| `update --dry-run`                           | no prompt, no backup, no writes                                                  |
 
 #### 5. Good/Base/Bad Cases
 
@@ -519,6 +533,7 @@ const TOOLS = [
 ```
 
 **Benefits**:
+
 - Adding a new tool = adding one line to TOOLS array
 - Display name, flag key, and default are co-located
 - Less code duplication, fewer bugs
@@ -581,13 +596,17 @@ When code decides which mode to run based on a probe result, a warning + continu
 ```typescript
 // Bad: Warning prints but code still falls through to wrong mode
 if (!probeResult.isNotFound) {
-  console.log(chalk.yellow("Warning: network issue, attempting direct download"));
+  console.log(
+    chalk.yellow("Warning: network issue, attempting direct download"),
+  );
 }
 // Falls through → downloads marketplace root as spec directory
 
 // Good: Abort or loop back — never silently switch modes
 if (!probeResult.isNotFound) {
-  console.log(chalk.red("Could not reach registry. Check connection and retry."));
+  console.log(
+    chalk.red("Could not reach registry. Check connection and retry."),
+  );
   return; // or: continue (loop back to picker)
 }
 ```
@@ -608,7 +627,7 @@ registry = parseRegistrySource(customSource);
 fetchedTemplates = []; // Clear stale data from previous source
 ```
 
-**Why**: Shared mutable state across branches is a silent bug factory. The later guard (`registry && fetchedTemplates.length === 0`) depends on `fetchedTemplates` reflecting the *current* source, not a previous one.
+**Why**: Shared mutable state across branches is a silent bug factory. The later guard (`registry && fetchedTemplates.length === 0`) depends on `fetchedTemplates` reflecting the _current_ source, not a previous one.
 
 ### Scenario: Registry Probe and Download Must Share Backend
 
@@ -638,13 +657,13 @@ interface RegistryProbeResult {
 
 #### 4. Validation & Error Matrix
 
-| Condition | Result |
-|---|---|
-| `index.json` exists and parses | `templates.length > 0`, `isNotFound: false`, `backend` set |
-| No `index.json` at a valid registry path | `templates: []`, `isNotFound: true`, `backend` set |
-| Auth failure / invalid login-page JSON / network failure | `isNotFound: false`, `error` set, abort or loop back |
-| Template path outside repo root | `path-not-found` error |
-| Git ref missing | `ref-not-found` error |
+| Condition                                                | Result                                                     |
+| -------------------------------------------------------- | ---------------------------------------------------------- |
+| `index.json` exists and parses                           | `templates.length > 0`, `isNotFound: false`, `backend` set |
+| No `index.json` at a valid registry path                 | `templates: []`, `isNotFound: true`, `backend` set         |
+| Auth failure / invalid login-page JSON / network failure | `isNotFound: false`, `error` set, abort or loop back       |
+| Template path outside repo root                          | `path-not-found` error                                     |
+| Git ref missing                                          | `ref-not-found` error                                      |
 
 #### 5. Good/Base/Bad Cases
 
@@ -731,22 +750,23 @@ When writing functions that parse user-provided URLs, paths, or identifiers with
 ### The Pattern
 
 Create a format table covering every combination of:
+
 - Protocol variants (HTTPS, SSH `git@`, `ssh://`)
 - Known vs unknown domains
 - Optional suffixes (`.git`, trailing `/`)
 - Optional components (port, subdir, ref/branch, subgroup)
 
 ```markdown
-| # | Format | Example | Expected Behavior |
-|---|--------|---------|-------------------|
-| 1 | giget prefix | `gh:org/repo` | Native provider |
-| 2 | Public HTTPS | `https://github.com/org/repo` | Auto-convert to gh: |
-| 3 | Public SSH | `git@github.com:org/repo` | Auto-convert to gh: |
-| 4 | Self-hosted HTTPS | `https://git.corp.com/org/repo` | Detect host, map to gitlab: |
-| 5 | Self-hosted SSH | `git@git.corp.com:org/repo` | Detect host, map to gitlab: |
-| 6 | ssh:// protocol | `ssh://git@host:port/org/repo` | Extract host (strip port) |
-| 7 | HTTPS with port | `https://host:8443/org/repo` | Include port in host |
-| ... | ... | ... | ... |
+| #   | Format            | Example                         | Expected Behavior           |
+| --- | ----------------- | ------------------------------- | --------------------------- |
+| 1   | giget prefix      | `gh:org/repo`                   | Native provider             |
+| 2   | Public HTTPS      | `https://github.com/org/repo`   | Auto-convert to gh:         |
+| 3   | Public SSH        | `git@github.com:org/repo`       | Auto-convert to gh:         |
+| 4   | Self-hosted HTTPS | `https://git.corp.com/org/repo` | Detect host, map to gitlab: |
+| 5   | Self-hosted SSH   | `git@git.corp.com:org/repo`     | Detect host, map to gitlab: |
+| 6   | ssh:// protocol   | `ssh://git@host:port/org/repo`  | Extract host (strip port)   |
+| 7   | HTTPS with port   | `https://host:8443/org/repo`    | Include port in host        |
+| ... | ...               | ...                             | ...                         |
 ```
 
 ### Why This Matters
@@ -769,6 +789,7 @@ Create a format table covering every combination of:
 **Common mistake**: Patch the dispatch you grepped for, manually verify on one fixture, ship. The other entry path stays broken because (a) it short-circuits before reaching your fix, (b) the manual fixture happened to use a flag combination that bypassed the unfixed path, and (c) the test you wrote also used that convenient bypass flag.
 
 ### Scope / Trigger
+
 - Any change inside a function that contains an early-return guard like `if (!isFirstInit && !options.force && !options.skipExisting) { ...; return; }` followed by additional dispatch logic later.
 - Any change to a "create X if conditions hold" branch where another sibling function makes the same kind of decision.
 - Bug-fix work where the user reported one specific flag combination — assume there are other combinations that hit the same defect via a different path.
@@ -785,10 +806,10 @@ rg -n "if \(!options\.force.*return|reinitDone|return true.*//.*handled" package
 
 For each entry path, record:
 
-| Entry path | Reaches your fix? | Flag combination required to enter it | Flag combination that *bypasses* it |
-|------------|-------------------|---------------------------------------|-------------------------------------|
-| Path A: `init()` main dispatch | yes (your fix is here) | `--force` or `--skip-existing` (skips reinit) | (always reachable when entered) |
-| Path B: `handleReinit` early return | **no** | none of force / skipExisting / first-init | `--force` or `--skip-existing` |
+| Entry path                          | Reaches your fix?      | Flag combination required to enter it         | Flag combination that _bypasses_ it |
+| ----------------------------------- | ---------------------- | --------------------------------------------- | ----------------------------------- |
+| Path A: `init()` main dispatch      | yes (your fix is here) | `--force` or `--skip-existing` (skips reinit) | (always reachable when entered)     |
+| Path B: `handleReinit` early return | **no**                 | none of force / skipExisting / first-init     | `--force` or `--skip-existing`      |
 
 If any entry path doesn't reach the fix, you have two options:
 
@@ -798,6 +819,7 @@ If any entry path doesn't reach the fix, you have two options:
 Funneling is preferred: it eliminates the class of bug, not just the instance.
 
 ### Tests Required
+
 - **One test per entry path**, asserting the fix's effect using the exact flag combination that selects that path.
 - A test that uses a "convenience" flag (`force: true`) to bypass an entry-path guard does NOT cover that entry path — it covers the bypass route. See `cli/unit-test/conventions.md` → "Bug-Fix Tests Must Reproduce Reported Flag Combination".
 - After landing, re-build the CLI and run the user's exact reported command on a fixture. If you can't reproduce the bug pre-fix on that fixture, your repro is wrong, not the fix.
@@ -909,7 +931,7 @@ try {
 } catch {
   process.stderr.write(
     "[trellis] OpenCode 1.2+ SQLite session reader unavailable " +
-    "(better-sqlite3 not installed). Falling back to JSONL-only mode.\n"
+      "(better-sqlite3 not installed). Falling back to JSONL-only mode.\n",
   );
 }
 
@@ -928,11 +950,11 @@ Even when a prebuild exists for the target platform, the GitHub releases CDN is 
 
 Required pre-ship matrix for any native dep:
 
-| Environment | What to verify |
-|---|---|
+| Environment                                                 | What to verify                                          |
+| ----------------------------------------------------------- | ------------------------------------------------------- |
 | Windows (clean VM, no VS Build Tools) + China-route network | `pnpm install` succeeds; CLI starts without the feature |
-| macOS (clean, no Xcode CLT) | Install succeeds; falls back gracefully |
-| Linux (Alpine / minimal Docker) | Install succeeds; musl vs glibc prebuild matches |
+| macOS (clean, no Xcode CLT)                                 | Install succeeds; falls back gracefully                 |
+| Linux (Alpine / minimal Docker)                             | Install succeeds; musl vs glibc prebuild matches        |
 
 #### 4. Decision framework
 
@@ -945,13 +967,13 @@ If only one is true, pick a non-native alternative.
 
 #### 5. Alternative ladder (in preference order)
 
-| Option | Install risk | Perf | Notes |
-|---|---|---|---|
-| Pure JS | none | baseline | Always the first choice. Most CLI workloads are I/O-bound, not CPU-bound. |
-| WASM bundle | none (one-time bundle size cost ~1-2 MB) | ~1.5-3x slower than native, usually fine | E.g. `sql.js` for SQLite reads. Bundled at build time, no install-time fetch. |
-| Shell out to system CLI | low (Windows-PATH / "is it installed" risk) | per-call dispatch overhead | Zero install deps, but introduces "is sqlite3 / ffmpeg on PATH?" branching. Acceptable when the tool is broadly assumed present. |
-| `node:sqlite` etc. (Node built-ins) | none | native | Once these graduate from experimental in Node LTS, they become the preferred path. As of Node 22 LTS, `node:sqlite` is still experimental — track upstream. |
-| Native dep + `optionalDependencies` + soft-degrade | medium (still fails to install on a non-trivial fraction of Windows users) | native | Last resort. Only when steps 1-4 are ruled out and the soft-degrade path is genuinely usable. |
+| Option                                             | Install risk                                                               | Perf                                     | Notes                                                                                                                                                       |
+| -------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pure JS                                            | none                                                                       | baseline                                 | Always the first choice. Most CLI workloads are I/O-bound, not CPU-bound.                                                                                   |
+| WASM bundle                                        | none (one-time bundle size cost ~1-2 MB)                                   | ~1.5-3x slower than native, usually fine | E.g. `sql.js` for SQLite reads. Bundled at build time, no install-time fetch.                                                                               |
+| Shell out to system CLI                            | low (Windows-PATH / "is it installed" risk)                                | per-call dispatch overhead               | Zero install deps, but introduces "is sqlite3 / ffmpeg on PATH?" branching. Acceptable when the tool is broadly assumed present.                            |
+| `node:sqlite` etc. (Node built-ins)                | none                                                                       | native                                   | Once these graduate from experimental in Node LTS, they become the preferred path. As of Node 22 LTS, `node:sqlite` is still experimental — track upstream. |
+| Native dep + `optionalDependencies` + soft-degrade | medium (still fails to install on a non-trivial fraction of Windows users) | native                                   | Last resort. Only when steps 1-4 are ruled out and the soft-degrade path is genuinely usable.                                                               |
 
 #### 6. Audit checklist when adding any native dep
 
@@ -1003,7 +1025,7 @@ try {
 } catch {
   process.stderr.write(
     "[trellis] OpenCode 1.2+ SQLite session reader unavailable " +
-    "(better-sqlite3 not installed). Falling back to JSONL-only mode.\n"
+      "(better-sqlite3 not installed). Falling back to JSONL-only mode.\n",
   );
 }
 
@@ -1022,11 +1044,11 @@ Even when a prebuild exists for the target platform, the GitHub releases CDN is 
 
 Required pre-ship matrix for any native dep:
 
-| Environment | What to verify |
-|---|---|
+| Environment                                                 | What to verify                                          |
+| ----------------------------------------------------------- | ------------------------------------------------------- |
 | Windows (clean VM, no VS Build Tools) + China-route network | `pnpm install` succeeds; CLI starts without the feature |
-| macOS (clean, no Xcode CLT) | Install succeeds; falls back gracefully |
-| Linux (Alpine / minimal Docker) | Install succeeds; musl vs glibc prebuild matches |
+| macOS (clean, no Xcode CLT)                                 | Install succeeds; falls back gracefully                 |
+| Linux (Alpine / minimal Docker)                             | Install succeeds; musl vs glibc prebuild matches        |
 
 #### 4. Decision framework
 
@@ -1039,13 +1061,13 @@ If only one is true, pick a non-native alternative.
 
 #### 5. Alternative ladder (in preference order)
 
-| Option | Install risk | Perf | Notes |
-|---|---|---|---|
-| Pure JS | none | baseline | Always the first choice. Most CLI workloads are I/O-bound, not CPU-bound. |
-| WASM bundle | none (one-time bundle size cost ~1-2 MB) | ~1.5-3x slower than native, usually fine | E.g. `sql.js` for SQLite reads. Bundled at build time, no install-time fetch. |
-| Shell out to system CLI | low (Windows-PATH / "is it installed" risk) | per-call dispatch overhead | Zero install deps, but introduces "is sqlite3 / ffmpeg on PATH?" branching. Acceptable when the tool is broadly assumed present. |
-| `node:sqlite` etc. (Node built-ins) | none | native | Once these graduate from experimental in Node LTS, they become the preferred path. As of Node 22 LTS, `node:sqlite` is still experimental — track upstream. |
-| Native dep + `optionalDependencies` + soft-degrade | medium (still fails to install on a non-trivial fraction of Windows users) | native | Last resort. Only when steps 1-4 are ruled out and the soft-degrade path is genuinely usable. |
+| Option                                             | Install risk                                                               | Perf                                     | Notes                                                                                                                                                       |
+| -------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pure JS                                            | none                                                                       | baseline                                 | Always the first choice. Most CLI workloads are I/O-bound, not CPU-bound.                                                                                   |
+| WASM bundle                                        | none (one-time bundle size cost ~1-2 MB)                                   | ~1.5-3x slower than native, usually fine | E.g. `sql.js` for SQLite reads. Bundled at build time, no install-time fetch.                                                                               |
+| Shell out to system CLI                            | low (Windows-PATH / "is it installed" risk)                                | per-call dispatch overhead               | Zero install deps, but introduces "is sqlite3 / ffmpeg on PATH?" branching. Acceptable when the tool is broadly assumed present.                            |
+| `node:sqlite` etc. (Node built-ins)                | none                                                                       | native                                   | Once these graduate from experimental in Node LTS, they become the preferred path. As of Node 22 LTS, `node:sqlite` is still experimental — track upstream. |
+| Native dep + `optionalDependencies` + soft-degrade | medium (still fails to install on a non-trivial fraction of Windows users) | native                                   | Last resort. Only when steps 1-4 are ruled out and the soft-degrade path is genuinely usable.                                                               |
 
 #### 6. Audit checklist when adding any native dep
 

@@ -5,6 +5,7 @@ import {
   resolveBundledSkills,
   collectSkillTemplates,
   collectSharedHooks,
+  injectRoleManifestGateJson,
 } from "./shared.js";
 import { getAllAgents, getIdeHooks } from "../templates/kiro/index.js";
 
@@ -28,10 +29,16 @@ export function collectKiroTemplates(): Map<string, string> {
     files.set(filePath, content);
   }
   for (const agent of getAllAgents()) {
-    files.set(
-      `.kiro/agents/${agent.name}.json`,
-      resolvePlaceholders(agent.content),
-    );
+    const agentType =
+      agent.name === "trellis-implement"
+        ? "implement"
+        : agent.name === "trellis-check"
+          ? "check"
+          : null;
+    const content = agentType
+      ? injectRoleManifestGateJson(agent.content, agentType)
+      : agent.content;
+    files.set(`.kiro/agents/${agent.name}.json`, resolvePlaceholders(content));
   }
   for (const [k, v] of collectSharedHooks(".kiro/hooks", "kiro")) {
     files.set(k, v);

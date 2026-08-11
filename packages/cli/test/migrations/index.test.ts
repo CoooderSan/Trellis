@@ -190,6 +190,14 @@ describe("getMigrationMetadata", () => {
     expect(Array.isArray(metadata.migrationGuides)).toBe(true);
   });
 
+  it("preserves legacy coercion for structured changelog entries", () => {
+    const metadata = getMigrationMetadata("0.2.14", "0.2.15");
+
+    expect(metadata.changelog).toEqual([
+      "v0.2.15: [object Object],[object Object],[object Object],[object Object],[object Object]",
+    ]);
+  });
+
   it("returns empty data for same version", () => {
     const metadata = getMigrationMetadata("0.3.0-beta.16", "0.3.0-beta.16");
     expect(metadata.changelog).toEqual([]);

@@ -316,7 +316,7 @@ registry_list_agents()
 
 ```bash
 # Create task
-python3 .trellis/scripts/task.py create "Add login" --slug add-login
+python3 .trellis/scripts/task.py create "Add login" --slug add-login --classification business-feature --product-intent-link "<approved intent URL or document id>"
 
 # Configure
 python3 .trellis/scripts/task.py init-context <task-dir> fullstack

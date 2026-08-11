@@ -9,7 +9,7 @@
  * bucket of migrations.
  *
  * This guard runs before `pnpm version` bumps on every release track:
- *   1. Query npm for all published versions of @mindfoldhq/trellis
+ *   1. Query npm for all published versions of @ecochain/trellis
  *   2. Diff against local `src/migrations/manifests/*.json`
  *   3. Fail non-zero if any npm version lacks a local manifest
  *
@@ -24,14 +24,14 @@
  *   The beta.10 incident (manifest deleted from repo AFTER being published
  *   to npm) motivated this gate — see .trellis/spec/cli/backend/migrations.md.
  */
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MANIFESTS_DIR = path.join(__dirname, "../src/migrations/manifests");
-const PACKAGE_NAME = "@mindfoldhq/trellis";
+const PACKAGE_NAME = "@ecochain/trellis";
 
 /**
  * Historical npm versions whose manifests are permanently missing from the
@@ -43,9 +43,27 @@ const PACKAGE_NAME = "@mindfoldhq/trellis";
  */
 const KNOWN_GAPS = new Set([
   // Pre-manifest era (migration-manifest system not yet in place when these shipped)
-  "0.1.0", "0.1.1", "0.1.2", "0.1.3", "0.1.4", "0.1.5", "0.1.6", "0.1.7", "0.1.8",
+  "0.1.0",
+  "0.1.1",
+  "0.1.2",
+  "0.1.3",
+  "0.1.4",
+  "0.1.5",
+  "0.1.6",
+  "0.1.7",
+  "0.1.8",
   // 0.2.x era (earliest local is 0.2.0; then jumps to 0.2.12)
-  "0.2.1", "0.2.2", "0.2.3", "0.2.4", "0.2.5", "0.2.6", "0.2.7", "0.2.8", "0.2.9", "0.2.10", "0.2.11",
+  "0.2.1",
+  "0.2.2",
+  "0.2.3",
+  "0.2.4",
+  "0.2.5",
+  "0.2.6",
+  "0.2.7",
+  "0.2.8",
+  "0.2.9",
+  "0.2.10",
+  "0.2.11",
   // 0.3.x beta first public prerelease, manifest not checked in
   "0.3.10-beta.0",
 ]);
@@ -67,11 +85,15 @@ function readLocalManifestVersions() {
 
 function fetchNpmVersions() {
   try {
-    const output = execSync(`npm view ${PACKAGE_NAME} versions --json`, {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 15_000,
-    });
+    const output = execFileSync(
+      "npm",
+      ["view", PACKAGE_NAME, "versions", "--json"],
+      {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 15_000,
+      },
+    );
     const parsed = JSON.parse(output);
     // `npm view` returns a string for single version and array otherwise.
     return Array.isArray(parsed) ? parsed : [parsed];
@@ -89,7 +111,7 @@ function main() {
   if (process.env.SKIP_MANIFEST_CONTINUITY === "1") {
     console.error(
       `${YELLOW}⚠  SKIP_MANIFEST_CONTINUITY=1 set — bypassing manifest/npm continuity check.${RESET}\n` +
-      `${YELLOW}   Only use this for emergency re-rolls with explicit sign-off.${RESET}\n`,
+        `${YELLOW}   Only use this for emergency re-rolls with explicit sign-off.${RESET}\n`,
     );
     return;
   }
@@ -109,27 +131,27 @@ function main() {
     newGaps.forEach((v) => console.error(`  - ${v}.json`));
     console.error(
       `\n` +
-      `A version on npm without its local manifest breaks \`trellis update\`\n` +
-      `for users on adjacent versions. See .trellis/spec/cli/backend/migrations.md.\n` +
-      `\n` +
-      `Fix options:\n` +
-      `  1. Restore the manifest from git history\n` +
-      `       git log --all -- src/migrations/manifests/<version>.json\n` +
-      `       git checkout <commit-before-delete> -- src/migrations/manifests/<version>.json\n` +
-      `     and verify its content matches what was shipped in that npm tarball.\n` +
-      `  2. If the version should NEVER have been published (accidental release\n` +
-      `     that cannot be unpublished), deprecate it on npm AND accept the gap\n` +
-      `     by adding to KNOWN_GAPS — but think carefully: adjacent-version users\n` +
-      `     still get broken update chains.\n` +
-      `\n` +
-      `${DIM}Emergency bypass (NOT recommended): SKIP_MANIFEST_CONTINUITY=1 <command>${RESET}\n`,
+        `A version on npm without its local manifest breaks \`trellis update\`\n` +
+        `for users on adjacent versions. See .trellis/spec/cli/backend/migrations.md.\n` +
+        `\n` +
+        `Fix options:\n` +
+        `  1. Restore the manifest from git history\n` +
+        `       git log --all -- src/migrations/manifests/<version>.json\n` +
+        `       git checkout <commit-before-delete> -- src/migrations/manifests/<version>.json\n` +
+        `     and verify its content matches what was shipped in that npm tarball.\n` +
+        `  2. If the version should NEVER have been published (accidental release\n` +
+        `     that cannot be unpublished), deprecate it on npm AND accept the gap\n` +
+        `     by adding to KNOWN_GAPS — but think carefully: adjacent-version users\n` +
+        `     still get broken update chains.\n` +
+        `\n` +
+        `${DIM}Emergency bypass (NOT recommended): SKIP_MANIFEST_CONTINUITY=1 <command>${RESET}\n`,
     );
     process.exit(1);
   }
 
   console.log(
     `${GREEN}✓${RESET} Manifest continuity OK — ${localVersions.size} local, ` +
-    `${npmVersions.length} published (${KNOWN_GAPS.size} historical gaps whitelisted).`,
+      `${npmVersions.length} published (${KNOWN_GAPS.size} historical gaps whitelisted).`,
   );
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, afterEach } from "vitest";
 import {
   getPythonCommandForPlatform,
+  composeSharedCheckContract,
   replacePythonCommandLiterals,
   resolveAllAsSkillsNeutral,
   resolvePlaceholders,
@@ -45,6 +46,30 @@ const cursorCtx: TemplateContext = {
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+describe("composeSharedCheckContract", () => {
+  it("injects the common check contract into the one executor placeholder", () => {
+    const result = composeSharedCheckContract(
+      "before\n{{TRELLIS_CHECK_CONTRACT}}\nafter",
+      codexCtx,
+    );
+
+    expect(result).toContain("before\n# Code Quality Check");
+    expect(result).toContain("`ITERATION`-profile verification");
+    expect(result).toContain("git diff --cached --no-ext-diff");
+    expect(result).toContain("after");
+    expect(result).not.toContain("{{TRELLIS_CHECK_CONTRACT}}");
+  });
+
+  it.each([
+    ["missing", "no marker"],
+    ["duplicate", "{{TRELLIS_CHECK_CONTRACT}}\n{{TRELLIS_CHECK_CONTRACT}}"],
+  ])("fails closed when the executor placeholder is %s", (_case, input) => {
+    expect(() => composeSharedCheckContract(input, claudeCtx)).toThrow(
+      /exactly one.*TRELLIS_CHECK_CONTRACT/,
+    );
+  });
+});
 
 // ---------------------------------------------------------------------------
 // replacePythonCommandLiterals — platform-mocked unit tests

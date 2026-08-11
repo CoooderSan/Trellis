@@ -2,6 +2,7 @@ import { AI_TOOLS } from "../types/ai-tools.js";
 import {
   applyPullBasedPreludeMarkdown,
   collectSkillTemplates,
+  replacePythonCommandLiterals,
   resolveCommands,
   resolveBundledSkills,
   resolvePlaceholders,
@@ -50,7 +51,19 @@ export function collectPiTemplates(): Map<string, string> {
     files.set(filePath, content);
   }
 
-  for (const agent of applyPullBasedPreludeMarkdown(getAllAgents())) {
+  const agents = getAllAgents();
+  const renderedAgents = agents.map((agent) => {
+    const [injectedAgent] = applyPullBasedPreludeMarkdown([agent]);
+    const withRoleGate = agent.content.includes("validate-role-context")
+      ? agent
+      : (injectedAgent ?? agent);
+    return {
+      ...withRoleGate,
+      content: replacePythonCommandLiterals(withRoleGate.content),
+    };
+  });
+
+  for (const agent of renderedAgents) {
     files.set(`.pi/agents/${agent.name}.md`, agent.content);
   }
 

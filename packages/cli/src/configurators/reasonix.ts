@@ -31,7 +31,9 @@ export function collectReasonixTemplates(): Map<string, string> {
   const agentNames = new Set(getAllAgents().map((a) => a.name));
 
   // Workflow skills filtered to avoid collision with subagent skills.
-  const skills = resolveAllAsSkills(ctx).filter((s) => !agentNames.has(s.name));
+  const allSkills = resolveAllAsSkills(ctx);
+  const skills = allSkills.filter((s) => !agentNames.has(s.name));
+  const commonCheck = allSkills.find((skill) => skill.name === "trellis-check");
 
   for (const [filePath, content] of collectSkillTemplates(
     ".reasonix/skills",
@@ -44,8 +46,18 @@ export function collectReasonixTemplates(): Map<string, string> {
   // Subagent skills (trellis-implement, trellis-check) — written with
   // runAs: subagent frontmatter for isolated subagent loops.
   for (const agent of getAllAgents()) {
-    files.set(`.reasonix/skills/${agent.name}/SKILL.md`, agent.content);
+    const content =
+      agent.name === "trellis-check" && commonCheck
+        ? `${agent.content.trimEnd()}\n\n${markdownBody(commonCheck.content)}`
+        : agent.content;
+    files.set(`.reasonix/skills/${agent.name}/SKILL.md`, content);
   }
 
   return files;
+}
+
+/** Keep Reasonix's subagent frontmatter while composing the common skill body. */
+function markdownBody(content: string): string {
+  const frontmatter = /^---\r?\n[\s\S]*?\r?\n---\r?\n*/;
+  return content.replace(frontmatter, "").trimStart();
 }

@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, dirname, isAbsolute, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -40,7 +40,7 @@ function buildContextKey(platformName: string, kind: string, value: string): str
    return safeValue ? `${platformName}_${safeValue}` : `${platformName}_${hashValue(value)}`;
 }
 
-function deriveContextKey(ctx?: { sessionManager?: { getSessionId?: () => string; getSessionFile?: () => string } }): string | null {
+function deriveContextKey(ctx?: { sessionManager?: { getSessionId?: () => string | undefined; getSessionFile?: () => string | undefined } }): string | null {
    const sessionId = ctx?.sessionManager?.getSessionId?.();
    if (sessionId) {
       return buildContextKey("omp", "session", sessionId);
@@ -58,11 +58,118 @@ function isInsideRoot(root: string, candidate: string): boolean {
    return rel === "" || (rel !== ".." && !rel.startsWith("../") && !rel.startsWith("..\\") && !isAbsolute(rel));
 }
 
-function resolveProjectFile(projectRoot: string, file: string): string | null {
+// ---------------------------------------------------------------------------
+// Trusted context roots (mirrors packages/cli/src/commands/channel/context-trust.ts;
+// standalone copy since templates don't import from the CLI package).
+// ---------------------------------------------------------------------------
+
+const AUTO_TRUST_ENTRIES = ["tasks", "workspace"];
+
+function stripTrustValue(s: string): string {
+   return s.trim().replace(/\s*#.*$/, "").trim().replace(/^['"]|['"]$/g, "");
+}
+
+function parseChannelTrustSection(content: string): { trustedDirs: string[]; autoTrustSymlinks?: boolean } {
+   const lines = content.split("\n");
+   const trustedDirs: string[] = [];
+   let autoTrustSymlinks: boolean | undefined;
+   let inChannel = false;
+   let inList = false;
+
+   for (const raw of lines) {
+      const line = raw.replace(/\r$/, "");
+      const trimmed = line.trimEnd();
+      if (trimmed.trim().startsWith("#")) continue;
+
+      if (/^channel:\s*$/.test(trimmed)) {
+         inChannel = true;
+         inList = false;
+         continue;
+      }
+      if (!inChannel) continue;
+
+      if (trimmed.trim() !== "" && /^\S/.test(line)) {
+         inChannel = false;
+         inList = false;
+         continue;
+      }
+      if (trimmed.trim() === "") continue;
+
+      if (inList) {
+         const item = trimmed.match(/^ {4}-\s*(.+)$/);
+         if (item) {
+            const val = stripTrustValue(item[1]!);
+            if (val) trustedDirs.push(val);
+            continue;
+         }
+         inList = false;
+      }
+
+      if (/^ {2}trusted_context_dirs:\s*$/.test(trimmed)) {
+         inList = true;
+         continue;
+      }
+
+      const boolMatch = trimmed.match(/^ {2}auto_trust_trellis_symlinks:\s*(.+)$/);
+      if (boolMatch) {
+         const val = stripTrustValue(boolMatch[1]!).toLowerCase();
+         if (val === "false") autoTrustSymlinks = false;
+         else if (val === "true") autoTrustSymlinks = true;
+         else process.stderr.write(`[channel] channel.auto_trust_trellis_symlinks: invalid value '${val}', ignoring\n`);
+         continue;
+      }
+   }
+
+   return { trustedDirs, autoTrustSymlinks };
+}
+
+function resolveTrustedRoots(projectRoot: string): string[] {
+   const configPath = join(projectRoot, ".trellis", "config.yaml");
+   let config: { trustedDirs: string[]; autoTrustSymlinks?: boolean } = { trustedDirs: [] };
+   if (existsSync(configPath)) {
+      try {
+         config = parseChannelTrustSection(readFileSync(configPath, "utf-8"));
+      } catch {
+         // ignore
+      }
+   }
+
+   const roots: string[] = [];
+   for (const entry of config.trustedDirs) {
+      try {
+         roots.push(realpathSync(resolve(projectRoot, entry)));
+      } catch {
+         // entry not found or invalid — skip
+      }
+   }
+
+   if (config.autoTrustSymlinks !== false) {
+      for (const entryName of AUTO_TRUST_ENTRIES) {
+         const entryPath = join(projectRoot, ".trellis", entryName);
+         try {
+            if (lstatSync(entryPath).isSymbolicLink()) {
+               roots.push(realpathSync(entryPath));
+            }
+         } catch {
+            // missing / broken symlink — nothing to trust
+         }
+      }
+   }
+
+   return [...new Set(roots)];
+}
+
+function resolveProjectFile(
+   projectRoot: string,
+   file: string,
+   trustedRoots: string[],
+): string | null {
    try {
       const rootReal = realpathSync(projectRoot);
       const targetReal = realpathSync(resolve(projectRoot, file));
-      return isInsideRoot(rootReal, targetReal) ? targetReal : null;
+      if (isInsideRoot(rootReal, targetReal)) return targetReal;
+      if (trustedRoots.some((root) => isInsideRoot(root, targetReal))) return targetReal;
+      return null;
    } catch {
       return null;
    }
@@ -164,69 +271,134 @@ function buildSessionContext(projectRoot: string, contextKey: string | null): st
 }
 
 // ---------------------------------------------------------------------------
-// Task context — prd.md, info.md, and jsonl-referenced spec/research files
+// Task context — jsonl-referenced spec/research, then planning artifacts
 // ---------------------------------------------------------------------------
 
 type AgentType = "trellis-implement" | "trellis-check" | "trellis-research" | null;
 
 function buildTaskContext(projectRoot: string, taskDir: string, agentType?: AgentType): string {
    const parts: string[] = [];
+   // Resolved once per call (not per referenced file) — avoids re-parsing
+   // config.yaml for every jsonl row.
+   const trustedRoots = resolveTrustedRoots(projectRoot);
 
-   // prd.md and info.md — always included
-   let prd = "";
-   try { prd = readFileSync(join(taskDir, "prd.md"), "utf-8"); } catch { }
-   if (prd.trim()) parts.push(`## PRD\n\n${prd.trim()}`);
-
-   let info = "";
-   try { info = readFileSync(join(taskDir, "info.md"), "utf-8"); } catch { }
-   if (info.trim()) parts.push(`## Info\n\n${info.trim()}`);
-
-   // Determine which jsonl files to read based on agent type
-   let jsonlNames: string[];
-   if (agentType === "trellis-implement") {
-      jsonlNames = ["implement.jsonl"];
-   } else if (agentType === "trellis-check") {
-      jsonlNames = ["check.jsonl"];
-   } else if (agentType === "trellis-research") {
-      jsonlNames = []; // research agent gets only prd + info
-   } else {
-      jsonlNames = ["implement.jsonl", "check.jsonl"]; // main session: all
-   }
+   const strictRole = agentType === "trellis-implement"
+      ? "implement"
+      : agentType === "trellis-check"
+         ? "check"
+         : null;
+   const jsonlNames = strictRole
+      ? [`${strictRole}.jsonl`]
+      : agentType === "trellis-research"
+         ? []
+         : ["implement.jsonl", "check.jsonl"];
 
    for (const jsonlName of jsonlNames) {
       const jsonlPath = join(taskDir, jsonlName);
-      if (!existsSync(jsonlPath)) continue;
-
-      let lines: string[];
-      try {
-         lines = readFileSync(jsonlPath, "utf-8").split(/\r?\n/);
-      } catch {
-         continue;
+      const errors: string[] = [];
+      if (!existsSync(jsonlPath)) {
+         errors.push(`${jsonlName}: manifest is missing`);
       }
 
-      const fileChunks: string[] = [];
-      for (const line of lines) {
-         const trimmed = line.trim();
-         if (!trimmed) continue;
+      let lines: string[] = [];
+      if (errors.length === 0) {
          try {
-            const row = JSON.parse(trimmed) as Record<string, unknown>;
-            const file = typeof row.file === "string" ? row.file.trim() : "";
-            if (!file) continue;
-            const targetPath = resolveProjectFile(projectRoot, file);
-            if (!targetPath) continue;
-            let content = "";
-            try { content = readFileSync(targetPath, "utf-8"); } catch { }
-            if (content.trim()) {
-               fileChunks.push(`### ${file}\n\n${content.trim()}`);
+            const manifestStat = lstatSync(jsonlPath);
+            if (!manifestStat.isFile() || (manifestStat.mode & 0o444) === 0) {
+               throw new Error("no read permission");
             }
-         } catch {
-            // seed rows and malformed lines are non-fatal
+            lines = readFileSync(jsonlPath, "utf-8").split(/\r?\n/);
+         } catch (error) {
+            errors.push(`${jsonlName}: manifest cannot be read: ${String(error)}`);
          }
       }
 
+      const fileChunks: string[] = [];
+      let nonEmptyRows = 0;
+      let validEntries = 0;
+      for (const [index, line] of lines.entries()) {
+         const trimmed = line.trim();
+         if (!trimmed) continue;
+         nonEmptyRows += 1;
+
+         let row: Record<string, unknown>;
+         try {
+            const parsed = JSON.parse(trimmed) as unknown;
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+               errors.push(`${jsonlName}:${index + 1}: entry must be a JSON object`);
+               continue;
+            }
+            row = parsed as Record<string, unknown>;
+         } catch (error) {
+            errors.push(`${jsonlName}:${index + 1}: invalid JSON: ${String(error)}`);
+            continue;
+         }
+
+         if (row.file === undefined && "_example" in row) continue;
+         if (typeof row.file !== "string" || !row.file.trim()) {
+            errors.push(`${jsonlName}:${index + 1}: entry requires a non-empty string field 'file'`);
+            continue;
+         }
+         const file = row.file.trim();
+         const entryType = row.type === undefined ? "file" : row.type;
+         if (entryType !== "file" && entryType !== "directory") {
+            errors.push(`${jsonlName}:${index + 1}: type must be 'file' or 'directory'`);
+            continue;
+         }
+
+         const targetPath = resolveProjectFile(projectRoot, file, trustedRoots);
+         if (!targetPath) {
+            errors.push(`${jsonlName}:${index + 1}: referenced ${entryType} cannot be resolved or read: ${file}`);
+            continue;
+         }
+
+         try {
+            const stat = lstatSync(targetPath);
+            if ((stat.mode & 0o444) === 0) throw new Error("no read permission");
+            if (entryType === "file") {
+               if (!stat.isFile()) throw new Error("not a file");
+               const content = readFileSync(targetPath, "utf-8");
+               if (content.trim()) fileChunks.push(`### ${file}\n\n${content.trim()}`);
+            } else {
+               if (!stat.isDirectory()) throw new Error("not a directory");
+               for (const child of readdirSync(targetPath).filter((name) => name.endsWith(".md")).sort()) {
+                  const childPath = resolveProjectFile(projectRoot, join(file, child), trustedRoots);
+                  if (!childPath) throw new Error(`child cannot be resolved or read: ${child}`);
+                  const childStat = lstatSync(childPath);
+                  if (!childStat.isFile() || (childStat.mode & 0o444) === 0) {
+                     throw new Error(`child cannot be read: ${child}`);
+                  }
+                  const content = readFileSync(childPath, "utf-8");
+                  if (content.trim()) fileChunks.push(`### ${file}/${child}\n\n${content.trim()}`);
+               }
+            }
+            validEntries += 1;
+         } catch (error) {
+            errors.push(`${jsonlName}:${index + 1}: referenced ${entryType} cannot be read: ${file} (${String(error)})`);
+         }
+      }
+
+      if (nonEmptyRows === 0) errors.push(`${jsonlName}: manifest is empty`);
+      if (validEntries === 0) {
+         errors.push(`${jsonlName}: manifest has no valid readable 'file' entry (seed rows do not count)`);
+      }
+
+      if (strictRole && errors.length > 0) {
+         return `<blocked-role-context role="${strictRole}">\nRole context is not ready for ${strictRole} dispatch. Stop before role work and relay these blockers to the main session:\n${errors.map((error) => `- ${error}`).join("\n")}\nRun \`python3 ./.trellis/scripts/task.py validate-role-context "<task-path>" ${strictRole}\` after curating ${jsonlName}.\n</blocked-role-context>`;
+      }
       if (fileChunks.length > 0) {
          parts.push(`## ${jsonlName}\n\n${fileChunks.join("\n\n---\n\n")}`);
       }
+   }
+
+   for (const [fileName, heading] of [
+      ["prd.md", "PRD"],
+      ["design.md", "Design"],
+      ["implement.md", "Implementation Plan"],
+   ] as const) {
+      let content = "";
+      try { content = readFileSync(join(taskDir, fileName), "utf-8"); } catch { }
+      if (content.trim()) parts.push(`## ${heading}\n\n${content.trim()}`);
    }
 
    return parts.length > 0
@@ -336,7 +508,7 @@ export default function(pi: ExtensionAPI): void {
    let lastCompactionTs = 0;
    let lastInjectionTs = 0;
 
-   const rememberContextKey = (ctx?: { sessionManager?: { getSessionId?: () => string; getSessionFile?: () => string } }): string | null => {
+   const rememberContextKey = (ctx?: { sessionManager?: { getSessionId?: () => string | undefined; getSessionFile?: () => string | undefined } }): string | null => {
       const key = deriveContextKey(ctx);
       if (!key) return null;
       return key;
@@ -439,12 +611,27 @@ export default function(pi: ExtensionAPI): void {
          messages: [
             ...event.messages,
             {
-               role: "custom",
+               role: "custom" as const,
                customType: "trellis-workflow-state",
                content: cached.workflowMsg,
+               display: false,
                timestamp: Date.now(),
             },
          ],
+      };
+   });
+
+   // OMP passes Bash event.input through to the tool execution parameters, so
+   // inject the session key through the shell-agnostic env field. An explicit
+   // per-call value wins over the derived key.
+   pi.on("tool_call", (event, ctx) => {
+      if (event.toolName !== "bash") return;
+      const contextKey = rememberContextKey(ctx);
+      if (!contextKey) return;
+      const input = event.input as { env?: Record<string, string> };
+      input.env = {
+         TRELLIS_CONTEXT_ID: contextKey,
+         ...input.env,
       };
    });
 
@@ -453,10 +640,9 @@ export default function(pi: ExtensionAPI): void {
          projectRoot = findProjectRoot(ctx.cwd);
       }
       // Resolve projectRoot on first input if session_start missed it
-      if (!projectRoot) return { action: "continue" };
+      if (!projectRoot) return;
       const contextKey = rememberContextKey(ctx);
       // Pre-warm the cache so before_agent_start and context can use it
       turnCache.get(projectRoot, contextKey);
-      return { action: "continue" };
    });
 }

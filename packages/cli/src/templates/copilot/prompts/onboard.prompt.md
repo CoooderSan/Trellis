@@ -214,7 +214,7 @@ All the context AI built during this session will be lost when session ends. The
 ### Example 1: Bug Fix Session
 
 **[1/8] /** - AI needs project context before touching code
-**[2/8] python3 ./.trellis/scripts/task.py create "Fix bug" --slug fix-bug** - Track work for future reference
+**[2/8] python3 ./.trellis/scripts/task.py create "Fix bug" --slug fix-bug --classification bugfix --product-intent-reason "Defect correction does not require new Product Intent"** - Track work for future reference
 **[3/8] /** - Inject project-specific development guidelines
 **[4/8] Investigate and fix the bug** - Actual development work
 **[5/8] /** - Re-verify code against guidelines
@@ -225,7 +225,7 @@ All the context AI built during this session will be lost when session ends. The
 ### Example 2: Planning Session (No Code)
 
 **[1/4] /** - Context needed even for non-coding work
-**[2/4] python3 ./.trellis/scripts/task.py create "Planning task" --slug planning-task** - Planning is valuable work
+**[2/4] Classify the request; create a task only when planning produces persistent development work, with matching Product Intent evidence** - Read-only and ordinary operational planning proceed without a development task
 **[3/4] Review docs, create subtask list** - Actual planning work
 **[4/4] / (with --summary)** - Planning decisions must be recorded
 
@@ -317,11 +317,13 @@ I recommend reading through `.trellis/spec/` to familiarize yourself with the te
 
 ## Step 3: Help Fill Guidelines (If Empty)
 
-If the developer wants help filling guidelines, create a feature to track this:
+If an evidence-backed fit/gap review finds missing project guidance and the developer wants persistent repository changes, create a maintenance task to track the approved gaps:
 
 ```bash
-python3 ./.trellis/scripts/task.py create "Fill spec guidelines" --slug fill-spec-guidelines
+python3 ./.trellis/scripts/task.py create "Fill spec guidelines" --slug fill-spec-guidelines --classification maintenance --product-intent-reason "Documenting existing engineering conventions does not change product behavior"
 ```
+
+If the existing specs already cover the project, do not create a task or replace them with generic boilerplate.
 
 Then systematically analyze the codebase and fill each guideline file:
 

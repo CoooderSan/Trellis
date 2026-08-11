@@ -428,9 +428,10 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
     if not active.task_path:
         return (
             "Status: NO ACTIVE TASK\n"
-            "Next-Action: Classify the current turn before creating any Trellis task. "
-            "Simple conversation / small task asks only whether this turn should create a Trellis task. "
-            "Complex task asks whether task creation and planning are allowed."
+            "Next-Action: Classify the natural-language request first. "
+            "Read-only questions and ordinary operational work normally proceed without a development task. "
+            "Feature, bug-fix, refactor, or maintenance development asks for task-creation consent; "
+            "review revisions reuse their existing task and review evidence."
         )
 
     task_ref = active.task_path
@@ -499,7 +500,9 @@ def _get_task_status(trellis_dir: Path, input_data: dict) -> str:
         else:
             next_bits.append("Planning artifacts are present; ask for review before `task.py start`")
         if not jsonl_ready:
-            next_bits.append("curate `implement.jsonl` and `check.jsonl` before sub-agent mode start")
+            next_bits.append(
+                "curate each applicable role manifest before its implement/check dispatch"
+            )
         return (
             f"Status: PLANNING\nTask: {task_title}\n"
             f"Present: {present_line}\n"

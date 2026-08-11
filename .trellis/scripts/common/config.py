@@ -388,6 +388,63 @@ def get_hooks(event: str, repo_root: Path | None = None) -> list[str]:
 
 
 # =============================================================================
+# Governance Gate
+# =============================================================================
+
+
+def get_governance_config(repo_root: Path | None = None) -> dict:
+    """Return the generic, project-configurable governance section."""
+    config = _load_config(repo_root)
+    governance = config.get("governance")
+    return governance if isinstance(governance, dict) else {}
+
+
+def is_governance_enabled(repo_root: Path | None = None) -> bool:
+    """Return whether classified lifecycle gates are enabled.
+
+    Classified governance is the default even when the config has no
+    ``governance`` section. Projects can explicitly opt out with
+    ``governance.enabled: false``.
+    """
+    governance = get_governance_config(repo_root)
+    raw = governance.get("enabled", True)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() not in {"false", "no", "0", "off"}
+
+
+def get_governance_command(repo_root: Path | None = None) -> str | None:
+    """Return the optional external governance evaluator command."""
+    command = get_governance_config(repo_root).get("command")
+    if isinstance(command, str) and command.strip():
+        return command.strip()
+    return None
+
+
+def is_governance_event_enforced(
+    event: str,
+    repo_root: Path | None = None,
+) -> bool:
+    """Return whether a lifecycle event is hard-blocking."""
+    if not is_governance_enabled(repo_root):
+        return False
+
+    enforce = get_governance_config(repo_root).get("enforce")
+    if isinstance(enforce, dict) and event in enforce:
+        raw = enforce[event]
+        if isinstance(raw, bool):
+            return raw
+        normalized = str(raw).strip().lower()
+        if normalized in {"false", "no", "0", "off"}:
+            return False
+        if normalized in {"true", "yes", "1", "on"}:
+            return True
+        return event in {"task_create", "task_start"}
+
+    return event in {"task_create", "task_start"}
+
+
+# =============================================================================
 # Monorepo / Packages
 # =============================================================================
 

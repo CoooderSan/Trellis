@@ -1319,18 +1319,39 @@ function getInstalledVersion(cwd: string): string {
 }
 
 /**
- * Fetch latest version from npm registry
+ * Ask npm for the latest version using its active registry/auth/proxy config.
+ * This lookup is advisory, so every failure resolves to null.
  */
 async function getLatestNpmVersion(): Promise<string | null> {
   try {
-    const response = await fetch(
-      `https://registry.npmjs.org/${PACKAGE_NAME}/latest`,
-    );
-    if (!response.ok) {
-      return null;
-    }
-    const data = (await response.json()) as { version?: string };
-    return data.version ?? null;
+    const { execFile } = await import("node:child_process");
+    const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+    return await new Promise<string | null>((resolve) => {
+      execFile(
+        npmCommand,
+        ["view", PACKAGE_NAME, "version", "--json"],
+        {
+          encoding: "utf8",
+          maxBuffer: 64 * 1024,
+          timeout: 5_000,
+          windowsHide: true,
+        },
+        (error, stdout) => {
+          if (error) {
+            resolve(null);
+            return;
+          }
+
+          try {
+            const value: unknown = JSON.parse(stdout);
+            const version = typeof value === "string" ? value.trim() : "";
+            resolve(version || null);
+          } catch {
+            resolve(null);
+          }
+        },
+      );
+    });
   } catch {
     return null;
   }

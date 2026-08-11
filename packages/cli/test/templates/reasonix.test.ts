@@ -4,9 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { getAllAgents } from "../../src/templates/reasonix/index.js";
-import {
-  collectReasonixTemplates,
-} from "../../src/configurators/reasonix.js";
+import { collectReasonixTemplates } from "../../src/configurators/reasonix.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../../..");
@@ -78,5 +76,18 @@ describe("collectReasonixTemplates", () => {
     );
     expect(checkBody).toMatch(/^runAs:\s*subagent\s*$/m);
     expect(implementBody).toMatch(/^runAs:\s*subagent\s*$/m);
+  });
+
+  it("composes the common ITERATION quality contract into the real check subagent", () => {
+    const checkBody = collectReasonixTemplates().get(
+      ".reasonix/skills/trellis-check/SKILL.md",
+    );
+    expect(checkBody).toContain("`ITERATION`-profile verification");
+    expect(checkBody).toContain("TDD is optional and risk-driven");
+    expect(checkBody).toContain("alternative verification evidence");
+    expect(checkBody).toContain(
+      "Required facts at `FAILED`, `UNKNOWN`, or `PENDING` are not green",
+    );
+    expect(checkBody).toContain("`MR_CANDIDATE` claim additionally requires");
   });
 });

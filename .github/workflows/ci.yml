@@ -4,25 +4,25 @@ on:
   push:
     branches: [main]
     paths:
-      - 'packages/cli/**'
-      - 'packages/core/**'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'package.json'
-      - 'marketplace'
-      - '**/*.py'
-      - '.github/workflows/ci.yml'
+      - "packages/cli/**"
+      - "packages/core/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "marketplace"
+      - "**/*.py"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
     paths:
-      - 'packages/cli/**'
-      - 'packages/core/**'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'package.json'
-      - 'marketplace'
-      - '**/*.py'
-      - '.github/workflows/ci.yml'
+      - "packages/cli/**"
+      - "packages/core/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "marketplace"
+      - "**/*.py"
+      - ".github/workflows/ci.yml"
 
 jobs:
   build:
@@ -60,7 +60,7 @@ jobs:
         run: pnpm typecheck
 
       - name: Typecheck Python
-        run: pnpm --filter @mindfoldhq/trellis lint:py
+        run: pnpm --filter @ecochain/trellis lint:py
 
       - name: Lint (core + cli)
         run: pnpm lint

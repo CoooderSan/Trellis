@@ -372,6 +372,45 @@ export interface ResolvedSkillFile {
   content: string;
 }
 
+const SHARED_CHECK_CONTRACT_PLACEHOLDER = "{{TRELLIS_CHECK_CONTRACT}}";
+
+/**
+ * Compose the common Check skill contract into a platform's real check-agent
+ * executor. The platform template owns role metadata, recursion guards, and
+ * context loading; common/skills/check.md owns the actual quality contract.
+ *
+ * Keeping an explicit placeholder makes drift fail closed: a renamed or
+ * duplicated marker throws during template collection instead of silently
+ * shipping an agent that lacks the shared contract.
+ */
+export function composeSharedCheckContract(
+  agentContent: string,
+  ctx: TemplateContext,
+): string {
+  const markerCount =
+    agentContent.split(SHARED_CHECK_CONTRACT_PLACEHOLDER).length - 1;
+  if (markerCount !== 1) {
+    throw new Error(
+      `Check agent template must contain exactly one ${SHARED_CHECK_CONTRACT_PLACEHOLDER} placeholder (found ${markerCount}).`,
+    );
+  }
+
+  const checkTemplate = getSkillTemplates().find(
+    (template) => template.name === "check",
+  );
+  if (!checkTemplate) {
+    throw new Error("Missing common check skill template.");
+  }
+
+  return resolvePlaceholders(
+    agentContent.replace(
+      SHARED_CHECK_CONTRACT_PLACEHOLDER,
+      checkTemplate.content.trim(),
+    ),
+    ctx,
+  );
+}
+
 /**
  * Filter command templates based on platform capabilities.
  *
@@ -614,6 +653,30 @@ export function collectBothTemplates(
 
 export type SubAgentType = "implement" | "check";
 
+/** Add the fail-closed role-manifest gate to a JSON agent's prompt field. */
+export function injectRoleManifestGateJson(
+  content: string,
+  agentType: SubAgentType,
+): string {
+  const manifest = agentType === "check" ? "check.jsonl" : "implement.jsonl";
+  const stopWork =
+    agentType === "check" ? "review, fixes, or checks" : "edits or checks";
+  const parsed = JSON.parse(content) as Record<string, unknown>;
+  if (typeof parsed.prompt !== "string") return content;
+
+  const gate = `## Required: Validate Role Manifest Before Work
+
+Before any role work, resolve \`<task-path>\` from the dispatch prompt's \`Active task:\` line, then run \`python3 ./.trellis/scripts/task.py validate-role-context "<task-path>" ${agentType}\`. If it exits non-zero, relay its stderr to the main session and stop.
+
+This gate always applies to this sub-agent, even when hook context is present. \`${manifest}\` is ready only when it exists and is non-empty, every nonblank non-seed row is a JSON object with a non-empty string \`file\`, at least one valid \`file\` entry exists (\`_example\` seed rows do not count), and every referenced file is readable.
+
+If the manifest is missing, empty, seed-only, malformed, contains an invalid entry, or references an unreadable file, stop before ${stopWork}. Report the exact manifest/path problem to the main session and ask it to curate \`${manifest}\`; do not choose specs heuristically or continue from task artifacts alone. This gate does not apply to the main session's inline mode.
+
+`;
+  parsed.prompt = `${gate}${parsed.prompt}`;
+  return `${JSON.stringify(parsed, null, 2)}\n`;
+}
+
 /** Build the standard "load Trellis context first" prelude block. */
 export function buildPullBasedPrelude(agentType: SubAgentType): string {
   // JSONL filenames stay as implement.jsonl / check.jsonl — they are internal
@@ -634,12 +697,17 @@ Try in order — stop at the first one that yields a task path:
 
 ### Step 2: Load task context from the resolved path
 
-1. Read \`<task-path>/${jsonl}\` — JSONL list of spec/research files relevant to this agent.
-2. For each entry in the JSONL, Read its \`file\` path — these are the specs and research notes you must follow.
-   **Skip rows without a \`"file"\` field** (e.g. \`{"_example": "..."}\` seed rows left over from \`task.py create\` before the curator ran).
-3. Read the task's \`prd.md\` (requirements), then \`design.md\` if present (technical design), then \`implement.md\` if present (execution plan).
+1. Before any role work, run \`python3 ./.trellis/scripts/task.py validate-role-context "<task-path>" ${agentType}\`. If it exits non-zero, relay its stderr to the main session and stop.
+2. The runtime command validates \`<task-path>/${jsonl}\` as ready only when:
+   - the file exists and is non-empty;
+   - every nonblank non-seed row is a JSON object with a non-empty string \`file\` field;
+   - at least one valid \`file\` entry exists (a \`{"_example": "..."}\` seed row does not count); and
+   - every referenced file is readable.
+3. If the manifest is missing, empty, seed-only, malformed, contains an invalid entry, or references an unreadable file: **stop before edits, review fixes, or checks**. Report the exact manifest/path problem to the main session and ask it to curate \`${jsonl}\`. Do not choose specs heuristically and do not continue from task artifacts alone.
+4. For each validated JSONL entry, Read its \`file\` path — these are the specs and research notes you must follow.
+5. Read the task's \`prd.md\` (requirements), then \`design.md\` if present (technical design), then \`implement.md\` if present (execution plan).
 
-If \`${jsonl}\` has no curated entries (only a seed row, or the file is missing), fall back to: read the task artifacts, list available specs with \`python3 ./.trellis/scripts/get_context.py --mode packages\`, and pick the specs that match the task domain yourself. Do NOT block on the missing jsonl — lightweight tasks may be PRD-only, while complex tasks may also include \`design.md\` and \`implement.md\`.
+This manifest gate applies to this implement/check sub-agent role. It does not apply when the main session deliberately runs inline mode without dispatching a sub-agent.
 
 If the resolved task path has no \`prd.md\`, ask the user what to work on; do NOT proceed without context.
 

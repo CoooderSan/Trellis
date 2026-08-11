@@ -101,13 +101,16 @@ Task management CLI.
 #### Create Task
 
 ```bash
-python3 .trellis/scripts/task.py create "Task name" --slug task-slug
+python3 .trellis/scripts/task.py create "Task name" --slug task-slug --classification maintenance --product-intent-reason "Internal engineering work with no product behavior change"
 ```
 
 **Options:**
 - `--slug` - URL-safe identifier
 - `--assignee` - Developer name (default: current)
 - `--type` - Dev type: frontend, backend, fullstack
+- `--classification` - Request classification for the Task Basis gate
+- `--product-intent-link` - Approved Product Intent for business-feature work
+- `--product-intent-reason` - Why Product Intent is not required for bugfix/maintenance work
 
 #### List Tasks
 
@@ -250,7 +253,7 @@ python3 .trellis/scripts/init_developer.py john-doe
 
 ```bash
 # Create task
-python3 .trellis/scripts/task.py create "Add user login" --slug add-login
+python3 .trellis/scripts/task.py create "Add user login" --slug add-login --classification business-feature --product-intent-link "<approved intent URL or document id>"
 
 # Initialize context for fullstack work
 python3 .trellis/scripts/task.py init-context \

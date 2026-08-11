@@ -11,11 +11,11 @@ load the right guidance.
 
 ## Package Map
 
-| Package key | Path | Package name | Spec path | Purpose |
-| --- | --- | --- | --- | --- |
-| `cli` | `packages/cli` | `@mindfoldhq/trellis` | `.trellis/spec/cli/**` | User-facing CLI, templates, migrations, release scripts, and platform configurators. |
-| `core` | `packages/core` | `@mindfoldhq/trellis-core` | `.trellis/spec/core/**` | Reusable SDK/domain primitives for channel, mem, task, and testing APIs. |
-| `docs-site` | `docs-site` | `trellis-docs` | `.trellis/spec/docs-site/**` | Mintlify documentation site. This directory is a git submodule, not part of `pnpm-workspace.yaml`. |
+| Package key | Path            | Package name             | Spec path                    | Purpose                                                                                            |
+| ----------- | --------------- | ------------------------ | ---------------------------- | -------------------------------------------------------------------------------------------------- |
+| `cli`       | `packages/cli`  | `@ecochain/trellis`      | `.trellis/spec/cli/**`       | User-facing CLI, templates, migrations, release scripts, and platform configurators.               |
+| `core`      | `packages/core` | `@ecochain/trellis-core` | `.trellis/spec/core/**`      | Reusable SDK/domain primitives for channel, mem, task, and testing APIs.                           |
+| `docs-site` | `docs-site`     | `trellis-docs`           | `.trellis/spec/docs-site/**` | Mintlify documentation site. This directory is a git submodule, not part of `pnpm-workspace.yaml`. |
 
 ## Workspace And Submodules
 

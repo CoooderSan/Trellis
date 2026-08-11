@@ -21,7 +21,12 @@ vi.mock("inquirer", () => ({
   default: { prompt: vi.fn().mockResolvedValue({ proceed: true }) },
 }));
 
+const childProcessMocks = vi.hoisted(() => ({
+  execFile: vi.fn(),
+}));
+
 vi.mock("node:child_process", () => ({
+  execFile: childProcessMocks.execFile,
   execSync: vi.fn().mockImplementation((cmd: string) => {
     const py = process.platform === "win32" ? "python" : "python3";
     return cmd === `${py} --version` ? "Python 3.11.12" : "";
@@ -56,7 +61,7 @@ import {
   classifyMigrations,
   executeMigrations,
 } from "../../src/commands/update.js";
-import { VERSION } from "../../src/constants/version.js";
+import { PACKAGE_NAME, VERSION } from "../../src/constants/version.js";
 import { DIR_NAMES, FILE_NAMES, PATHS } from "../../src/constants/paths.js";
 import { computeHash } from "../../src/utils/template-hash.js";
 import { workflowMdTemplate } from "../../src/templates/trellis/index.js";
@@ -78,6 +83,8 @@ import { AI_TOOLS } from "../../src/types/ai-tools.js";
 
 // A managed template file that update always handles (Python script)
 const MANAGED_FILE = `${PATHS.SCRIPTS}/get_context.py`;
+const NPM_COMMAND = process.platform === "win32" ? "npm.cmd" : "npm";
+const NPM_VIEW_ARGS = ["view", PACKAGE_NAME, "version", "--json"];
 
 /** Remove a key from a hash object (avoids eslint no-dynamic-delete) */
 function removeHashEntry(
@@ -183,13 +190,15 @@ describe("update() integration", () => {
     const noop = () => {};
     vi.spyOn(console, "log").mockImplementation(noop);
     vi.spyOn(console, "error").mockImplementation(noop);
-    // Mock fetch for npm registry
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ version: VERSION }),
-      }),
+    childProcessMocks.execFile.mockImplementation(
+      (
+        _command: string,
+        _args: string[],
+        _options: Record<string, unknown>,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(null, JSON.stringify(VERSION), "");
+      },
     );
   });
 
@@ -256,6 +265,49 @@ describe("update() integration", () => {
     // No backup directory created
     const entries = fs.readdirSync(path.join(tmpDir, DIR_NAMES.WORKFLOW));
     expect(entries.filter((e) => e.startsWith(".backup-")).length).toBe(0);
+  });
+
+  it("lets npm use its active configuration for the version advisory", async () => {
+    await setupProject();
+    childProcessMocks.execFile.mockClear();
+
+    await update({});
+
+    expect(childProcessMocks.execFile).toHaveBeenCalledWith(
+      NPM_COMMAND,
+      NPM_VIEW_ARGS,
+      {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024,
+        timeout: 5_000,
+        windowsHide: true,
+      },
+      expect.any(Function),
+    );
+    const npmArgs = childProcessMocks.execFile.mock.calls[0]?.[1] as string[];
+    expect(npmArgs).not.toContain("--registry");
+  });
+
+  it("continues silently when the npm version advisory fails", async () => {
+    await setupProject();
+    vi.mocked(console.log).mockClear();
+    vi.mocked(console.error).mockClear();
+    childProcessMocks.execFile.mockImplementation(
+      (
+        _command: string,
+        _args: string[],
+        _options: Record<string, unknown>,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(new Error("npm unavailable"), "", "npm unavailable");
+      },
+    );
+
+    await update({});
+
+    const output = vi.mocked(console.log).mock.calls.flat().join("\n");
+    expect(output).toContain("Latest on npm:   (unable to fetch)");
+    expect(console.error).not.toHaveBeenCalled();
   });
 
   it("#1b current OpenCode templates are not classified as deprecated", async () => {
@@ -396,16 +448,21 @@ describe("update() integration", () => {
     expect(classified.conflict).toHaveLength(0);
     expect(classified.auto).toHaveLength(1);
 
-    await executeMigrations(classified, tmpDir, { force: true, skipAll: false }, currentTemplates);
+    await executeMigrations(
+      classified,
+      tmpDir,
+      { force: true, skipAll: false },
+      currentTemplates,
+    );
 
     // No duplicate/leftover `.pi/skills/` directory should survive.
     expect(fs.existsSync(projectFile(".pi/skills"))).toBe(false);
 
     // `.agents/skills/` must end up with the correct, current, neutral
     // content — not the stale Pi-flavored bytes from the deleted legacy dir.
-    expect(
-      readProjectFile(".agents/skills/trellis-update-spec/SKILL.md"),
-    ).toBe(neutralContent);
+    expect(readProjectFile(".agents/skills/trellis-update-spec/SKILL.md")).toBe(
+      neutralContent,
+    );
   });
 
   it("#2 dry run makes no file changes even when changes exist", async () => {
@@ -885,16 +942,7 @@ describe("update() integration", () => {
     registryDownload.files.set("index.md", "# remote spec v2\n");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((input: string | URL) => {
-        const url = String(input);
-        if (url.includes("registry.npmjs.org")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ version: VERSION }),
-          });
-        }
-        return Promise.resolve({ status: 404, ok: false });
-      }),
+      vi.fn().mockResolvedValue({ status: 404, ok: false }),
     );
 
     await update({ force: true });
@@ -924,16 +972,7 @@ describe("update() integration", () => {
     registryDownload.files.set("index.md", "# remote spec v2\n");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((input: string | URL) => {
-        const url = String(input);
-        if (url.includes("registry.npmjs.org")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ version: VERSION }),
-          });
-        }
-        return Promise.resolve({ status: 404, ok: false });
-      }),
+      vi.fn().mockResolvedValue({ status: 404, ok: false }),
     );
 
     await update({ skipAll: true });
@@ -971,14 +1010,7 @@ describe("update() integration", () => {
     });
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((input: string | URL) => {
-        const url = String(input);
-        if (url.includes("registry.npmjs.org")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ version: VERSION }),
-          });
-        }
+      vi.fn().mockImplementation(() => {
         return Promise.resolve({
           ok: true,
           text: () => Promise.resolve(index),

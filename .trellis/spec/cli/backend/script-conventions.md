@@ -66,7 +66,7 @@ No API — the contract is a test, `regression.test.ts` → `describe("regressio
 .trellis/scripts stays byte-identical to templates/trellis/scripts")`.
 
 ```ts
-function listPyFiles(root: string): string[]   // recursive, skips __pycache__, sorted
+function listPyFiles(root: string): string[]; // recursive, skips __pycache__, sorted
 ```
 
 ### 3. Contracts
@@ -74,17 +74,17 @@ function listPyFiles(root: string): string[]   // recursive, skips __pycache__, 
 - **Identical path sets.** `listPyFiles()` over both roots must produce the same array. A script added to or deleted from one tree must be mirrored in the other.
 - **Byte-identical content.** One test case per `.py` file, `Buffer.equals`. Not a text diff — line endings and trailing whitespace count.
 - The file list is derived from the filesystem at describe-time, so a new script is covered the moment it is added. Never hard-code it.
-- Scope is **`.py` files only**, by construction: `listPyFiles` filters on the extension. *Open question, deliberately unresolved:* whether non-`.py` files under the two trees should also be required to match. Today there are none — both trees are pure Python — so nothing is being ignored. If a non-`.py` file is ever added to either tree, decide the rule then rather than assuming this test covers it.
+- Scope is **`.py` files only**, by construction: `listPyFiles` filters on the extension. _Open question, deliberately unresolved:_ whether non-`.py` files under the two trees should also be required to match. Today there are none — both trees are pure Python — so nothing is being ignored. If a non-`.py` file is ever added to either tree, decide the rule then rather than assuming this test covers it.
 - Direction is irrelevant to the test. `guides/code-reuse-thinking-guide.md` documents a one-way `rsync` (`.trellis/scripts/` → template) as the convenient way to restore parity; the test only cares that they end up equal.
 
 ### 4. Validation & Error Matrix
 
-| Condition | Failure |
-| --- | --- |
-| A `.py` file exists in one tree only | "both trees hold the same set of .py files" — the array compare shows exactly which |
-| Contents differ by any byte | "`<path>` has drifted … Edit both copies, never one." |
-| `__pycache__` present in either tree | Skipped — not a failure |
-| Someone edits `packages/cli/dist/**` instead | Not covered; `dist/` is generated. Never hand-edit it |
+| Condition                                    | Failure                                                                             |
+| -------------------------------------------- | ----------------------------------------------------------------------------------- |
+| A `.py` file exists in one tree only         | "both trees hold the same set of .py files" — the array compare shows exactly which |
+| Contents differ by any byte                  | "`<path>` has drifted … Edit both copies, never one."                               |
+| `__pycache__` present in either tree         | Skipped — not a failure                                                             |
+| Someone edits `packages/cli/dist/**` instead | Not covered; `dist/` is generated. Never hand-edit it                               |
 
 ### 5. Good / Base / Bad Cases
 
@@ -124,6 +124,135 @@ diff -rq .trellis/scripts packages/cli/src/templates/trellis/scripts -x __pycach
 
 ---
 
+## Stable `ITERATION` Identity Capture
+
+### 1. Scope / Trigger
+
+Use this contract whenever `trellis-check` reports evidence for a dirty Git
+worktree. A prose transcription of several Git commands is not a reliable
+identity: staged and unstaged digests can be accidentally reordered while the
+underlying commands still succeeded. The checked-in
+`capture_iteration_identity.py` script is therefore the canonical, read-only
+collector for `ITERATION` identity.
+
+This collector identifies the worktree that was checked. It does not inspect
+the full contents on behalf of the reviewer, persist quality results, or
+upgrade local evidence to the `MR_CANDIDATE` profile.
+
+### 2. Signatures
+
+```bash
+python3 ./.trellis/scripts/capture_iteration_identity.py
+```
+
+```python
+def capture_identity(cwd: Path) -> dict[str, object]: ...
+def main() -> int: ...
+```
+
+The script takes no arguments, resolves the repository from the current
+working directory, prints exactly one JSON object to stdout, and returns `0`
+only for a complete stable capture. It uses Python 3.9+ standard-library APIs
+only and must remain byte-identical in the dogfood and template script trees.
+
+### 3. Contracts
+
+Successful output has these labeled fields:
+
+| Field                  | Contract                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `profile`              | Literal `ITERATION`                                                                         |
+| `identity_status`      | Literal `PASSED`                                                                            |
+| `repository_root`      | Resolved absolute Git worktree root                                                         |
+| `head`                 | Current `HEAD` object id                                                                    |
+| `captured_at`          | UTC ISO-8601 timestamp ending in `Z`                                                        |
+| `staged_diff_sha256`   | SHA-256 of `git diff --cached --no-ext-diff --no-textconv --binary --full-index HEAD` bytes |
+| `unstaged_diff_sha256` | SHA-256 of `git diff --no-ext-diff --no-textconv --binary --full-index` bytes               |
+| `untracked`            | Ordered path, entry kind, and content SHA-256 for every non-ignored untracked entry         |
+
+- Consumers must associate values by field name. They must not infer meaning
+  from display order or relabel staged and unstaged values manually.
+- Capture two complete consecutive snapshots and compare `HEAD`, both diff
+  digests, and all untracked identities. Emit success only when they match.
+- Enumerate untracked entries with Git so ignore rules remain authoritative.
+  Hash regular-file bytes and symlink target bytes; unsupported entry types
+  fail closed.
+- The collector is read-only. It must not create an evidence file, update
+  `check.jsonl`, stage content, or otherwise change the identity it reports.
+- The labeled digests bind evidence to a scope; they never replace complete
+  review of tracked diffs and every untracked file's contents.
+- Any later change to `HEAD`, staged content, unstaged content, or untracked
+  identity invalidates evidence bound to the prior capture. After a self-fix,
+  run the collector again and report only the new identity.
+
+### 4. Validation & Error Matrix
+
+| Condition                                                    | Exit / output behavior                                                            |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| Two complete snapshots match                                 | Exit `0`; `identity_status: PASSED` with all labeled identity fields              |
+| Current directory is not in a Git worktree                   | Non-zero; `identity_status: UNKNOWN` with an error                                |
+| Any Git command fails or Git cannot execute                  | Non-zero; `identity_status: UNKNOWN` with an error                                |
+| `HEAD` is unavailable, including an unborn repository        | Non-zero; `identity_status: UNKNOWN` with an error                                |
+| An untracked entry cannot be read or has an unsupported type | Non-zero; `identity_status: UNKNOWN` with an error                                |
+| Any identity component changes between snapshots             | Non-zero; `identity_status: UNKNOWN` with an error                                |
+| A consumer cannot parse or preserve the labeled JSON         | Treat identity as `UNKNOWN`; never reconstruct a green result from partial output |
+
+An `UNKNOWN` identity cannot support a passing `ITERATION` report or any
+MR-ready claim.
+
+### 5. Good / Base / Bad Cases
+
+- **Good** — a repository has distinct staged, unstaged, and untracked
+  changes. The report quotes each digest from its JSON field, inspects all
+  corresponding content, and confirms `check.jsonl` was not modified.
+- **Base** — a clean repository still returns the SHA-256 digests of the two
+  empty Git diff byte streams and an empty `untracked` array.
+- **Bad** — an agent runs separate `sha256sum` commands and then swaps the two
+  values while composing its report. The hashes are valid but the evidence is
+  bound to the wrong scope, so the result is not accepted.
+
+### 6. Tests Required
+
+- Create staged, unstaged, and untracked changes with distinct content and
+  assert every labeled digest against the exact Git/file bytes.
+- Assert staged and unstaged values remain distinct and correctly associated.
+- Hash the worktree state before and after capture to prove the script is
+  read-only.
+- Run outside a Git repository and assert non-zero plus
+  `identity_status: UNKNOWN`.
+- Keep the dogfood and template copies byte-identical and assert the script is
+  present in `getAllScripts()` so fresh init installs it.
+- Exercise the real Codex and Claude Check surfaces with a staged + unstaged +
+  untracked fixture; require labeled reporting, unchanged `check.jsonl`, and
+  an explicit `MR_CANDIDATE` boundary.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```text
+staged = <digest copied from an unlabeled command list>
+unstaged = <another digest copied by position>
+overall = PASSED
+```
+
+#### Correct
+
+```json
+{
+  "profile": "ITERATION",
+  "identity_status": "PASSED",
+  "staged_diff_sha256": "<digest bound to this field>",
+  "unstaged_diff_sha256": "<digest bound to this field>",
+  "untracked": [{ "path": "example.txt", "kind": "file", "sha256": "<digest>" }]
+}
+```
+
+The final Check report quotes these field associations and separately records
+the commands or observations that reviewed the complete content.
+
+---
+
 ## Script Types
 
 ### Library Modules (`common/*.py`)
@@ -132,12 +261,12 @@ Shared utilities imported by other scripts. **Never run directly.**
 
 Three tiers:
 
-| Tier | Modules | Role |
-|------|---------|------|
-| **Foundation** | `io.py`, `log.py`, `git.py`, `paths.py` | Zero internal deps, used by everything |
-| **Domain** | `types.py`, `tasks.py`, `task_store.py`, `task_context.py`, `task_utils.py` | Task data model and operations |
-| **Infra** | `config.py`, `cli_adapter.py` | Platform abstraction and config |
-| **Context** | `session_context.py`, `packages_context.py`, `git_context.py` (shim) | Output generation |
+| Tier           | Modules                                                                     | Role                                   |
+| -------------- | --------------------------------------------------------------------------- | -------------------------------------- |
+| **Foundation** | `io.py`, `log.py`, `git.py`, `paths.py`                                     | Zero internal deps, used by everything |
+| **Domain**     | `types.py`, `tasks.py`, `task_store.py`, `task_context.py`, `task_utils.py` | Task data model and operations         |
+| **Infra**      | `config.py`, `cli_adapter.py`                                               | Platform abstraction and config        |
+| **Context**    | `session_context.py`, `packages_context.py`, `git_context.py` (shim)        | Output generation                      |
 
 ### Entry Scripts (`*.py`)
 
@@ -286,25 +415,25 @@ def _mark_attempted(repo_root: Path) -> bool: ...
 
 - Prefer reusing existing local CLI behavior over duplicating registry/API logic.
 - Local advisory commands use `subprocess.run(..., capture_output=True,
-  text=True, encoding="utf-8", errors="replace",
-  timeout=<short timeout>)`.
+text=True, encoding="utf-8", errors="replace",
+timeout=<short timeout>)`.
 - Marker files live under `.trellis/.runtime/` and are keyed by the current
   Trellis session identity when available. A caller that has already resolved
   session identity (a hook reading it from stdin) **passes it in** rather than
   letting the module re-resolve: the module's own fallback chain ends at
-  `TERM_SESSION_ID`, which identifies a terminal *window*, so a
+  `TERM_SESSION_ID`, which identifies a terminal _window_, so a
   once-per-session marker keyed on it would mute the check for every later
   session opened in that window.
 - Marker writes are best-effort: failure to write must not fail context output.
 
 #### 4. Validation & Error Matrix
 
-| Condition | Behavior |
-|-----------|----------|
-| Local command returns valid value | Compare/use value and write marker |
-| Local command fails | Print nothing and do not write marker |
-| Value parses as invalid | Print nothing; marker may be written to avoid repeat noisy work |
-| Marker already exists | Skip all probes and print nothing |
+| Condition                         | Behavior                                                        |
+| --------------------------------- | --------------------------------------------------------------- |
+| Local command returns valid value | Compare/use value and write marker                              |
+| Local command fails               | Print nothing and do not write marker                           |
+| Value parses as invalid           | Print nothing; marker may be written to avoid repeat noisy work |
+| Marker already exists             | Skip all probes and print nothing                               |
 
 #### 5. Good / Base / Bad Cases
 
@@ -320,7 +449,7 @@ def _mark_attempted(repo_root: Path) -> bool: ...
 - Equal/newer current project version prints no hint.
 - Failed lookup prints no hint and does not burn the once-per-session marker.
 - Existing `trellis --version` update output is parsed and normalized.
-- Non-default modes of the *text-mode CLI caller* (`--json`, record, packages,
+- Non-default modes of the _text-mode CLI caller_ (`--json`, record, packages,
   phase) do not call the advisory check. This is a property of that caller, not
   of the check — a second caller (the SessionStart hook) legitimately invokes it
   outside `get_context.py` entirely.
@@ -354,12 +483,13 @@ _mark_attempted(repo_root)
 
 The single source of truth for all JSON file operations. Replaces 8 duplicated `_read_json_file` and 5 duplicated `_write_json_file` functions.
 
-| Function | Signature | Returns | Error Behavior |
-|----------|-----------|---------|----------------|
-| `read_json` | `(path: Path) -> dict \| None` | Parsed dict, or `None` | Returns `None` on `FileNotFoundError`, `JSONDecodeError`, `OSError` |
-| `write_json` | `(path: Path, data: dict) -> bool` | `True` on success | Returns `False` on `OSError`, `IOError` |
+| Function     | Signature                          | Returns                | Error Behavior                                                      |
+| ------------ | ---------------------------------- | ---------------------- | ------------------------------------------------------------------- |
+| `read_json`  | `(path: Path) -> dict \| None`     | Parsed dict, or `None` | Returns `None` on `FileNotFoundError`, `JSONDecodeError`, `OSError` |
+| `write_json` | `(path: Path, data: dict) -> bool` | `True` on success      | Returns `False` on `OSError`, `IOError`                             |
 
 **Contracts**:
+
 - Always uses `encoding="utf-8"` and `ensure_ascii=False`
 - `write_json` outputs with `indent=2` (pretty-printed)
 - Callers must check return value — no exceptions are raised
@@ -375,14 +505,14 @@ The single source of truth for all JSON file operations. Replaces 8 duplicated `
 
 ### `common/log.py` — Terminal Output
 
-| Export | Type | Description |
-|--------|------|-------------|
-| `Colors` | class | ANSI codes: `RED`, `GREEN`, `YELLOW`, `BLUE`, `CYAN`, `DIM`, `NC` |
-| `colored(text, color)` | function | Wrap text with color + reset |
-| `log_info(msg)` | function | `[INFO]` prefix (blue) |
-| `log_success(msg)` | function | `[SUCCESS]` prefix (green) |
-| `log_warn(msg)` | function | `[WARN]` prefix (yellow) |
-| `log_error(msg)` | function | `[ERROR]` prefix (red) |
+| Export                 | Type     | Description                                                       |
+| ---------------------- | -------- | ----------------------------------------------------------------- |
+| `Colors`               | class    | ANSI codes: `RED`, `GREEN`, `YELLOW`, `BLUE`, `CYAN`, `DIM`, `NC` |
+| `colored(text, color)` | function | Wrap text with color + reset                                      |
+| `log_info(msg)`        | function | `[INFO]` prefix (blue)                                            |
+| `log_success(msg)`     | function | `[SUCCESS]` prefix (green)                                        |
+| `log_warn(msg)`        | function | `[WARN]` prefix (yellow)                                          |
+| `log_error(msg)`       | function | `[ERROR]` prefix (red)                                            |
 
 All `log_*` functions print to **stdout** (not stderr). Use `print(..., file=sys.stderr)` for stderr output.
 
@@ -413,7 +543,7 @@ def branch_exists_locally(branch: str, repo_root: Path) -> bool
   resolved. This fixes creating a task from a feature branch mis-recording
   that feature branch as the PR target (#399).
 - `branch_exists_locally()` checks `git rev-parse --verify --quiet
-  refs/heads/<branch>`. `task_context.py:cmd_validate` and
+refs/heads/<branch>`. `task_context.py:cmd_validate` and
   `task_store.py:cmd_archive` call it against `task.json.branch` and print a
   yellow warning (not a failure/block) when the recorded branch no longer
   exists locally — the common case is the branch was already merged and
@@ -438,14 +568,14 @@ for session/window scoped task state:
 The env branch is the exception, not a peer alternative. **No researched
 platform exports a session id into a shell child** (2026-08-05 audit of all 21;
 `inject-shell-session-context.py:3-8`, `active_task.py:59-64`), so for most
-platforms the ticket — checked *last* — is the path that actually fires.
+platforms the ticket — checked _last_ — is the path that actually fires.
 
-| Function | Purpose |
-|----------|---------|
-| `resolve_context_key(platform_input, platform)` | Accepts `session_id` / `sessionId` / `sessionID`, Cursor `conversation_id`, and transcript path fallbacks |
-| `resolve_active_task(repo_root, platform_input, platform)` | Returns an `ActiveTask` with `task_path`, `source_type`, `context_key`, and `stale` |
-| `set_active_task(...)` | Writes session runtime state when a context key exists; returns `None` without a context key |
-| `clear_active_task(...)` | Deletes the session file that supplied the resolved active task; returns no active task without a context key |
+| Function                                                   | Purpose                                                                                                       |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `resolve_context_key(platform_input, platform)`            | Accepts `session_id` / `sessionId` / `sessionID`, Cursor `conversation_id`, and transcript path fallbacks     |
+| `resolve_active_task(repo_root, platform_input, platform)` | Returns an `ActiveTask` with `task_path`, `source_type`, `context_key`, and `stale`                           |
+| `set_active_task(...)`                                     | Writes session runtime state when a context key exists; returns `None` without a context key                  |
+| `clear_active_task(...)`                                   | Deletes the session file that supplied the resolved active task; returns no active task without a context key |
 
 `TRELLIS_CONTEXT_ID` is a context-key override for subprocesses. It is not a
 second task pointer and must never store a task path. A plain AI-run shell
@@ -490,7 +620,7 @@ a `.current-task` fallback or a Python hook directory.
 
 ##### 2. Signatures
 
-- `python3 .trellis/scripts/task.py create "<title>" [--slug <slug>] [--description <text>] [--no-start]`
+- `python3 .trellis/scripts/task.py create "<title>" --classification <class> [--product-intent-link <id> | --product-intent-reason <reason>] [--slug <slug>] [--description <text>] [--no-start]`
 - `python3 .trellis/scripts/task.py start <task-dir>`
 - `python3 .trellis/scripts/task.py current [--source] [--json]`
 - `python3 .trellis/scripts/task.py list [--mine] [--status <status>] [--json]`
@@ -553,6 +683,7 @@ a `.current-task` fallback or a Python hook directory.
   session — and yields `claude_<id>`, because `_CONTEXT_KEY_PLATFORM_ALIASES`
   maps `zcode` → `claude` so both paths of a ZCode session land on one runtime
   filename.
+
 - `TRELLIS_CONTEXT_ID` is already a complete context key. Do not prepend a
   platform name to it.
 - `task.py finish` deletes only the session file that supplied the resolved
@@ -574,14 +705,14 @@ a `.current-task` fallback or a Python hook directory.
 - `task.py current --json` prints `{current_task, source, stale}` on one
   line (`ensure_ascii=False`); `current_task` is `null` when there is no
   active task, otherwise `{dir, id, title, status, parent, children, branch,
-  base_branch}` read from that task's `task.json`. Exit 0 when a task is
+base_branch}` read from that task's `task.json`. Exit 0 when a task is
   active, exit 1 when `current_task` is `null`. Human output (no `--json`)
   is unchanged.
 - `task.py list --json` prints `{tasks: [...]}` on one line, one object per
   task after `--mine`/`--status` filtering: `{dir, id, title, status,
-  display_status, priority, assignee, parent, children, package}`. With
+display_status, priority, assignee, parent, children, package}`. With
   `--mine --json` and no developer configured, prints `{"error": "No
-  developer set"}` to stderr and exits 1 (mirrors the human-mode error).
+developer set"}` to stderr and exits 1 (mirrors the human-mode error).
   `--json` and human `list` share one iteration pass over
   `iter_active_tasks()` — do not add a second pass for either mode.
 - `display_status` (`_display_status()` in `task.py`) shows `"active"`
@@ -592,30 +723,30 @@ a `.current-task` fallback or a Python hook directory.
 
 ##### 4. Validation & Error Matrix
 
-| Condition | Required behavior |
-|-----------|-------------------|
-| `create` without description or with whitespace-only description | Warns on stderr; stores `task.json.description == ""`; initial `prd.md` goal falls back to `TBD.` |
-| `create` with context key, default mode | Task files exist; session runtime points at the new task; activation and source are printed; no `.current-task` |
-| `create --no-start` with context key | Task files exist; existing session runtime is unchanged; skip notice is printed; no `.current-task` |
-| `create` without context key | Task files exist; no `.runtime`; no `.current-task` |
-| `create` with `.codex/` and no `codex.dispatch_mode` override (default `auto`) | Task files exist; `implement.jsonl` and `check.jsonl` contain seed `_example` rows |
-| `create` with `.codex/` and `codex.dispatch_mode: inline` | Task files exist; no `implement.jsonl`; no `check.jsonl` |
-| `start` without context key | Returns success in degraded mode; no `.runtime`; no `.current-task`; hints IDE/session identity or `TRELLIS_CONTEXT_ID` |
-| `start` with `TRELLIS_CONTEXT_ID` | Writes `.runtime/sessions/<key>.json`; does not require `.current-task` |
-| `current --source` with same context key | Prints `Source: session:<key>` |
-| `current --source` without context | Prints `(none)` and `Source: none` |
-| `current --json` with active task | `{current_task: {...}, source, stale}`; exit 0 |
-| `current --json` with no active task | `{current_task: null, source, stale}`; exit 1 |
-| `list --json --mine` with no developer configured | `{"error": "No developer set"}` on stderr; exit 1 |
-| `list --json` / `list` with a parent whose stored status is `planning` and a child past `planning` | `display_status` (and human list label) shows `"active"`; `task.json.status` on disk stays `planning` |
-| `archive` / `validate` when `task.json.branch` no longer exists locally | Prints a yellow warning; does not block archive or fail validation |
-| stale session task + stale `.current-task` exists | Returns stale session state; no `.current-task` fallback |
-| `finish` with an exact context-key match | Deletes only `.runtime/sessions/<exact-key>.json` |
-| `finish` with a missing exact match and one fallback session | Deletes only the fallback file named by the resolved `ActiveTask.context_key` |
-| `finish` with a missing exact match and multiple session files | Returns no current task and deletes nothing |
-| `finish` without context key | Returns no current task; does not delete `.current-task` |
-| `archive` for a task referenced by runtime sessions | Deletes those session files even when `finish` was skipped |
-| `archive` on a name that resolves outside `.trellis/tasks/` (e.g. `archive src` falling back to `repo_root/src`) | Refuses with "refusing to archive ..." and exit 1; source directory is left untouched |
+| Condition                                                                                                        | Required behavior                                                                                                       |
+| ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `create` without description or with whitespace-only description                                                 | Warns on stderr; stores `task.json.description == ""`; initial `prd.md` goal falls back to `TBD.`                       |
+| `create` with context key, default mode                                                                          | Task files exist; session runtime points at the new task; activation and source are printed; no `.current-task`         |
+| `create --no-start` with context key                                                                             | Task files exist; existing session runtime is unchanged; skip notice is printed; no `.current-task`                     |
+| `create` without context key                                                                                     | Task files exist; no `.runtime`; no `.current-task`                                                                     |
+| `create` with `.codex/` and no `codex.dispatch_mode` override (default `auto`)                                   | Task files exist; `implement.jsonl` and `check.jsonl` contain seed `_example` rows                                      |
+| `create` with `.codex/` and `codex.dispatch_mode: inline`                                                        | Task files exist; no `implement.jsonl`; no `check.jsonl`                                                                |
+| `start` without context key                                                                                      | Returns success in degraded mode; no `.runtime`; no `.current-task`; hints IDE/session identity or `TRELLIS_CONTEXT_ID` |
+| `start` with `TRELLIS_CONTEXT_ID`                                                                                | Writes `.runtime/sessions/<key>.json`; does not require `.current-task`                                                 |
+| `current --source` with same context key                                                                         | Prints `Source: session:<key>`                                                                                          |
+| `current --source` without context                                                                               | Prints `(none)` and `Source: none`                                                                                      |
+| `current --json` with active task                                                                                | `{current_task: {...}, source, stale}`; exit 0                                                                          |
+| `current --json` with no active task                                                                             | `{current_task: null, source, stale}`; exit 1                                                                           |
+| `list --json --mine` with no developer configured                                                                | `{"error": "No developer set"}` on stderr; exit 1                                                                       |
+| `list --json` / `list` with a parent whose stored status is `planning` and a child past `planning`               | `display_status` (and human list label) shows `"active"`; `task.json.status` on disk stays `planning`                   |
+| `archive` / `validate` when `task.json.branch` no longer exists locally                                          | Prints a yellow warning; does not block archive or fail validation                                                      |
+| stale session task + stale `.current-task` exists                                                                | Returns stale session state; no `.current-task` fallback                                                                |
+| `finish` with an exact context-key match                                                                         | Deletes only `.runtime/sessions/<exact-key>.json`                                                                       |
+| `finish` with a missing exact match and one fallback session                                                     | Deletes only the fallback file named by the resolved `ActiveTask.context_key`                                           |
+| `finish` with a missing exact match and multiple session files                                                   | Returns no current task and deletes nothing                                                                             |
+| `finish` without context key                                                                                     | Returns no current task; does not delete `.current-task`                                                                |
+| `archive` for a task referenced by runtime sessions                                                              | Deletes those session files even when `finish` was skipped                                                              |
+| `archive` on a name that resolves outside `.trellis/tasks/` (e.g. `archive src` falling back to `repo_root/src`) | Refuses with "refusing to archive ..." and exit 1; source directory is left untouched                                   |
 
 ##### 5. Good/Base/Bad Cases
 
@@ -746,7 +877,7 @@ key they would have to ignore.
 `_host_platform_name()` returns the deepest dotted path segment of `sys.argv[0]`
 (`.cursor/hooks/` → `cursor`, `.factory/hooks/` → `factory`). This matters more
 than it looks: the ticket's context key must equal the one that platform's
-*other* hooks compute. Get it wrong and `task.py start` writes a session file no
+_other_ hooks compute. Get it wrong and `task.py start` writes a session file no
 later hook ever reads — which half-works behind the single-session fallback and
 breaks silently the moment a second window is open.
 
@@ -781,18 +912,18 @@ for.
 
 ##### 4. Validation & Error Matrix
 
-| Condition | Behavior |
-| --- | --- |
-| `TRELLIS_HOOKS=0` or `TRELLIS_DISABLE_HOOKS=1` | Hook exits 0, writes nothing |
-| stdin is not JSON, or not an object | Treated as `{}`; no command found; no-op |
-| Payload has no recognizable command | `("", None)` → `main()` no-ops |
-| Command contains no `task.py start/current/finish` | No ticket written |
-| `shlex.split` raises on an unbalanced quote | No subcommands → no ticket |
-| Hook payload carries no session/conversation/transcript id | No context key → no ticket |
-| Ticket older than 30 s | Rejected on read; also unlinked by the next write's sweep |
-| Ticket `cwd` outside this repo | Rejected |
-| Subcommand mismatch | Rejected |
-| Two or more distinct fresh context keys match | **All** rejected — degrade, never guess |
+| Condition                                                  | Behavior                                                  |
+| ---------------------------------------------------------- | --------------------------------------------------------- |
+| `TRELLIS_HOOKS=0` or `TRELLIS_DISABLE_HOOKS=1`             | Hook exits 0, writes nothing                              |
+| stdin is not JSON, or not an object                        | Treated as `{}`; no command found; no-op                  |
+| Payload has no recognizable command                        | `("", None)` → `main()` no-ops                            |
+| Command contains no `task.py start/current/finish`         | No ticket written                                         |
+| `shlex.split` raises on an unbalanced quote                | No subcommands → no ticket                                |
+| Hook payload carries no session/conversation/transcript id | No context key → no ticket                                |
+| Ticket older than 30 s                                     | Rejected on read; also unlinked by the next write's sweep |
+| Ticket `cwd` outside this repo                             | Rejected                                                  |
+| Subcommand mismatch                                        | Rejected                                                  |
+| Two or more distinct fresh context keys match              | **All** rejected — degrade, never guess                   |
 
 ##### 5. Good / Base / Bad Cases
 
@@ -802,7 +933,7 @@ for.
 
 ##### 6. Tests Required
 
-- Ticket accepted: assert the resolved context key equals the one the hook computed, not merely that *a* key resolved.
+- Ticket accepted: assert the resolved context key equals the one the hook computed, not merely that _a_ key resolved.
 - Each rejection condition separately — stale, wrong repo, wrong subcommand, two-candidates. Assertion point is `resolve_context_key() is None`, plus the absence of a session file.
 - Payload-shape coverage: top-level `command` and both `tool_input` casings, asserting the response envelope differs (`{"permission": "allow"}` vs nothing).
 - `_host_platform_name` against an argv under `.cursor/hooks/` and under `.factory/hooks/` — the value ends up in the runtime filename, so it is user-visible.
@@ -817,7 +948,7 @@ if ticket.get("platform") != platform_name:
     continue          # gate on who wrote it
 ```
 
-This is what made the bridge Cursor-only. A ticket's provenance says nothing about whether it describes *this* command.
+This is what made the bridge Cursor-only. A ticket's provenance says nothing about whether it describes _this_ command.
 
 ###### Correct
 
@@ -861,25 +992,25 @@ Each entry is `(platform_name, (env_var, ...))`. Lookup is platform-scoped —
 Every name carries a comment recording **how it was checked**, in one of four
 grades:
 
-| Grade | What it means | What must be in the comment |
-| --- | --- | --- |
-| REAL-verified | Observed set, first-hand | Date, product version, and where it was observed |
+| Grade                    | What it means                                       | What must be in the comment                                                                    |
+| ------------------------ | --------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| REAL-verified            | Observed set, first-hand                            | Date, product version, and where it was observed                                               |
 | REAL but HOOK-SCOPE ONLY | Set for hook processes, absent from the shell child | The same, plus which surface it is absent from. This decides whether `task.py` can ever see it |
-| UNVERIFIED | Plausible, unconfirmed | The exact probe that would settle it, runnable by someone with the product |
-| unchecked | Never researched | Say so explicitly |
+| UNVERIFIED               | Plausible, unconfirmed                              | The exact probe that would settle it, runnable by someone with the product                     |
+| unchecked                | Never researched                                    | Say so explicitly                                                                              |
 
 - **Do not add a name by analogy with a neighbour.** Table uniformity is not evidence.
 - **A platform with no verified name belongs in no table.** It resolves through `TRELLIS_CONTEXT_ID` or its hook/plugin bridge, and that is a working configuration — Grok, Kimi, OpenCode and Pi all live there.
 - **Do not delete an UNVERIFIED name to tidy up.** Absence of evidence is not evidence of absence, and removing a live name breaks that platform silently. Either run the probe or leave it.
-- `_ENV_TRANSCRIPT_KEYS` is the *unchecked* table. The 2026-08-05 audit covered the session table only, so do not infer its entries are real **or** fake from that work.
+- `_ENV_TRANSCRIPT_KEYS` is the _unchecked_ table. The 2026-08-05 audit covered the session table only, so do not infer its entries are real **or** fake from that work.
 
 ##### 4. Validation & Error Matrix
 
-| Condition | Result |
-| --- | --- |
-| Name is set and platform matches | Context key `{platform}_{sanitized-value}` |
-| Name is set but platform does not match | Ignored — `_iter_env_keys` never yields the entry |
-| Name is unset or whitespace | Falls through to the next name, then the next table, then the shell ticket |
+| Condition                                | Result                                                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------- |
+| Name is set and platform matches         | Context key `{platform}_{sanitized-value}`                                    |
+| Name is set but platform does not match  | Ignored — `_iter_env_keys` never yields the entry                             |
+| Name is unset or whitespace              | Falls through to the next name, then the next table, then the shell ticket    |
 | Name was never real (the removed twelve) | Resolves nothing; the platform degrades with "Session identity not available" |
 
 `regression.test.ts` `PURGED_ENV_NAMES` locks the twelve deleted pairs: setting
@@ -916,7 +1047,7 @@ any of them must resolve **no** context key for its platform.
 — or, as actually happened here, no entry at all. Trae resolves through its
 shell ticket.
 
-#### `CLAUDE_ENV_FILE` append is deduped on the *last* matching export
+#### `CLAUDE_ENV_FILE` append is deduped on the _last_ matching export
 
 ##### 1. Scope / Trigger
 
@@ -937,7 +1068,7 @@ def _last_context_key_export(env_file: str) -> str | None   # :302
 ##### 3. Contracts
 
 - Append only when `_last_context_key_export(env_file) != export_line`.
-- **"Last matching line", not "appears anywhere".** The shell applies later assignments over earlier ones, so an A → B → A switch *must* re-append; a contains-check would leave the shell on B.
+- **"Last matching line", not "appears anywhere".** The shell applies later assignments over earlier ones, so an A → B → A switch _must_ re-append; a contains-check would leave the shell on B.
 - The value is `shlex.quote`d.
 - Read with `errors="replace"`. A user env file with non-UTF-8 bytes would otherwise raise `UnicodeDecodeError`, which is a `ValueError` — **not** an `OSError` — and would escape the caller's non-fatal `except OSError` guard.
 - A missing file means "no previous export"; the caller creates it.
@@ -945,14 +1076,14 @@ def _last_context_key_export(env_file: str) -> str | None   # :302
 
 ##### 4. Validation & Error Matrix
 
-| Condition | Behavior |
-| --- | --- |
-| No `CLAUDE_ENV_FILE` in env | No-op |
-| File absent | Created with one export line |
-| Last export line already equals the new one | No append |
-| Last export line differs (including an earlier-but-not-last match) | Append |
-| File unreadable or unwritable | Silent no-op |
-| File contains non-UTF-8 bytes | Read with replacement; append proceeds |
+| Condition                                                          | Behavior                               |
+| ------------------------------------------------------------------ | -------------------------------------- |
+| No `CLAUDE_ENV_FILE` in env                                        | No-op                                  |
+| File absent                                                        | Created with one export line           |
+| Last export line already equals the new one                        | No append                              |
+| Last export line differs (including an earlier-but-not-last match) | Append                                 |
+| File unreadable or unwritable                                      | Silent no-op                           |
+| File contains non-UTF-8 bytes                                      | Read with replacement; append proceeds |
 
 ##### 5. Good / Base / Bad Cases
 
@@ -993,10 +1124,10 @@ if _last_context_key_export(env_file) == export_line:
 
 **Decision**: Two-layer type system:
 
-| Type | Kind | Purpose | Includes unknown fields? |
-|------|------|---------|--------------------------|
-| `TaskData` | `TypedDict(total=False)` | Type hints when reading task.json | N/A (annotation only) |
-| `TaskInfo` | `dataclass(frozen=True)` | Immutable view for business logic | Yes, via `.raw` dict |
+| Type       | Kind                     | Purpose                           | Includes unknown fields? |
+| ---------- | ------------------------ | --------------------------------- | ------------------------ |
+| `TaskData` | `TypedDict(total=False)` | Type hints when reading task.json | N/A (annotation only)    |
+| `TaskInfo` | `dataclass(frozen=True)` | Immutable view for business logic | Yes, via `.raw` dict     |
 
 **Write-back rule**: Always modify `task_info.raw` (the original dict) and pass it to `write_json()`. Never construct a new dict from TaskInfo fields.
 
@@ -1012,18 +1143,18 @@ write_json(task_json, {"title": info.title, "status": "completed"})
 
 #### `TaskInfo` Fields
 
-| Field | Type | Source |
-|-------|------|--------|
-| `dir_name` | `str` | Directory name (e.g., `"03-12-refactor"`) |
-| `directory` | `Path` | Absolute path to task dir |
-| `title` | `str` | `data["title"]` or `data["name"]` or `"unknown"` |
-| `status` | `str` | `data["status"]` (default `"unknown"`) |
-| `assignee` | `str` | `data["assignee"]` (default `""`) |
-| `priority` | `str` | `data["priority"]` (default `"P2"`) |
-| `children` | `tuple[str, ...]` | Immutable copy of `data["children"]` |
-| `parent` | `str \| None` | Parent task dir name |
-| `package` | `str \| None` | Associated package |
-| `raw` | `dict` | Original dict for writes and uncommon fields |
+| Field       | Type              | Source                                           |
+| ----------- | ----------------- | ------------------------------------------------ |
+| `dir_name`  | `str`             | Directory name (e.g., `"03-12-refactor"`)        |
+| `directory` | `Path`            | Absolute path to task dir                        |
+| `title`     | `str`             | `data["title"]` or `data["name"]` or `"unknown"` |
+| `status`    | `str`             | `data["status"]` (default `"unknown"`)           |
+| `assignee`  | `str`             | `data["assignee"]` (default `""`)                |
+| `priority`  | `str`             | `data["priority"]` (default `"P2"`)              |
+| `children`  | `tuple[str, ...]` | Immutable copy of `data["children"]`             |
+| `parent`    | `str \| None`     | Parent task dir name                             |
+| `package`   | `str \| None`     | Associated package                               |
+| `raw`       | `dict`            | Original dict for writes and uncommon fields     |
 
 Properties: `.name`, `.description`, `.branch`, `.meta` — delegate to `raw`.
 
@@ -1031,12 +1162,12 @@ Properties: `.name`, `.description`, `.branch`, `.meta` — delegate to `raw`.
 
 Replaces 9 scattered task iteration patterns with a single typed API.
 
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `load_task` | `(task_dir: Path) -> TaskInfo \| None` | Load one task; `None` if no valid task.json |
+| Function            | Signature                                 | Description                                    |
+| ------------------- | ----------------------------------------- | ---------------------------------------------- |
+| `load_task`         | `(task_dir: Path) -> TaskInfo \| None`    | Load one task; `None` if no valid task.json    |
 | `iter_active_tasks` | `(tasks_dir: Path) -> Iterator[TaskInfo]` | All non-archived tasks, **sorted by dir name** |
-| `get_all_statuses` | `(tasks_dir: Path) -> dict[str, str]` | `{dir_name: status}` map for progress display |
-| `children_progress` | `(children, all_statuses) -> str` | Format `" [2/3 done]"` or `""` |
+| `get_all_statuses`  | `(tasks_dir: Path) -> dict[str, str]`     | `{dir_name: status}` map for progress display  |
+| `children_progress` | `(children, all_statuses) -> str`         | Format `" [2/3 done]"` or `""`                 |
 
 **Sorting guarantee**: `iter_active_tasks` uses `sorted(tasks_dir.iterdir())` — same order as the filesystem `ls` output. This is frozen behavior; changing the sort would break display consistency.
 
@@ -1057,6 +1188,7 @@ Replaces 9 scattered task iteration patterns with a single typed API.
 ### CRITICAL: Windows stdio Encoding (stdout + stdin)
 
 On Windows, Python's stdout AND stdin default to the system code page (e.g., GBK/CP936 in China, CP1252 in Western locales). This causes:
+
 - `UnicodeEncodeError` when **printing** non-ASCII characters (stdout)
 - `UnicodeDecodeError` when **reading piped** UTF-8 content (stdin), e.g. Chinese text via `cat << EOF | python3 script.py`
 
@@ -1127,6 +1259,7 @@ if sys.platform == "win32":
 ```
 
 **Why this is bad**:
+
 1. **Easy to forget streams**: stdout was fixed but stdin was missed in multiple scripts, causing real user bugs
 2. **Duplicated code**: Same logic copy-pasted across `add_session.py`, `git_context.py`, etc.
 3. **Inconsistent coverage**: Some scripts fix stdout only, others fix stdout+stderr, none fixed stdin
@@ -1137,12 +1270,12 @@ if sys.platform == "win32":
 
 #### Summary
 
-| Method | Works? | Reason |
-|--------|--------|--------|
-| `common/__init__.py` centralized fix | ✅ Yes | All streams, all scripts, one place |
-| `sys.stdout.reconfigure(encoding="utf-8")` | ⚠️ Partial | Only stdout; easy to forget stdin/stderr |
-| `io.TextIOWrapper(sys.stdout.buffer, ...)` | ❌ No | Creates wrapper, doesn't fix underlying encoding |
-| `PYTHONIOENCODING=utf-8` env var | ⚠️ Partial | Only works if set **before** Python starts |
+| Method                                     | Works?     | Reason                                           |
+| ------------------------------------------ | ---------- | ------------------------------------------------ |
+| `common/__init__.py` centralized fix       | ✅ Yes     | All streams, all scripts, one place              |
+| `sys.stdout.reconfigure(encoding="utf-8")` | ⚠️ Partial | Only stdout; easy to forget stdin/stderr         |
+| `io.TextIOWrapper(sys.stdout.buffer, ...)` | ❌ No      | Creates wrapper, doesn't fix underlying encoding |
+| `PYTHONIOENCODING=utf-8` env var           | ⚠️ Partial | Only works if set **before** Python starts       |
 
 ### CRITICAL: PEP 604 Annotations Require `from __future__ import annotations`
 
@@ -1232,8 +1365,8 @@ Windows; that drift causes misleading bootstrap instructions.
 # In docstrings
 """
 Usage:
-    python task.py create "My Task"      # Windows
-    python3 task.py create "My Task"     # macOS/Linux
+    python task.py create "My Task" --classification maintenance --product-intent-reason "Internal engineering work"      # Windows
+    python3 task.py create "My Task" --classification maintenance --product-intent-reason "Internal engineering work"     # macOS/Linux
 """
 
 # In error messages
@@ -1278,6 +1411,7 @@ def _run_hooks(event: str, task_json_path: Path, repo_root: Path) -> None
 ### Contracts
 
 **Config format** (`config.yaml`):
+
 ```yaml
 hooks:
   after_create:
@@ -1290,8 +1424,8 @@ hooks:
 
 **Environment variables passed to hooks**:
 
-| Key | Type | Description |
-|-----|------|-------------|
+| Key              | Type                 | Description                    |
+| ---------------- | -------------------- | ------------------------------ |
 | `TASK_JSON_PATH` | Absolute path string | Path to the task's `task.json` |
 
 - `cwd` is set to `repo_root`
@@ -1319,23 +1453,25 @@ result = subprocess.run(
 
 ### Validation & Error Matrix
 
-| Condition | Behavior |
-|-----------|----------|
-| No `hooks` key in config | No-op (empty list) |
-| `hooks` is not a dict | No-op (empty list) |
-| Event key missing | No-op (empty list) |
-| Hook command exits non-zero | `[WARN]` to stderr, continues to next hook |
-| Hook command throws exception | `[WARN]` to stderr, continues to next hook |
-| `linearis` not installed | Hook fails with warning, task operation succeeds |
+| Condition                     | Behavior                                         |
+| ----------------------------- | ------------------------------------------------ |
+| No `hooks` key in config      | No-op (empty list)                               |
+| `hooks` is not a dict         | No-op (empty list)                               |
+| Event key missing             | No-op (empty list)                               |
+| Hook command exits non-zero   | `[WARN]` to stderr, continues to next hook       |
+| Hook command throws exception | `[WARN]` to stderr, continues to next hook       |
+| `linearis` not installed      | Hook fails with warning, task operation succeeds |
 
 ### Wrong vs Correct
 
 #### Wrong — blocking on hook failure
+
 ```python
 result = subprocess.run(cmd, shell=True, check=True)  # Raises on failure!
 ```
 
 #### Correct — warn and continue
+
 ```python
 try:
     result = subprocess.run(cmd, shell=True, ...)
@@ -1348,6 +1484,7 @@ except Exception as e:
 ### Hook Script Pattern
 
 Hook scripts that need project-specific config (API keys, user IDs) should:
+
 1. Store config in a **gitignored** local file (e.g., `.trellis/hooks.local.json`)
 2. Read config at startup, fail with clear message if missing
 3. Keep the script itself committable (no hardcoded secrets)
@@ -1387,11 +1524,11 @@ The same defect — auto-staging more of `.trellis/` than the current scope —
 recurs across **three independent triggers**, and a fix to one does not
 propagate to the others:
 
-| Trigger | Site | Staging route |
-|---|---|---|
-| Session auto-commit | `add_session.py:_auto_commit_workspace` | `safe_trellis_paths_to_add` (Python) |
-| Release pre-commit | `release.js` "chore: pre-release updates" | `git add -A` pathspec (Node) |
-| Ad-hoc human/AI commit | manual `git add -A` / `git add .` | none — pure behavior |
+| Trigger                | Site                                      | Staging route                        |
+| ---------------------- | ----------------------------------------- | ------------------------------------ |
+| Session auto-commit    | `add_session.py:_auto_commit_workspace`   | `safe_trellis_paths_to_add` (Python) |
+| Release pre-commit     | `release.js` "chore: pre-release updates" | `git add -A` pathspec (Node)         |
+| Ad-hoc human/AI commit | manual `git add -A` / `git add .`         | none — pure behavior                 |
 
 v0.5.14 fixed only the `task.py archive` symptom (`safe_archive_paths_to_add`).
 The session helper kept the wide `tasks_dir.iterdir()` scan, and the release
@@ -1417,13 +1554,13 @@ wide scope.
 
 ### Canonical helpers
 
-| Helper | Source | Purpose |
-|---|---|---|
-| `safe_trellis_paths_to_add(repo_root, task_name=None)` | `templates/trellis/scripts/common/safe_commit.py:safe_trellis_paths_to_add` | Path whitelist for `add_session.py` — current developer's journal files + index.md, and (when `task_name` is passed) ONLY the current task dir. Callers MUST pass `task_name` so parallel-window dirty task dirs never leak into the session commit (#303). |
-| `safe_archive_paths_to_add(repo_root, task_name=None, modified_children=None)` | `templates/trellis/scripts/common/safe_commit.py:safe_archive_paths_to_add` | Path whitelist for `task.py archive` — archive subtree + explicitly-passed `modified_children` task dirs (parent/child relationship updates). Callers MUST pass `task_name`. |
-| `safe_git_add(paths, repo_root)` | `templates/trellis/scripts/common/safe_commit.py:safe_git_add` | Plain `git add -- <paths>`; never `-f`. Returns `(success, used_force=False, stderr)` |
-| `print_gitignore_warning(paths)` | `templates/trellis/scripts/common/safe_commit.py:print_gitignore_warning` | Single source of truth for the "ignored by .gitignore" warning, including the AI-defense negative example |
-| `get_session_auto_commit(repo_root)` | `templates/trellis/scripts/common/config.py:get_session_auto_commit` | Reads `session_auto_commit` from `.trellis/config.yaml` (default `True`) |
+| Helper                                                                         | Source                                                                      | Purpose                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `safe_trellis_paths_to_add(repo_root, task_name=None)`                         | `templates/trellis/scripts/common/safe_commit.py:safe_trellis_paths_to_add` | Path whitelist for `add_session.py` — current developer's journal files + index.md, and (when `task_name` is passed) ONLY the current task dir. Callers MUST pass `task_name` so parallel-window dirty task dirs never leak into the session commit (#303). |
+| `safe_archive_paths_to_add(repo_root, task_name=None, modified_children=None)` | `templates/trellis/scripts/common/safe_commit.py:safe_archive_paths_to_add` | Path whitelist for `task.py archive` — archive subtree + explicitly-passed `modified_children` task dirs (parent/child relationship updates). Callers MUST pass `task_name`.                                                                                |
+| `safe_git_add(paths, repo_root)`                                               | `templates/trellis/scripts/common/safe_commit.py:safe_git_add`              | Plain `git add -- <paths>`; never `-f`. Returns `(success, used_force=False, stderr)`                                                                                                                                                                       |
+| `print_gitignore_warning(paths)`                                               | `templates/trellis/scripts/common/safe_commit.py:print_gitignore_warning`   | Single source of truth for the "ignored by .gitignore" warning, including the AI-defense negative example                                                                                                                                                   |
+| `get_session_auto_commit(repo_root)`                                           | `templates/trellis/scripts/common/config.py:get_session_auto_commit`        | Reads `session_auto_commit` from `.trellis/config.yaml` (default `True`)                                                                                                                                                                                    |
 
 Callers using this contract: `add_session.py:_auto_commit_workspace` and
 `task_store.py:_auto_commit_archive` (invoked from `task.py archive`).
@@ -1522,7 +1659,7 @@ Behavior contract:
 ```yaml
 # .trellis/config.yaml
 # session_auto_commit: true   # default — auto-stage + auto-commit
-session_auto_commit: false    # files written, git left untouched
+session_auto_commit: false # files written, git left untouched
 ```
 
 - `true` (default) — `add_session.py` and `task.py archive` stage + commit
@@ -1633,6 +1770,7 @@ When changing `safe_commit.py`, `add_session.py:_auto_commit_workspace`, or
 When a script needs different output for different use cases, use `--mode` (not separate scripts or additional flags).
 
 **Example**: `get_context.py` serves two modes:
+
 - `--mode default` — full session runtime (DEVELOPER, GIT STATUS, RECENT COMMITS, CURRENT TASK, ACTIVE TASKS, MY TASKS, JOURNAL, PATHS)
 - `--mode record` — focused output for record-session (MY ACTIVE TASKS first with emphasis, GIT STATUS, RECENT COMMITS, CURRENT TASK)
 
@@ -1702,14 +1840,14 @@ bounded child-repository scan documented in `directory-structure.md`.
 
 #### 4. Validation & Error Matrix
 
-| Condition | Behavior |
-|---|---|
-| Root `rev-parse --is-inside-work-tree` succeeds | Render root branch/status/log |
-| Root probe fails | Render explicit non-Git-root note; skip root status/log commands |
-| Configured `git: true` package has `.git` | Render package status/log |
-| Configured package path lacks `.git` | Skip that package |
-| Root is not Git and configured package repos are empty | Run bounded child repo discovery |
-| Fewer than two child repos are discovered | Do not infer polyrepo layout |
+| Condition                                              | Behavior                                                         |
+| ------------------------------------------------------ | ---------------------------------------------------------------- |
+| Root `rev-parse --is-inside-work-tree` succeeds        | Render root branch/status/log                                    |
+| Root probe fails                                       | Render explicit non-Git-root note; skip root status/log commands |
+| Configured `git: true` package has `.git`              | Render package status/log                                        |
+| Configured package path lacks `.git`                   | Skip that package                                                |
+| Root is not Git and configured package repos are empty | Run bounded child repo discovery                                 |
+| Fewer than two child repos are discovered              | Do not infer polyrepo layout                                     |
 
 #### 5. Good/Base/Bad Cases
 
@@ -1745,6 +1883,7 @@ Run Git commands from the package repository paths listed below.
 ```
 
 **When to add a new mode** (not a new script):
+
 - Output is a subset/reordering of the same data
 - The underlying data sources are shared
 - The difference is in presentation, not in data fetching
@@ -1782,6 +1921,7 @@ commit_hash = rest.split()[0]
 **General rule**: When a command's output uses positional formatting (columns, prefixes, fixed-width fields), parse the structure first, then clean up individual values.
 
 **Other commands with semantic whitespace**:
+
 - `git status --porcelain` — two-char status prefix (`XY`)
 - `git diff --name-status` — tab-separated with status prefix
 - `docker ps --format` — column-aligned output
@@ -1952,17 +2092,17 @@ When adding a new accessor in `common/config.py`:
 
 ### Config Functions
 
-| Function | Return | Purpose |
-|----------|--------|---------|
-| `is_monorepo(repo_root)` | `bool` | Whether `packages:` exists in config.yaml |
-| `get_packages(repo_root)` | `dict[str, dict] \| None` | All packages from config.yaml (`{name: {path, type?}}`) |
-| `get_default_package(repo_root)` | `str \| None` | The `default_package` from config.yaml |
-| `get_submodule_packages(repo_root)` | `dict[str, str]` | Packages with `type: submodule` (`{name: path}`) |
-| `get_spec_base(package, repo_root)` | `str` | `"spec"` (single-repo) or `"spec/<package>"` (monorepo) |
-| `validate_package(package, repo_root)` | `bool` | Whether package exists in config (always `True` for single-repo) |
-| `resolve_package(task_pkg, repo_root)` | `str \| None` | Resolve package: task → default → None |
-| `get_spec_scope(repo_root)` | `str \| list \| None` | The `session.spec_scope` config value |
-| `get_hooks(event, repo_root)` | `list[str]` | Hook commands for lifecycle event |
+| Function                               | Return                    | Purpose                                                          |
+| -------------------------------------- | ------------------------- | ---------------------------------------------------------------- |
+| `is_monorepo(repo_root)`               | `bool`                    | Whether `packages:` exists in config.yaml                        |
+| `get_packages(repo_root)`              | `dict[str, dict] \| None` | All packages from config.yaml (`{name: {path, type?}}`)          |
+| `get_default_package(repo_root)`       | `str \| None`             | The `default_package` from config.yaml                           |
+| `get_submodule_packages(repo_root)`    | `dict[str, str]`          | Packages with `type: submodule` (`{name: path}`)                 |
+| `get_spec_base(package, repo_root)`    | `str`                     | `"spec"` (single-repo) or `"spec/<package>"` (monorepo)          |
+| `validate_package(package, repo_root)` | `bool`                    | Whether package exists in config (always `True` for single-repo) |
+| `resolve_package(task_pkg, repo_root)` | `str \| None`             | Resolve package: task → default → None                           |
+| `get_spec_scope(repo_root)`            | `str \| list \| None`     | The `session.spec_scope` config value                            |
+| `get_hooks(event, repo_root)`          | `list[str]`               | Hook commands for lifecycle event                                |
 
 ### Config.yaml Schema
 
@@ -1973,12 +2113,12 @@ packages:
     path: packages/cli
   docs-site:
     path: docs-site
-    type: submodule       # optional, marks git submodule
-default_package: cli      # first non-submodule package
+    type: submodule # optional, marks git submodule
+default_package: cli # first non-submodule package
 
 # Session behavior
 session:
-  spec_scope: active_task  # or ["cli", "docs-site"] or omit for full scan
+  spec_scope: active_task # or ["cli", "docs-site"] or omit for full scan
 
 # Update behavior
 update:
@@ -1999,30 +2139,30 @@ hooks:
 
 **Resolution order at `task create`** (`common/task_store.py:cmd_create`):
 
-| Priority | Source | Behavior on invalid value |
-|---|---|---|
-| 1 | CLI `--package <pkg>` (explicit) | **Fail-fast**: print available packages, exit 1 |
-| 2 | `default_package` (config.yaml) | Warn to stderr, fall through to `None` |
-| 3 | `None` | Task stored with `package: null` (allowed; spec scope falls back to full scan) |
+| Priority | Source                           | Behavior on invalid value                                                      |
+| -------- | -------------------------------- | ------------------------------------------------------------------------------ |
+| 1        | CLI `--package <pkg>` (explicit) | **Fail-fast**: print available packages, exit 1                                |
+| 2        | `default_package` (config.yaml)  | Warn to stderr, fall through to `None`                                         |
+| 3        | `None`                           | Task stored with `package: null` (allowed; spec scope falls back to full scan) |
 
 Single-repo mode (`packages:` absent from config): `--package` triggers a stderr warning and is silently ignored; stored `package` is always `None`.
 
 **Resolution order at read-time** (any script reading an existing task):
 
-| Priority | Source |
-|---|---|
-| 1 | `task.json.package` (the frozen binding) |
-| 2 | `resolve_package(task_package=..., repo_root=...)` — falls back to `default_package` if `task.json.package` is missing/invalid |
+| Priority | Source                                                                                                                         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 1        | `task.json.package` (the frozen binding)                                                                                       |
+| 2        | `resolve_package(task_package=..., repo_root=...)` — falls back to `default_package` if `task.json.package` is missing/invalid |
 
 Do **not** re-infer package from cwd, worktree path, or git remote. If the task is mis-bound, fix the stored field, do not wrap reads in path logic.
 
 **Spec scope is a separate layer** (`common/packages_context.py:_resolve_scope_set`). It consumes `task.package` but also has its own config surface `session.spec_scope`:
 
-| `session.spec_scope` value | Behavior |
-|---|---|
-| omitted / `null` | Full scan — all packages in `spec_scope` |
-| `"active_task"` | Use current task's `package`; fall back to `default_package` if missing |
-| `list[str]` | Use the explicit list; invalid entries fall back to task / default |
+| `session.spec_scope` value | Behavior                                                                |
+| -------------------------- | ----------------------------------------------------------------------- |
+| omitted / `null`           | Full scan — all packages in `spec_scope`                                |
+| `"active_task"`            | Use current task's `package`; fall back to `default_package` if missing |
+| `list[str]`                | Use the explicit list; invalid entries fall back to task / default      |
 
 ### Wrong vs Correct
 
@@ -2067,11 +2207,11 @@ When changing `cmd_create`, `resolve_package`, or `validate_package`:
 
 ### Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | General error |
-| 2 | Usage error (wrong arguments) |
+| Code | Meaning                       |
+| ---- | ----------------------------- |
+| 0    | Success                       |
+| 1    | General error                 |
+| 2    | Usage error (wrong arguments) |
 
 ### Error Messages
 
@@ -2106,7 +2246,7 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python3 task.py create "Add login" --slug add-login
+  python3 task.py create "Add login" --slug add-login --classification business-feature --product-intent-link "<approved intent URL or document id>"
   python3 task.py list --mine --status in_progress
 """
     )
@@ -2203,6 +2343,7 @@ if __name__ == "__main__":
 ```
 
 **Key rules**:
+
 - Original file path stays stable (e.g., `python3 .trellis/scripts/task.py`)
 - Imported names become re-exports for backward compatibility
 - Display-only commands (like `cmd_list`) can stay in the shim if they don't warrant a new module
@@ -2276,6 +2417,7 @@ def get_phase_info(task_json: Path) -> str:
 ## Example: Complete Script
 
 See `.trellis/scripts/task.py` for a comprehensive example with:
+
 - Multiple subcommands
 - Argument parsing
 - JSON file operations

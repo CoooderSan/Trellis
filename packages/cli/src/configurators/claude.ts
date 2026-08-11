@@ -14,6 +14,7 @@ import {
   resolveBundledSkills,
   collectSkillTemplates,
   collectSharedHooks,
+  composeSharedCheckContract,
   writeTemplateMap,
   type PlatformConfigureOptions,
 } from "./shared.js";
@@ -109,6 +110,12 @@ function walkClaudeTemplateDir(): Map<string, string> {
 export function collectClaudeTemplates(): Map<string, string> {
   const ctx = AI_TOOLS["claude-code"].templateContext;
   const files = walkClaudeTemplateDir();
+  const checkAgentPath = ".claude/agents/trellis-check.md";
+  const checkAgent = files.get(checkAgentPath);
+  if (!checkAgent) {
+    throw new Error(`Missing Claude check agent template: ${checkAgentPath}`);
+  }
+  files.set(checkAgentPath, composeSharedCheckContract(checkAgent, ctx));
 
   for (const cmd of resolveCommands(ctx)) {
     files.set(`.claude/commands/trellis/${cmd.name}.md`, cmd.content);

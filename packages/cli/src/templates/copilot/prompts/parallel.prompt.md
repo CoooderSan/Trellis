@@ -100,8 +100,8 @@ Use when:
 #### Step 1: Create Task Directory
 
 ```bash
-# title is task description, --slug for task directory name
-TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<title>" --slug <task-name>)
+# title is task description, --slug is the task directory name, and the approved Product Intent is required for a feature
+TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<title>" --slug <task-name> --classification business-feature --product-intent-link "<approved intent URL or document id>")
 ```
 
 #### Step 2: Configure Task

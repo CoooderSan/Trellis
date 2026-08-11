@@ -8,8 +8,10 @@ The Trellis task system is stored entirely under `.trellis/tasks/` in the user p
 .trellis/tasks/
 ├── 04-28-example-task/
 │   ├── task.json
+│   ├── intent.md
 │   ├── prd.md
-│   ├── info.md
+│   ├── design.md
+│   ├── implement.md
 │   ├── implement.jsonl
 │   ├── check.jsonl
 │   └── research/
@@ -20,8 +22,10 @@ The Trellis task system is stored entirely under `.trellis/tasks/` in the user p
 | File | Purpose |
 | --- | --- |
 | `task.json` | Task metadata: status, assignee, priority, branch, parent/child tasks, and similar fields. |
-| `prd.md` | Requirements document; the most important business context during implementation. |
-| `info.md` | Optional technical design. |
+| `intent.md` | Structured Task Basis: request classification, Product Intent link or reasoned `NOT_REQUIRED`, scope, and verification basis. |
+| `prd.md` | Requirements, constraints, and acceptance criteria. Lightweight tasks may be PRD-only. |
+| `design.md` | Technical design for complex tasks: boundaries, contracts, data flow, compatibility, tradeoffs. |
+| `implement.md` | Execution plan for complex tasks: ordered checklist, validation commands, review gates, rollback points. |
 | `implement.jsonl` | List of spec/research files the implement agent must read first. |
 | `check.jsonl` | List of spec/research files the check agent must read first. |
 | `research/` | Research artifacts. Complex findings should not live only in chat. |
@@ -40,9 +44,38 @@ The Trellis task system is stored entirely under `.trellis/tasks/` in the user p
 | `branch` / `base_branch` | Working branch and PR target branch. |
 | `children` / `parent` | Parent/child task relationships. |
 | `commit` / `pr_url` | Commit and PR information after completion. |
-| `meta` | Extension fields. |
+| `meta` | Extension fields, including the normalized request classification and Product Intent metadata for classified tasks. |
 
-The AI should not treat phase numbers as task status. Task progress is mainly determined by `status`, `prd.md`, whether JSONL context is configured, and the phase descriptions in `workflow.md`.
+## Parent / Child Task Trees
+
+Parent/child task relationships are for work structure. A parent task groups related deliverables under one source requirement set; it is not a dependency scheduler and does not replace the child task's own planning artifacts.
+
+Use a parent task when a request has multiple independently verifiable deliverables. The parent owns:
+
+- Source requirements and user-facing scope.
+- The map of child tasks and their responsibility boundaries.
+- Cross-child acceptance criteria and final integration review.
+
+Use child tasks for deliverables that can move through planning, implementation, check, and archive independently. If one child depends on another, write that dependency in the child `prd.md` / `implement.md`; do not rely on tree position to imply ordering. Every parent and child owns its own classification and Task Basis.
+
+Create new children with:
+
+```bash
+python3 ./.trellis/scripts/task.py create "<child title>" --slug <child-slug> --parent <parent-dir> --classification maintenance --product-intent-reason "<why Product Intent is not required>"
+```
+
+For a business-feature child, use `--classification business-feature --product-intent-link "<approved intent URL or document id>"` instead. Do not create development tasks for readonly or ordinary operational work; review revisions normally reuse their existing task and review evidence.
+
+Link or unlink existing tasks with:
+
+```bash
+python3 ./.trellis/scripts/task.py add-subtask <parent-dir> <child-dir>
+python3 ./.trellis/scripts/task.py remove-subtask <parent-dir> <child-dir>
+```
+
+`children` on the parent is a historical list. When a child is archived, Trellis keeps that child name in the parent so progress like `[2/3 done]` remains meaningful after completed children move to `archive/`.
+
+The AI should not treat phase numbers as task status. Task progress is mainly determined by `status`, artifact presence (`prd.md`, optional `design.md` / `implement.md`), whether JSONL context is configured for sub-agent mode, and the phase descriptions in `workflow.md`.
 
 ## Active Task
 
@@ -52,13 +85,13 @@ The user sees a "current task," but Trellis stores active task state per session
 .trellis/.runtime/sessions/<context-key>.json
 ```
 
-`task.py start` writes the task path into the runtime session file for the current session. `task.py current --source` shows the current task and where it came from. Different AI windows can point to different tasks without overwriting each other.
+`task.py create` targets the new planning task when session identity is available. `task.py start` validates its Task Basis, changes it to `in_progress`, and refreshes the same runtime pointer. `task.py current --source` shows the current task and where it came from. Different AI windows can point to different tasks without overwriting each other.
 
 If the platform or shell environment has no stable session identity, `task.py start` may be unable to set the active task. The AI should read the error, inspect the platform hook/session environment, and not fall back to a shared global pointer.
 
 ## JSONL Context
 
-`implement.jsonl` and `check.jsonl` are context manifests for sub-agents to read first.
+`implement.jsonl` and `check.jsonl` are context manifests for sub-agents to read first. They do not replace `implement.md`; `implement.md` is the human-readable execution plan.
 
 Format:
 
@@ -73,11 +106,13 @@ Rules:
 - Do not include code files that are about to be modified.
 - Do not treat temporary conclusions in chat as the only context.
 - Seed rows have no `file` field; they only prompt the AI to fill in real entries.
+- Inline execution does not require JSONL. Before dispatching an implement/check sub-agent, the corresponding manifest must contain at least one valid `file` row and pass `task.py validate-role-context`; `task.py start` is not the manifest-readiness gate.
 
 ## Common Commands
 
 ```bash
-python3 ./.trellis/scripts/task.py create "<title>" --slug <slug>
+python3 ./.trellis/scripts/task.py create "<title>" --slug <slug> --classification business-feature --product-intent-link "<approved intent URL or document id>"
+python3 ./.trellis/scripts/task.py create "<title>" --slug <slug> --classification maintenance --product-intent-reason "<why Product Intent is not required>"
 python3 ./.trellis/scripts/task.py start <task>
 python3 ./.trellis/scripts/task.py current --source
 python3 ./.trellis/scripts/task.py add-context <task> implement <file> <reason>
@@ -95,7 +130,7 @@ When modifying the task system, the AI should prefer script commands to maintain
 | Change the default task template | `.trellis/scripts/common/task_store.py` and task creation instructions. |
 | Change status semantics | `.trellis/workflow.md`, workflow-state hook logic, and task usage conventions. |
 | Add task lifecycle actions | `hooks.after_*` in `.trellis/config.yaml`. |
-| Change context rules | Phase 1.3 in `.trellis/workflow.md` and related platform agent/hook instructions. |
+| Change context rules | Planning artifact guidance in `.trellis/workflow.md` and related platform agent/hook instructions. |
 | Change archive policy | `.trellis/scripts/common/task_store.py` / `task_utils.py`. |
 
 These are local files in the user project. Do not default to editing Trellis CLI source code unless the user wants to contribute upstream.

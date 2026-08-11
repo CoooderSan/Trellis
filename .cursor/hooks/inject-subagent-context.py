@@ -315,15 +315,17 @@ def _materialize_file(
     reason: str,
     limits: dict[str, int],
     budget: _Budget,
+    display_path: str | None = None,
 ) -> str | None:
     """Read a JSONL-referenced file, apply the per-file cap, then budget it."""
+    shown_path = display_path or file_path
     data = _read_file_bytes(base_path, file_path)
     if data is None:
         return None
 
     size = len(data)
     if _is_binary_content(data):
-        notice = _binary_notice(file_path, size, reason)
+        notice = _binary_notice(shown_path, size, reason)
         budget.add(len(notice.encode("utf-8")))
         return notice
 
@@ -331,9 +333,9 @@ def _materialize_file(
     truncated_bytes = truncate_utf8(data, cap)
     content = truncated_bytes.decode("utf-8", errors="replace")
     if len(truncated_bytes) < size:
-        content += _truncate_notice(file_path, cap)
+        content += _truncate_notice(shown_path, cap)
 
-    return _budgeted_block(budget, file_path, file_path, content, reason, size)
+    return _budgeted_block(budget, shown_path, shown_path, content, reason, size)
 
 
 def _materialize_directory(
@@ -343,6 +345,8 @@ def _materialize_directory(
     limits: dict[str, int],
     budget: _Budget,
     max_files: int = 20,
+    display_path: str | None = None,
+    resolved_files: list[tuple[str, Path]] | None = None,
 ) -> list[str]:
     """Read all .md files in a directory, applying the same per-file and
     total caps as a single-file JSONL entry."""
@@ -351,15 +355,28 @@ def _materialize_directory(
         return []
 
     blocks: list[str] = []
+    shown_dir = display_path or dir_path
     try:
-        md_files = sorted(
-            f
-            for f in os.listdir(full_path)
-            if f.endswith(".md") and os.path.isfile(os.path.join(full_path, f))
-        )
-        for filename in md_files[:max_files]:
-            relative_path = os.path.join(dir_path, filename)
-            block = _materialize_file(base_path, relative_path, reason, limits, budget)
+        if resolved_files is None:
+            files = [
+                (filename, os.path.join(dir_path, filename))
+                for filename in sorted(os.listdir(full_path))
+                if filename.endswith(".md")
+                and os.path.isfile(os.path.join(full_path, filename))
+            ]
+        else:
+            files = [(name, str(source)) for name, source in resolved_files]
+
+        for filename, source_path in files[:max_files]:
+            shown_path = os.path.join(shown_dir, filename)
+            block = _materialize_file(
+                base_path,
+                source_path,
+                reason,
+                limits,
+                budget,
+                shown_path,
+            )
             if block:
                 blocks.append(block)
     except Exception:
@@ -435,21 +452,74 @@ def read_jsonl_entries(base_path: str, jsonl_path: str) -> list[dict]:
 
 
 def _materialize_jsonl_entries(
-    base_path: str, jsonl_path: str, limits: dict[str, int], budget: _Budget
+    base_path: str,
+    task_dir: str,
+    jsonl_path: str,
+    limits: dict[str, int],
+    budget: _Budget,
 ) -> list[str]:
     """Materialize every entry in a jsonl context file into context blocks,
     applying per-file and total budget caps."""
     blocks: list[str] = []
+    scripts_dir = Path(base_path) / DIR_WORKFLOW / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    try:
+        from common.task_context import (  # type: ignore[import-not-found]
+            _resolve_context_directory_files,
+            _resolve_context_entry_path,
+        )
+    except Exception:
+        # Do not inject a potentially stale live-task path when the canonical
+        # archive-aware resolver is unavailable. Task artifacts are still
+        # added by the caller, while the role gate reports the broken install
+        # on hosts that support pre-dispatch denial.
+        return blocks
+
     for entry in read_jsonl_entries(base_path, jsonl_path):
+        try:
+            resolved = _resolve_context_entry_path(
+                entry["file"],
+                Path(base_path),
+                Path(base_path) / task_dir,
+            )
+        except Exception:
+            resolved = None
+        if resolved is None:
+            continue
+        source_path = str(resolved)
+
         if entry["type"] == "directory":
+            try:
+                resolved_files = _resolve_context_directory_files(
+                    resolved,
+                    Path(base_path),
+                    Path(base_path) / task_dir,
+                )
+            except (OSError, RuntimeError, ValueError):
+                # A directory entry is one trust unit. If any archived child
+                # escapes the archive, inject neither that child nor its safe
+                # siblings.
+                continue
             blocks.extend(
                 _materialize_directory(
-                    base_path, entry["file"], entry["reason"], limits, budget
+                    base_path,
+                    source_path,
+                    entry["reason"],
+                    limits,
+                    budget,
+                    display_path=entry["file"],
+                    resolved_files=resolved_files,
                 )
             )
         else:
             block = _materialize_file(
-                base_path, entry["file"], entry["reason"], limits, budget
+                base_path,
+                source_path,
+                entry["reason"],
+                limits,
+                budget,
+                entry["file"],
             )
             if block:
                 blocks.append(block)
@@ -468,7 +538,9 @@ def get_agent_context(
     Only reads implement.jsonl or check.jsonl (the two JSONL files the task system creates).
     """
     agent_jsonl = f"{task_dir}/{agent_type}.jsonl"
-    blocks = _materialize_jsonl_entries(repo_root, agent_jsonl, limits, budget)
+    blocks = _materialize_jsonl_entries(
+        repo_root, task_dir, agent_jsonl, limits, budget
+    )
     return "\n\n".join(blocks)
 
 
@@ -1054,6 +1126,117 @@ def _parse_hook_input(input_data: dict) -> tuple[str, str, dict]:
     return "", "", tool_input
 
 
+def _is_pre_tool_use(input_data: dict) -> bool:
+    """Return whether this payload is an actual pre-dispatch tool hook.
+
+    Kiro reuses this script from ``agentSpawn`` and Codex from
+    ``SubagentStart``. Neither event can prevent the child from being
+    dispatched, so readiness denial must stay scoped to PreToolUse hosts.
+    """
+    return _hook_event_name(input_data).lower() == "pretooluse"
+
+
+def _role_context_readiness_errors(
+    repo_root: str,
+    task_dir: str,
+    subagent_type: str,
+) -> list[str]:
+    """Validate only the manifest consumed by the requested role."""
+    scripts_dir = Path(repo_root) / DIR_WORKFLOW / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+
+    manifest_name = f"{subagent_type.removeprefix('trellis-')}.jsonl"
+    task_dir_full = Path(repo_root) / task_dir
+    try:
+        from common.task_context import (  # type: ignore[import-not-found]
+            validate_context_manifest_readiness,
+        )
+
+        return validate_context_manifest_readiness(
+            task_dir_full / manifest_name,
+            Path(repo_root),
+            task_dir_full,
+        )
+    except Exception as exc:
+        # A missing/broken validator must not turn a required dispatch gate
+        # into the old silent fail-open behavior.
+        return [
+            f"{manifest_name}: readiness validator failed: {exc}. "
+            "Run `trellis update`, then retry"
+        ]
+
+
+def _build_role_context_denial(
+    input_data: dict,
+    subagent_type: str,
+    errors: list[str],
+) -> dict:
+    """Build the documented denial shapes used by PreToolUse hosts."""
+    role = subagent_type.removeprefix("trellis-")
+    manifest_name = f"{role}.jsonl"
+    reason = "\n".join(
+        [
+            f"Trellis blocked {subagent_type} dispatch because {manifest_name} is not ready:",
+            *(f"- {error}" for error in errors),
+            f"Curate {manifest_name} with at least one readable "
+            '{"file":"...","reason":"..."} entry, then retry the dispatch.',
+        ]
+    )
+    hook_specific = {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": reason,
+    }
+    if _detect_platform(input_data) == "zcode":
+        return {"hookSpecificOutput": hook_specific}
+    return {
+        # Claude Code / CodeBuddy / Droid format.
+        "hookSpecificOutput": hook_specific,
+        # Cursor format. The message fields keep the denial actionable in both
+        # the user-facing UI and the agent transcript.
+        "permission": "deny",
+        "user_message": reason,
+        "agent_message": reason,
+    }
+
+
+def _deny_unready_role_context(
+    input_data: dict,
+    repo_root: str,
+    task_dir: str | None,
+    subagent_type: str,
+) -> bool:
+    """Emit a host-compatible denial and return True when dispatch must stop."""
+    if not _is_pre_tool_use(input_data) or subagent_type not in AGENTS_REQUIRE_TASK:
+        return False
+
+    if not task_dir:
+        errors = [
+            "no active task could be resolved; start the task or attach the correct session context"
+        ]
+    else:
+        task_dir_full = Path(repo_root) / task_dir
+        if not task_dir_full.is_dir():
+            errors = [f"active task directory does not exist: {task_dir}"]
+        else:
+            errors = _role_context_readiness_errors(
+                repo_root,
+                task_dir,
+                subagent_type,
+            )
+
+    if not errors:
+        return False
+    print(
+        json.dumps(
+            _build_role_context_denial(input_data, subagent_type, errors),
+            ensure_ascii=False,
+        )
+    )
+    return True
+
+
 def main():
     if os.environ.get("TRELLIS_HOOKS") == "0" or os.environ.get("TRELLIS_DISABLE_HOOKS") == "1":
         sys.exit(0)
@@ -1088,6 +1271,11 @@ def main():
 
     # Get current task directory (research doesn't require it)
     task_dir = get_current_task(repo_root, input_data)
+
+    # Fail closed on the actual pre-dispatch path. Post-spawn hooks remain
+    # context-only because their hosts have already created the child.
+    if _deny_unready_role_context(input_data, repo_root, task_dir, subagent_type):
+        sys.exit(0)
 
     # implement/check need task directory
     if subagent_type in AGENTS_REQUIRE_TASK:

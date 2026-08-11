@@ -3,3 +3,5 @@ node_modules
 *.txt
 *.md
 pnpm-lock.yaml
+# Published migration manifests are immutable historical records.
+src/migrations/manifests/*.json

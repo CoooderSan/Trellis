@@ -1,9 +1,17 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   contextCollector,
+  ContextBudget,
   isTrellisSubagent,
   readContextInjectionLimits,
   TrellisContext,
@@ -607,17 +615,17 @@ describe("opencode persisted synthetic context parts", () => {
         );
       }
 
-      expect(parts.map(part => part.text)).toEqual([
+      expect(parts.map((part) => part.text)).toEqual([
         "session context",
         "workflow context",
         "ordinary user prompt",
       ]);
-      expect(parts.map(part => part.id)).toEqual(
+      expect(parts.map((part) => part.id)).toEqual(
         [...parts]
           .sort((left, right) =>
             left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
           )
-          .map(part => part.id),
+          .map((part) => part.id),
       );
       expect(parts[0].id).not.toBe(parts[1].id);
       expect(parts[2]).toEqual(ordinary);
@@ -641,9 +649,7 @@ describe("opencode persisted synthetic context parts", () => {
         "000000000001",
       ),
     ];
-    const unsupportedIdentityBefore = structuredClone(
-      unsupportedIdentityParts,
-    );
+    const unsupportedIdentityBefore = structuredClone(unsupportedIdentityParts);
     expect(() =>
       insertSyntheticTextPart(
         unsupportedIdentityParts,
@@ -658,11 +664,7 @@ describe("opencode persisted synthetic context parts", () => {
     ];
     const missingIdentityBefore = structuredClone(missingIdentityParts);
     expect(() =>
-      insertSyntheticTextPart(
-        missingIdentityParts,
-        "context",
-        "sessionStart",
-      ),
+      insertSyntheticTextPart(missingIdentityParts, "context", "sessionStart"),
     ).toThrow("no ordinary OpenCode part with a persisted identity");
     expect(missingIdentityParts).toEqual(missingIdentityBefore);
 
@@ -775,11 +777,19 @@ describe("opencode persisted synthetic context parts", () => {
 function setupTrellisProject(): string {
   const dir = mkdtempSync(join(tmpdir(), "trellis-opencode-264-"));
   const taskDir = join(dir, ".trellis", "tasks", "demo-task");
+  const specDir = join(dir, ".trellis", "spec");
   mkdirSync(taskDir, { recursive: true });
+  mkdirSync(specDir, { recursive: true });
   mkdirSync(join(dir, ".trellis", ".runtime", "sessions"), { recursive: true });
-  writeFileSync(join(taskDir, "prd.md"), "# Demo PRD\n\nGoal: verify injection.");
-  writeFileSync(join(taskDir, "implement.jsonl"), "");
-  writeFileSync(join(taskDir, "check.jsonl"), "");
+  writeFileSync(
+    join(taskDir, "prd.md"),
+    "# Demo PRD\n\nGoal: verify injection.",
+  );
+  writeFileSync(join(specDir, "demo.md"), "# Demo Spec\n");
+  const curatedEntry =
+    JSON.stringify({ file: ".trellis/spec/demo.md", reason: "test" }) + "\n";
+  writeFileSync(join(taskDir, "implement.jsonl"), curatedEntry);
+  writeFileSync(join(taskDir, "check.jsonl"), curatedEntry);
   writeFileSync(
     join(dir, ".trellis", "workflow.md"),
     [
@@ -906,9 +916,9 @@ describe("opencode inject-subagent-context (issue #264)", () => {
     expect(output.args.prompt).toContain("do the implementation");
     // Marker must be at the top so generated agent definitions can detect
     // successful injection via a prefix check.
-    expect(output.args.prompt.startsWith("<!-- trellis-hook-injected -->")).toBe(
-      true,
-    );
+    expect(
+      output.args.prompt.startsWith("<!-- trellis-hook-injected -->"),
+    ).toBe(true);
   });
 
   it("inlines JSONL-referenced spec content into the implement prompt", async () => {
@@ -941,6 +951,334 @@ describe("opencode inject-subagent-context (issue #264)", () => {
     expect(output.args.prompt).toContain("Demo PRD");
   });
 
+  it("remaps archived task self-references before validating and materializing context", async () => {
+    const archivedTaskRef = ".trellis/tasks/archive/2026-08/demo-task";
+    const archivedTaskDir = join(dir, archivedTaskRef);
+    const historicalEvidencePath =
+      ".trellis/tasks/demo-task/research/evidence.md";
+    mkdirSync(join(archivedTaskDir, "research"), { recursive: true });
+    writeFileSync(join(archivedTaskDir, "prd.md"), "# Archived Demo PRD\n");
+    writeFileSync(
+      join(archivedTaskDir, "research", "evidence.md"),
+      "ARCHIVED_EVIDENCE_MARKER_42",
+    );
+    writeFileSync(
+      join(archivedTaskDir, "implement.jsonl"),
+      JSON.stringify({
+        file: historicalEvidencePath,
+        reason: "archived evidence",
+      }) + "\n",
+    );
+    writeSessionFile(dir, "opencode_sole", archivedTaskRef);
+
+    const output: TaskToolOutput = {
+      args: {
+        subagent_type: "trellis-implement",
+        prompt: "continue the archived implementation",
+      },
+    };
+
+    await hooks["tool.execute.before"](
+      { tool: "task", sessionID: "stranger" },
+      output,
+    );
+
+    expect(output.args.prompt).toContain(`=== ${historicalEvidencePath} ===`);
+    expect(output.args.prompt).toContain("ARCHIVED_EVIDENCE_MARKER_42");
+    expect(output.args.prompt).toContain("Archived Demo PRD");
+  });
+
+  it("blocks archived task self-references that traverse outside the archive", async () => {
+    const archivedTaskRef = ".trellis/tasks/archive/2026-08/demo-task";
+    const archivedTaskDir = join(dir, archivedTaskRef);
+    mkdirSync(archivedTaskDir, { recursive: true });
+    writeFileSync(join(archivedTaskDir, "prd.md"), "# Archived Demo PRD\n");
+    writeFileSync(
+      join(archivedTaskDir, "implement.jsonl"),
+      JSON.stringify({
+        file: ".trellis/tasks/demo-task/research/../outside.md",
+        reason: "invalid archived evidence",
+      }) + "\n",
+    );
+    writeSessionFile(dir, "opencode_sole", archivedTaskRef);
+
+    const output: TaskToolOutput = {
+      args: {
+        subagent_type: "trellis-implement",
+        prompt: "continue the archived implementation",
+      },
+    };
+
+    await expect(
+      hooks["tool.execute.before"](
+        { tool: "task", sessionID: "stranger" },
+        output,
+      ),
+    ).rejects.toThrow("referenced path escapes the task archive");
+    expect(output.args.prompt).toBe("continue the archived implementation");
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "blocks an archived self-directory when a Markdown file symlink escapes and materializes no safe sibling",
+    async () => {
+      const archivedTaskRef = ".trellis/tasks/archive/2026-08/demo-task";
+      const archivedTaskDir = join(dir, archivedTaskRef);
+      const researchDir = join(archivedTaskDir, "research");
+      const outsideFile = join(dir, ".trellis", "spec", "outside.md");
+      const historicalResearchPath = ".trellis/tasks/demo-task/research";
+      mkdirSync(researchDir, { recursive: true });
+      writeFileSync(join(archivedTaskDir, "prd.md"), "# Archived Demo PRD\n");
+      writeFileSync(
+        join(researchDir, "safe.md"),
+        "SAFE_ARCHIVE_SIBLING_MUST_NOT_BE_INJECTED",
+      );
+      writeFileSync(
+        outsideFile,
+        "EXTERNAL_ARCHIVE_SECRET_MUST_NOT_BE_INJECTED",
+      );
+      symlinkSync(outsideFile, join(researchDir, "escaped.md"));
+      const manifestPath = join(archivedTaskDir, "implement.jsonl");
+      writeFileSync(
+        manifestPath,
+        JSON.stringify({
+          file: historicalResearchPath,
+          type: "directory",
+          reason: "archived research",
+        }) + "\n",
+      );
+      writeSessionFile(dir, "opencode_sole", archivedTaskRef);
+
+      const output: TaskToolOutput = {
+        args: {
+          subagent_type: "trellis-implement",
+          prompt: "continue the archived implementation",
+        },
+      };
+      await expect(
+        hooks["tool.execute.before"](
+          { tool: "task", sessionID: "stranger" },
+          output,
+        ),
+      ).rejects.toThrow("referenced path escapes the task archive");
+      expect(output.args.prompt).toBe("continue the archived implementation");
+
+      const ctx = new TrellisContext(dir);
+      const blocks = ctx.readJsonlWithFiles(
+        manifestPath,
+        readContextInjectionLimits(dir),
+        new ContextBudget(0),
+      );
+      expect(blocks).toEqual([]);
+      expect(JSON.stringify(blocks)).not.toContain(
+        "SAFE_ARCHIVE_SIBLING_MUST_NOT_BE_INJECTED",
+      );
+      expect(JSON.stringify(blocks)).not.toContain(
+        "EXTERNAL_ARCHIVE_SECRET_MUST_NOT_BE_INJECTED",
+      );
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "blocks a Markdown-named external directory symlink before checking whether it is a file",
+    async () => {
+      const archivedTaskRef = ".trellis/tasks/archive/2026-08/demo-task";
+      const archivedTaskDir = join(dir, archivedTaskRef);
+      const researchDir = join(archivedTaskDir, "research");
+      const outsideDir = join(dir, "outside-evidence");
+      mkdirSync(researchDir, { recursive: true });
+      mkdirSync(outsideDir, { recursive: true });
+      writeFileSync(join(archivedTaskDir, "prd.md"), "# Archived Demo PRD\n");
+      writeFileSync(join(outsideDir, "secret.md"), "EXTERNAL_DIRECTORY_SECRET");
+      symlinkSync(outsideDir, join(researchDir, "escaped-directory.md"), "dir");
+      writeFileSync(
+        join(archivedTaskDir, "implement.jsonl"),
+        JSON.stringify({
+          file: ".trellis/tasks/demo-task/research",
+          type: "directory",
+          reason: "archived research",
+        }) + "\n",
+      );
+      writeSessionFile(dir, "opencode_sole", archivedTaskRef);
+      const output: TaskToolOutput = {
+        args: {
+          subagent_type: "trellis-implement",
+          prompt: "continue the archived implementation",
+        },
+      };
+
+      await expect(
+        hooks["tool.execute.before"](
+          { tool: "task", sessionID: "stranger" },
+          output,
+        ),
+      ).rejects.toThrow("referenced path escapes the task archive");
+      expect(output.args.prompt).not.toContain("EXTERNAL_DIRECTORY_SECRET");
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "skips a broken archived Markdown child while retaining readable siblings",
+    async () => {
+      const archivedTaskRef = ".trellis/tasks/archive/2026-08/demo-task";
+      const archivedTaskDir = join(dir, archivedTaskRef);
+      const researchDir = join(archivedTaskDir, "research");
+      mkdirSync(researchDir, { recursive: true });
+      writeFileSync(join(archivedTaskDir, "prd.md"), "# Archived Demo PRD\n");
+      writeFileSync(join(researchDir, "safe.md"), "SAFE_ARCHIVE_MARKER");
+      symlinkSync(
+        join(researchDir, "missing-target.md"),
+        join(researchDir, "broken.md"),
+      );
+      writeFileSync(
+        join(archivedTaskDir, "implement.jsonl"),
+        JSON.stringify({
+          file: ".trellis/tasks/demo-task/research",
+          type: "directory",
+          reason: "archived research",
+        }) + "\n",
+      );
+      writeSessionFile(dir, "opencode_sole", archivedTaskRef);
+      const output: TaskToolOutput = {
+        args: {
+          subagent_type: "trellis-implement",
+          prompt: "continue the archived implementation",
+        },
+      };
+
+      await hooks["tool.execute.before"](
+        { tool: "task", sessionID: "stranger" },
+        output,
+      );
+
+      expect(output.args.prompt).toContain("SAFE_ARCHIVE_MARKER");
+      expect(output.args.prompt).not.toContain("missing-target.md");
+    },
+  );
+
+  it("supports historical backslash file and directory self-references after archival", async () => {
+    const archivedTaskRef = ".trellis/tasks/archive/2026-08/demo-task";
+    const archivedTaskDir = join(dir, archivedTaskRef);
+    const researchDir = join(archivedTaskDir, "research");
+    mkdirSync(researchDir, { recursive: true });
+    writeFileSync(join(archivedTaskDir, "prd.md"), "# Archived Demo PRD\n");
+    writeFileSync(join(researchDir, "evidence.md"), "BACKSLASH_ARCHIVE_MARKER");
+    writeFileSync(
+      join(archivedTaskDir, "implement.jsonl"),
+      [
+        JSON.stringify({
+          file: ".trellis\\tasks\\demo-task\\research\\evidence.md",
+          reason: "historical file",
+        }),
+        JSON.stringify({
+          file: ".trellis\\tasks\\demo-task\\research\\",
+          type: "directory",
+          reason: "historical directory",
+        }),
+      ].join("\n") + "\n",
+    );
+    writeSessionFile(dir, "opencode_sole", archivedTaskRef);
+    const output: TaskToolOutput = {
+      args: {
+        subagent_type: "trellis-implement",
+        prompt: "continue the archived implementation",
+      },
+    };
+
+    await hooks["tool.execute.before"](
+      { tool: "task", sessionID: "stranger" },
+      output,
+    );
+
+    expect(output.args.prompt).toContain("BACKSLASH_ARCHIVE_MARKER");
+    expect(output.args.prompt).toContain(
+      "=== .trellis\\tasks\\demo-task\\research\\evidence.md ===",
+    );
+  });
+
+  it("does not fall back to a recreated live task when an archived self-reference is missing", async () => {
+    const archivedTaskRef = ".trellis/tasks/archive/2026-08/demo-task";
+    const archivedTaskDir = join(dir, archivedTaskRef);
+    const liveEvidence = join(
+      dir,
+      ".trellis",
+      "tasks",
+      "demo-task",
+      "research",
+      "evidence.md",
+    );
+    mkdirSync(archivedTaskDir, { recursive: true });
+    mkdirSync(join(liveEvidence, ".."), { recursive: true });
+    writeFileSync(join(archivedTaskDir, "prd.md"), "# Archived Demo PRD\n");
+    writeFileSync(liveEvidence, "LIVE_TASK_SHADOW_MUST_NOT_BE_INJECTED");
+    writeFileSync(
+      join(archivedTaskDir, "implement.jsonl"),
+      JSON.stringify({
+        file: ".trellis/tasks/demo-task/research/evidence.md",
+        reason: "historical evidence",
+      }) + "\n",
+    );
+    writeSessionFile(dir, "opencode_sole", archivedTaskRef);
+    const output: TaskToolOutput = {
+      args: {
+        subagent_type: "trellis-implement",
+        prompt: "continue the archived implementation",
+      },
+    };
+
+    await expect(
+      hooks["tool.execute.before"](
+        { tool: "task", sessionID: "stranger" },
+        output,
+      ),
+    ).rejects.toThrow("referenced file cannot be read");
+    expect(output.args.prompt).not.toContain(
+      "LIVE_TASK_SHADOW_MUST_NOT_BE_INJECTED",
+    );
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "preserves ordinary repository directory symlinks outside archived self-references",
+    async () => {
+      const archivedTaskRef = ".trellis/tasks/archive/2026-08/demo-task";
+      const archivedTaskDir = join(dir, archivedTaskRef);
+      const externalFile = join(dir, "ordinary-reference.md");
+      mkdirSync(archivedTaskDir, { recursive: true });
+      writeFileSync(join(archivedTaskDir, "prd.md"), "# Archived Demo PRD\n");
+      writeFileSync(externalFile, "ORDINARY_REPOSITORY_SYMLINK_MARKER");
+      symlinkSync(
+        externalFile,
+        join(dir, ".trellis", "spec", "linked-reference.md"),
+      );
+      writeFileSync(
+        join(archivedTaskDir, "implement.jsonl"),
+        JSON.stringify({
+          file: ".trellis/spec",
+          type: "directory",
+          reason: "shared specs",
+        }) + "\n",
+      );
+      writeSessionFile(dir, "opencode_sole", archivedTaskRef);
+      const output: TaskToolOutput = {
+        args: {
+          subagent_type: "trellis-implement",
+          prompt: "continue the archived implementation",
+        },
+      };
+
+      await hooks["tool.execute.before"](
+        { tool: "task", sessionID: "stranger" },
+        output,
+      );
+
+      expect(output.args.prompt).toContain(
+        "=== .trellis/spec/linked-reference.md ===",
+      );
+      expect(output.args.prompt).toContain(
+        "ORDINARY_REPOSITORY_SYMLINK_MARKER",
+      );
+    },
+  );
+
   it("mutates check prompt using Active task hint when runtime resolution fails", async () => {
     // No session file → both session lookup and single-session fallback miss.
     // Hint is the only resolver.
@@ -968,7 +1306,10 @@ describe("opencode inject-subagent-context (issue #264)", () => {
     const hintTask = join(dir, ".trellis", "tasks", "hint-task");
     mkdirSync(hintTask, { recursive: true });
     writeFileSync(join(hintTask, "prd.md"), "# Hint PRD\n\nfrom hint");
-    writeFileSync(join(hintTask, "implement.jsonl"), "");
+    writeFileSync(
+      join(hintTask, "implement.jsonl"),
+      JSON.stringify({ file: ".trellis/spec/demo.md", reason: "test" }) + "\n",
+    );
 
     const output: TaskToolOutput = {
       args: {
@@ -987,6 +1328,9 @@ describe("opencode inject-subagent-context (issue #264)", () => {
   });
 
   it("emits the trellis-hook-injected marker for research agent too", async () => {
+    const taskDir = join(dir, ".trellis", "tasks", "demo-task");
+    writeFileSync(join(taskDir, "implement.jsonl"), "not json\n");
+    writeFileSync(join(taskDir, "check.jsonl"), "not json\n");
     const output: TaskToolOutput = {
       args: {
         subagent_type: "trellis-research",
@@ -1003,11 +1347,182 @@ describe("opencode inject-subagent-context (issue #264)", () => {
     expect(output.args.prompt).toContain("# Research Agent Task");
   });
 
-  it("skips when no task can be resolved through any path", async () => {
+  it("blocks implement dispatch when no task can be resolved through any path", async () => {
     const output: TaskToolOutput = {
       args: {
         subagent_type: "trellis-implement",
         prompt: "implement without context",
+      },
+    };
+
+    await expect(
+      hooks["tool.execute.before"](
+        { tool: "task", sessionID: "stranger" },
+        output,
+      ),
+    ).rejects.toThrow(/blocked trellis-implement dispatch.*no active task/is);
+    expect(output.args.prompt).toBe("implement without context");
+  });
+
+  it.each([
+    {
+      name: "missing",
+      arrange: (manifestPath: string) => rmSync(manifestPath),
+      expected: "manifest is missing",
+    },
+    {
+      name: "empty",
+      arrange: (manifestPath: string) => writeFileSync(manifestPath, ""),
+      expected: "manifest is empty",
+    },
+    {
+      name: "seed-only",
+      arrange: (manifestPath: string) =>
+        writeFileSync(manifestPath, '{"_example":"curate me"}\n'),
+      expected: "seed rows do not count",
+    },
+    {
+      name: "malformed",
+      arrange: (manifestPath: string) =>
+        writeFileSync(manifestPath, '{"file":\n'),
+      expected: "invalid JSON",
+    },
+    {
+      name: "invalid",
+      arrange: (manifestPath: string) =>
+        writeFileSync(manifestPath, '{"file":42}\n'),
+      expected: "non-empty string field 'file'",
+    },
+    {
+      name: "unreadable reference",
+      arrange: (manifestPath: string) =>
+        writeFileSync(
+          manifestPath,
+          '{"file":".trellis/spec/missing.md","reason":"test"}\n',
+        ),
+      expected: "referenced file cannot be read",
+    },
+  ])("blocks an $name implement manifest", async ({ arrange, expected }) => {
+    const manifestPath = join(
+      dir,
+      ".trellis",
+      "tasks",
+      "demo-task",
+      "implement.jsonl",
+    );
+    arrange(manifestPath);
+    writeSessionFile(dir, "opencode_sole", ".trellis/tasks/demo-task");
+    const output: TaskToolOutput = {
+      args: {
+        subagent_type: "trellis-implement",
+        prompt: "do the implementation",
+      },
+    };
+
+    await expect(
+      hooks["tool.execute.before"](
+        { tool: "task", sessionID: "stranger" },
+        output,
+      ),
+    ).rejects.toThrow(expected);
+    expect(output.args.prompt).toBe("do the implementation");
+  });
+
+  it("blocks an unreadable implement manifest with an actionable error", async () => {
+    const manifestPath = join(
+      dir,
+      ".trellis",
+      "tasks",
+      "demo-task",
+      "implement.jsonl",
+    );
+    chmodSync(manifestPath, 0o000);
+    writeSessionFile(dir, "opencode_sole", ".trellis/tasks/demo-task");
+    const output: TaskToolOutput = {
+      args: {
+        subagent_type: "trellis-implement",
+        prompt: "do the implementation",
+      },
+    };
+
+    await expect(
+      hooks["tool.execute.before"](
+        { tool: "task", sessionID: "stranger" },
+        output,
+      ),
+    ).rejects.toThrow(
+      /implement\.jsonl: manifest cannot be read: no read permission.*Curate implement\.jsonl/s,
+    );
+    chmodSync(manifestPath, 0o600);
+  });
+
+  it("validates only the dispatched implement/check role manifest", async () => {
+    const taskDir = join(dir, ".trellis", "tasks", "demo-task");
+    writeFileSync(join(taskDir, "implement.jsonl"), "not json\n");
+    const output: TaskToolOutput = {
+      args: {
+        subagent_type: "trellis-check",
+        prompt: "please check",
+      },
+    };
+    writeSessionFile(dir, "opencode_sole", ".trellis/tasks/demo-task");
+
+    await hooks["tool.execute.before"](
+      { tool: "task", sessionID: "stranger" },
+      output,
+    );
+
+    expect(output.args.prompt).toContain("# Check Agent Task");
+    expect(output.args.prompt).toContain("=== .trellis/spec/demo.md ===");
+  });
+
+  it("blocks an unready check manifest independently of implement.jsonl", async () => {
+    const taskDir = join(dir, ".trellis", "tasks", "demo-task");
+    writeFileSync(join(taskDir, "check.jsonl"), '{"_example":"curate me"}\n');
+    writeSessionFile(dir, "opencode_sole", ".trellis/tasks/demo-task");
+    const output: TaskToolOutput = {
+      args: {
+        subagent_type: "trellis-check",
+        prompt: "please check",
+      },
+    };
+
+    await expect(
+      hooks["tool.execute.before"](
+        { tool: "task", sessionID: "stranger" },
+        output,
+      ),
+    ).rejects.toThrow(
+      /blocked trellis-check dispatch.*check\.jsonl.*seed rows/s,
+    );
+  });
+
+  it("does not apply the role-manifest gate to inline or ordinary tool execution", async () => {
+    const taskDir = join(dir, ".trellis", "tasks", "demo-task");
+    writeFileSync(join(taskDir, "implement.jsonl"), "not json\n");
+    writeFileSync(join(taskDir, "check.jsonl"), "not json\n");
+    const output: TaskToolOutput = {
+      args: {
+        subagent_type: "trellis-implement",
+        prompt: "inline implementation",
+      },
+    };
+
+    await hooks["tool.execute.before"](
+      { tool: "read", sessionID: "stranger" },
+      output,
+    );
+
+    expect(output.args.prompt).toBe("inline implementation");
+  });
+
+  it("does not apply the role-manifest gate to an ordinary Task sub-agent", async () => {
+    const taskDir = join(dir, ".trellis", "tasks", "demo-task");
+    writeFileSync(join(taskDir, "implement.jsonl"), "not json\n");
+    const output: TaskToolOutput = {
+      args: {
+        subagent_type: "generalPurpose",
+        prompt: "ordinary delegation",
       },
     };
 
@@ -1016,8 +1531,7 @@ describe("opencode inject-subagent-context (issue #264)", () => {
       output,
     );
 
-    // Prompt is left untouched when implement/check can't find a task
-    expect(output.args.prompt).toBe("implement without context");
+    expect(output.args.prompt).toBe("ordinary delegation");
   });
 });
 
@@ -1059,10 +1573,7 @@ describe("opencode chat.message subagent skip (issue #264)", () => {
 
       for (const kind of order) {
         const hooks = kind === "sessionStart" ? sessionHooks : workflowHooks;
-        await hooks["chat.message"](
-          { sessionID, agent: "build" },
-          { parts },
-        );
+        await hooks["chat.message"]({ sessionID, agent: "build" }, { parts });
       }
 
       expect(parts).toHaveLength(3);
@@ -1083,7 +1594,7 @@ describe("opencode chat.message subagent skip (issue #264)", () => {
       expect(parts[1].text).toMatch(/^<workflow-state>/);
       expect(parts[1].metadata).toBeUndefined();
       expect(parts[2]).toEqual(ordinary);
-      expect(parts.map(part => part.id)).toEqual(
+      expect(parts.map((part) => part.id)).toEqual(
         [...parts]
           .sort((left, right) => {
             if (typeof left.id !== "string" || typeof right.id !== "string") {
@@ -1091,7 +1602,7 @@ describe("opencode chat.message subagent skip (issue #264)", () => {
             }
             return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
           })
-          .map(part => part.id),
+          .map((part) => part.id),
       );
       contextCollector.clear(sessionID);
     }
@@ -1146,10 +1657,7 @@ describe("opencode chat.message subagent skip (issue #264)", () => {
       ["missing-workflow-identity", workflowHooks],
     ] as const) {
       const parts: ChatMessagePart[] = [{ type: "text", text: "original" }];
-      await hooks["chat.message"](
-        { sessionID, agent: "build" },
-        { parts },
-      );
+      await hooks["chat.message"]({ sessionID, agent: "build" }, { parts });
       expect(parts).toEqual([{ type: "text", text: "original" }]);
       contextCollector.clear(sessionID);
     }
@@ -1202,10 +1710,7 @@ describe("opencode chat.message subagent skip (issue #264)", () => {
           const sessionID = `${key}-${suffix}`;
           const ordinary = createUserTextPart("original", sessionID);
           const parts = [structuredClone(ordinary)];
-          await hooks["chat.message"](
-            { sessionID, agent: "build" },
-            { parts },
-          );
+          await hooks["chat.message"]({ sessionID, agent: "build" }, { parts });
           expect(parts).toEqual([ordinary]);
           contextCollector.clear(sessionID);
         }
@@ -1347,7 +1852,7 @@ describe("opencode chat.message subagent skip (issue #264)", () => {
     expect(notSkipped[0].text).toContain("<workflow-state>");
   });
 
-  it("inject-workflow-state.js disables the escape hatch with skip_keyword: \"\"", async () => {
+  it('inject-workflow-state.js disables the escape hatch with skip_keyword: ""', async () => {
     writeFileSync(
       join(dir, ".trellis", "config.yaml"),
       ["prompt_injection:", '  skip_keyword: ""'].join("\n"),
@@ -1390,7 +1895,7 @@ describe("opencode context injection limits (issue #441)", () => {
   function writeJsonlEntries(entries: Record<string, string>[]): void {
     writeFileSync(
       join(dir, ".trellis", "tasks", "demo-task", "implement.jsonl"),
-      entries.map(e => JSON.stringify(e)).join("\n") + "\n",
+      entries.map((e) => JSON.stringify(e)).join("\n") + "\n",
       "utf-8",
     );
   }
@@ -1550,8 +2055,7 @@ describe("opencode context injection limits (issue #441)", () => {
     });
 
     it("does not misclassify legitimate multi-byte UTF-8 content as binary", async () => {
-      const multiByteContent =
-        "emoji: 🎉🚀 cjk: 中文测试 bmp: café naïve\n";
+      const multiByteContent = "emoji: 🎉🚀 cjk: 中文测试 bmp: café naïve\n";
       writeFileSync(join(dir, "multibyte.md"), multiByteContent, "utf-8");
       writeJsonlEntries([{ file: "multibyte.md", reason: "unicode spec" }]);
 
@@ -1707,7 +2211,11 @@ describe("opencode context injection limits (issue #441)", () => {
       mkdirSync(join(dir, "refdir"), { recursive: true });
       writeFileSync(join(dir, "refdir", "a.md"), "A".repeat(1000), "utf-8");
       writeFileSync(join(dir, "refdir", "b.md"), "B".repeat(1000), "utf-8");
-      writeFileSync(join(dir, "refdir", "c.txt"), "IGNORED_TXT_CONTENT", "utf-8");
+      writeFileSync(
+        join(dir, "refdir", "c.txt"),
+        "IGNORED_TXT_CONTENT",
+        "utf-8",
+      );
       writeJsonlEntries([
         { file: "refdir/", type: "directory", reason: "reference dir" },
       ]);

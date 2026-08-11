@@ -143,7 +143,9 @@ describe("codex sub-agent recursion guard (issue #234)", () => {
       expect(content).toContain("trellis-implement");
       expect(content).toContain("trellis-check");
       // Mentions the leakage source so the reader knows why
-      expect(content).toMatch(/SessionStart|dispatch.*main session|breadcrumb/i);
+      expect(content).toMatch(
+        /SessionStart|dispatch.*main session|breadcrumb/i,
+      );
     });
   }
 });
@@ -165,9 +167,7 @@ describe("codex two-channel sub-agent context (native SubagentStart)", () => {
       const savedOutputNotice = content.indexOf(
         "Full hook output saved to: <path>",
       );
-      const injectionMarker = content.indexOf(
-        "<!-- trellis-hook-injected -->",
-      );
+      const injectionMarker = content.indexOf("<!-- trellis-hook-injected -->");
 
       expect(savedOutputNotice).toBeGreaterThan(-1);
       expect(injectionMarker).toBeGreaterThan(savedOutputNotice);
@@ -228,7 +228,9 @@ describe("codex session-start.py compact SessionStart context", () => {
     expect(content).toContain("design.md if present");
     expect(content).not.toContain("<sub-agent-notice>");
     expect(content).not.toContain("guides (inlined");
-    expect(content).not.toContain("Project spec indexes are listed by path below");
+    expect(content).not.toContain(
+      "Project spec indexes are listed by path below",
+    );
   });
 
   it("documents fail-open exception suppression", () => {

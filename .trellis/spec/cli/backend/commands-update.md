@@ -35,7 +35,7 @@ trellis update
   [--migrate]            apply pending file migrations (renames/deletes)
 ```
 
-The action handler in `cli/index.ts` constructs `UpdateOptions` and calls `commands/update.ts:update`. There is no env override surface today — flags are the only knobs. (Note: `setupProxy()` in `commands/update.ts:update` reads `HTTP_PROXY` / `HTTPS_PROXY` for the npm version check, but that's the only env input.)
+The action handler in `cli/index.ts` constructs `UpdateOptions` and calls `commands/update.ts:update`. There is no command-specific env override surface today — flags are the only knobs. The advisory npm lookup runs `npm view` as a shell-free subprocess and deliberately omits registry, auth, proxy, and environment overrides, so npm inherits its normal active configuration. `setupProxy()` still configures repository-owned HTTP fetches such as registry-spec refreshes.
 
 `UpdateOptions` is the public interface:
 
@@ -148,7 +148,7 @@ Opt-in to apply file migrations (renames/deletes/dir renames). Without it: migra
 
 ### Tag flag (`--tag <beta|rc|latest>`)
 
-There is no `--tag` flag on `trellis update` today. Version selection is implicit: `update()` always uses the version of the installed CLI (`constants/version.ts:VERSION`). Users who want a specific CLI channel should run `trellis upgrade --tag beta` (or `latest` / `rc`) first, then run `trellis update`. The npm-version check in `commands/update.ts:getLatestNpmVersion` only looks at the `latest` dist-tag and is purely advisory ("⚠️ Your CLI is behind npm").
+There is no `--tag` flag on `trellis update` today. Version selection is implicit: `update()` always uses the version of the installed CLI (`constants/version.ts:VERSION`). Users who want a specific CLI channel should run `trellis upgrade --tag beta` (or `latest` / `rc`) first, then run `trellis update`. The npm-version check in `commands/update.ts:getLatestNpmVersion` asks npm for the package's current `version` (`npm view <package> version --json`), which resolves through the active registry and its `latest` dist-tag. It is purely advisory ("⚠️ Your CLI is behind npm").
 
 ---
 
@@ -358,7 +358,7 @@ platform detections and unsafe update/uninstall plans.
 ### Things that look like bugs but aren't
 
 - The `Proceed?` prompt asks for confirmation even when the only "change" is a version bump. Some of those cases short-circuit before the prompt (no file changes, no migrations, no safe-deletes — see the early return after `analyzeChanges`); others legitimately have changes worth confirming.
-- `getLatestNpmVersion` failure ("unable to fetch") is silent on the npm side and prints a single grayed-out line. The proxy setup happens in `commands/update.ts:update` via `utils/proxy.ts:setupProxy`; users behind a corporate proxy without `HTTP_PROXY` / `HTTPS_PROXY` set will see the gray line forever. This is intentional — the npm check is advisory only.
+- `getLatestNpmVersion` failure (missing npm, timeout, registry/auth/proxy failure, malformed output, or any other subprocess error) is silent on the npm side and prints a single grayed-out line. The subprocess is shell-free, applies a five-second timeout, and passes no `--registry` or custom `env`, so npm resolves registry, credentials, and proxy settings using its normal precedence. This is intentional — the npm check is advisory only.
 
 ---
 
@@ -367,7 +367,7 @@ platform detections and unsafe update/uninstall plans.
 Integration tests live in `test/commands/update.integration.test.ts` (numbered cases `#1 .. #27` plus named cases like `workflow-md-r4`). The fixture pattern:
 
 ```typescript
-beforeEach: mkdtemp + cwd-spy + console-mute + fetch-stub
+beforeEach: mkdtemp + cwd-spy + console-mute + npm-subprocess stub
 setupProject(): await init({ yes: true, force: true })
 test body:
   1. mutate the temp project to simulate the scenario (delete a file, edit a file, swap hashes, edit config.yaml, ...)
@@ -376,7 +376,7 @@ test body:
 afterEach: restoreAllMocks + rm -rf tmp
 ```
 
-External mocks: `figlet` (banner), `inquirer` (prompts; usually default `{ proceed: true }` and per-test overrides for migration-action and conflict-resolution prompts), `node:child_process.execSync` (Python detection), `globalThis.fetch` (npm registry). No filesystem or VERSION mocks — tests rely on the real CLI version and real bundled templates.
+External mocks: `figlet` (banner), `inquirer` (prompts; usually default `{ proceed: true }` and per-test overrides for migration-action and conflict-resolution prompts), `node:child_process.execSync` (Python detection), `node:child_process.execFile` (npm advisory), and `globalThis.fetch` only in registry-spec refresh cases. No filesystem or VERSION mocks — tests rely on the real CLI version and real bundled templates.
 
 Hash file helpers `readHashesV2` / `writeHashesV2` (defined in the test file) bypass `utils/template-hash.ts` to inject precise hash states. Use them when the test's behavior depends on a specific tracked-vs-modified condition that's awkward to construct via `init` + edit.
 

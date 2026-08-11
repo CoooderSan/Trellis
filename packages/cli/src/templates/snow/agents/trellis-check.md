@@ -54,6 +54,14 @@ Active task: <path from task.py current>
 - Still re-read prd/design/implement as required below (hook inject is a breadcrumb, not a full substitute).
 - Optionally Read `.snow/log/trellis-context.txt`.
 
+## Required: Validate Role Manifest Before Work
+
+Before any role work, resolve `<task-path>` from the dispatch prompt's `Active task:` line, then run `python3 ./.trellis/scripts/task.py validate-role-context "<task-path>" check`. If it exits non-zero, relay its stderr to the main session and stop.
+
+This gate always applies to this sub-agent, even when hook context is present. `check.jsonl` is ready only when it exists and is non-empty, every nonblank non-seed row is a JSON object with a non-empty string `file`, at least one valid `file` entry exists (`_example` seed rows do not count), and every referenced file is readable.
+
+If the manifest is missing, empty, seed-only, malformed, contains an invalid entry, or references an unreadable file, stop before review, fixes, or checks. Report the exact manifest/path problem to the main session and ask it to curate `check.jsonl`; do not choose specs heuristically or continue from task artifacts alone. This gate does not apply to the main session's inline mode.
+
 ## Context
 
 Before checking, read:

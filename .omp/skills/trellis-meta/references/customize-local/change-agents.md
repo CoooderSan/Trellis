@@ -24,6 +24,7 @@ When the user wants to change `trellis-research`, `trellis-implement`, or `trell
 | CodeBuddy | `.codebuddy/agents/trellis-*.md` |
 | Factory Droid | `.factory/droids/trellis-*.md` |
 | Pi Agent | `.pi/agents/trellis-*.md` |
+| Oh My Pi | `.omp/agents/trellis-*.md` |
 
 Use the actual paths in the user project as authoritative.
 
@@ -41,7 +42,7 @@ Use the actual paths in the user project as authoritative.
 
 1. **Preserve role boundaries**: research investigates and persists; implement writes implementation; check reviews and fixes.
 2. **Do not hard-code project specs into agents**: long-term specs belong in `.trellis/spec/`; agents are responsible for reading them.
-3. **Make read order explicit**: active task -> PRD -> info -> JSONL -> spec/research.
+3. **Make read order explicit**: active task -> corresponding JSONL -> referenced spec/research -> PRD -> `design.md` if present -> `implement.md` if present.
 4. **Make write boundaries explicit**: which directories may be written and which may not.
 5. **Synchronize across platforms**: when the user configured multiple platforms, decide whether to change only the current platform or all platform agents.
 

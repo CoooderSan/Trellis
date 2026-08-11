@@ -1,0 +1,8 @@
+{"file":".trellis/spec/cli/backend/index.md","reason":"CLI backend pre-development contract and required reference routing."}
+{"file":".trellis/spec/cli/backend/platform-integration.md","reason":"Bootstrap, joiner, JSONL, and platform template integration contracts."}
+{"file":".trellis/spec/cli/backend/configurator-shared.md","reason":"Common template truth-source and renderer parity rules."}
+{"file":".trellis/spec/cli/backend/script-conventions.md","reason":"Python task lifecycle, TaskInfo, and script API conventions."}
+{"file":".trellis/spec/cli/backend/quality-guidelines.md","reason":"Repository-native quality routing and evidence expectations."}
+{"file":".trellis/spec/cli/backend/release-process.md","reason":"Package identity, registry, and release remote safety requirements."}
+{"file":".trellis/spec/cli/unit-test/index.md","reason":"CLI test strategy and required unit-test references."}
+{"file":".trellis/spec/cli/unit-test/integration-patterns.md","reason":"Fresh-project CLI and template integration test patterns."}

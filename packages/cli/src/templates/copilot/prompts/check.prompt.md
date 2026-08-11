@@ -4,7 +4,7 @@ description: "Trellis Copilot prompt: check.prompt"
 
 # Code Quality Check
 
-Comprehensive quality verification for recently written code. Combines spec compliance, cross-layer safety, and pre-commit checks.
+Comprehensive `ITERATION`-profile verification for the current worktree. Combine task/spec compliance, risk-appropriate checks, cross-layer safety, and evidence that remains bound to the change identity it actually checked.
 
 ---
 
@@ -14,6 +14,8 @@ Comprehensive quality verification for recently written code. Combines spec comp
 git diff --name-only HEAD
 git status
 ```
+
+Record the iteration identity: worktree, HEAD when applicable, and the exact dirty diff/change scope being checked. If any of those change later, affected evidence is stale and must be rerun or marked invalid.
 
 ## Step 2: Read Task Artifacts and Applicable Specs
 
@@ -35,25 +37,28 @@ cat .trellis/spec/<package>/<layer>/index.md
 
 Read the specific guideline files referenced — the index is a pointer, not the goal.
 
-## Step 3: Run Project Checks
+## Step 3: Choose and Run Risk-Appropriate Checks
 
-Run the project's lint, type-check, and test commands. Fix any failures before proceeding.
+TDD is optional and risk-driven. Prefer it for reproducible bugs, business rules, state machines, algorithms, and pure logic whose expected behavior can be expressed before implementation.
+
+Discover and run the repository's applicable lint, type-check, tests, builds, contract checks, integration checks, and runtime probes. Configuration, device-dependent behavior, cross-system integration, or legacy seams may require logs or explicit manual verification instead of a particular automated test category.
+
+If a check is not configured, not applicable, or intentionally skipped, do not treat that absence as a pass. Record the reason and provide proportionate alternative verification evidence. Exit code zero alone does not prove that tests were discovered or executed.
 
 ## Step 4: Review Against Checklist
 
 ### Code Quality
 
-- [ ] Linter passes?
-- [ ] Type checker passes (if applicable)?
-- [ ] Tests pass?
+- [ ] Applicable lint/type/build/test/contract/integration/runtime checks have evidence?
+- [ ] Test discovery/execution is confirmed rather than inferred from exit code alone?
 - [ ] No debug logging left in?
 - [ ] No suppressed warnings or type-safety bypasses?
 
-### Test Coverage
+### Behavior Coverage
 
-- [ ] New function → unit test added?
-- [ ] Bug fix → regression test added?
-- [ ] Changed behavior → existing tests updated?
+- [ ] Changed behavior and identified risks are covered by automated checks or explicit alternative evidence?
+- [ ] Reproducible bug/regression paths have a durable prevention check when practical?
+- [ ] `NOT_APPLICABLE` / `SKIPPED` checks include a reason?
 
 ### Spec Sync
 
@@ -94,4 +99,15 @@ Skip this step if your change is confined to a single layer.
 
 ## Step 6: Report and Fix
 
-Report violations found and fix them directly. Re-run project checks after fixes.
+Report violations found and fix them directly. Re-run affected checks after fixes.
+
+Report each check using the shared status vocabulary:
+
+- `PASSED`, `FAILED`, `NOT_CONFIGURED`, `NOT_APPLICABLE`, `SKIPPED`, `PENDING`, `UNKNOWN`, or `PLANNED`
+- identity: worktree, HEAD when applicable, dirty diff/change scope
+- evidence: command or observation, checked object, key result, time, and source
+- invalidation: which code, HEAD, target, configuration, or environment changes make the evidence stale
+
+Required facts at `FAILED`, `UNKNOWN`, or `PENDING` are not green and cannot support an MR-ready claim. Do not alter Sonar, pipeline, or platform facts to manufacture a pass. `check.jsonl` is only a sub-agent context manifest; never write quality results into it.
+
+This prompt reports `ITERATION` evidence. An `MR_CANDIDATE` claim additionally requires an exact source SHA, fetched target SHA, and complete candidate diff checked by the repository's merge-request gate.

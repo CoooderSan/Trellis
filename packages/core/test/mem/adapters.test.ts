@@ -6,7 +6,7 @@
  * `homedir()` at a per-suite tmpdir before any mem module resolves.
  *
  * Migrated from the CLI `mem-platforms` suite when the adapters moved into
- * `@mindfoldhq/trellis-core/mem`.
+ * `@ecochain/trellis-core/mem`.
  */
 
 import {
@@ -661,7 +661,9 @@ describe("codexListSessions / codexExtractDialogue", () => {
             {
               type: "message",
               role: "user",
-              content: [{ type: "input_text", text: "only in retained history" }],
+              content: [
+                { type: "input_text", text: "only in retained history" },
+              ],
             },
             // Already collected above — must not be duplicated.
             {
@@ -719,10 +721,9 @@ describe("codexListSessions / codexExtractDialogue", () => {
     if (!s) return;
     const turns = codexExtractDialogue(s);
     // Two real "ok" turns survive as two; the two retained copies are dropped.
-    expect(turns.filter((t) => t.kind !== "marker").map((t) => t.text)).toEqual([
-      "ok",
-      "ok",
-    ]);
+    expect(turns.filter((t) => t.kind !== "marker").map((t) => t.text)).toEqual(
+      ["ok", "ok"],
+    );
   });
 
   it("recovers a FINAL_ANSWER inter-agent envelope and reports encrypted ones", () => {
@@ -771,7 +772,9 @@ describe("codexListSessions / codexExtractDialogue", () => {
     expect(turns).toEqual([
       { role: "assistant", text: "the sub-agent's report" },
     ]);
-    expect(warnings.map((w) => w.code)).toEqual(["codex-inter-agent-encrypted"]);
+    expect(warnings.map((w) => w.code)).toEqual([
+      "codex-inter-agent-encrypted",
+    ]);
     expect(warnings[0]?.message).toContain("1 inter-agent message payload");
   });
 

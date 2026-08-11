@@ -3,7 +3,7 @@
 How Trellis indexes, searches, and extracts dialogue from on-disk session files
 written by Claude Code, Codex, OpenCode, Pi Agent, and ZCode.
 
-The retrieval engine lives in `@mindfoldhq/trellis-core/mem` (`packages/core/src/mem/`);
+The retrieval engine lives in `@ecochain/trellis-core/mem` (`packages/core/src/mem/`);
 `packages/cli/src/commands/mem.ts` is a thin CLI wrapper over it. See "Package
 boundary" below before "Subcommand surface".
 
@@ -44,11 +44,11 @@ invoked from the `tl` Commander wire.
 
 ## Package boundary
 
-`mem` is split between `@mindfoldhq/trellis-core` and the CLI. See
+`mem` is split between `@ecochain/trellis-core` and the CLI. See
 `trellis-core-sdk.md` for the general rule; the `mem`-specific split:
 
 **Core owns** (`packages/core/src/mem/`, public surface at the
-`@mindfoldhq/trellis-core/mem` subpath — **not** the root barrel):
+`@ecochain/trellis-core/mem` subpath — **not** the root barrel):
 
 - persisted-session readers / adapters for Claude Code, Codex, OpenCode, Pi,
   and ZCode (`adapters/{claude,codex,opencode,pi,zcode}.ts`)
@@ -73,7 +73,7 @@ invoked from the `tl` Commander wire.
 The CLI imports core through the public subpath only:
 
 ```ts
-import { searchMemSessions } from "@mindfoldhq/trellis-core/mem";
+import { searchMemSessions } from "@ecochain/trellis-core/mem";
 ```
 
 Core search/context/extract results carry a `warnings` array. List/projects
@@ -86,7 +86,7 @@ or exits.
 ## Subcommand surface
 
 Entry point: `commands/mem.ts:runMem` dispatches on `argv.cmd` after
-`commands/mem.ts:parseArgv`, then calls the matching core `@mindfoldhq/trellis-core/mem`
+`commands/mem.ts:parseArgv`, then calls the matching core `@ecochain/trellis-core/mem`
 API and renders the result. The cross-cutting `--platform / --since / --until /
 --cwd / --global / --limit` flags are parsed by the CLI and translated into a
 core `MemFilter`.
@@ -104,14 +104,14 @@ core `MemFilter`.
 
 Cross-cutting (`buildFilter`):
 
-| Flag                                          | Default         | Notes                                                                                                                                                                |
-| --------------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--platform claude\|codex\|opencode\|pi\|zcode\|all` | `all` | Validated by the CLI against the `MemSourceFilter` union (hand-written guard, no zod). Unknown value → exit 2. |
-| `--since YYYY-MM-DD`                          | none            | Inclusive lower bound. Parsed by `new Date(value)`; invalid → exit 2.                                                                                                |
-| `--until YYYY-MM-DD`                          | none            | Inclusive upper bound; parser appends `T23:59:59.999Z` so a date string covers the whole UTC day.                                                                    |
-| `--cwd <path>`                                | `process.cwd()` | Project scope. Resolved with `path.resolve`. Combined with `--global` → `--global` wins.                                                                             |
-| `--global`                                    | off             | Drops cwd scoping (`f.cwd = undefined`).                                                                                                                             |
-| `--limit N`                                   | `50`            | Cap on output rows. Internally bumped to `1_000_000` for `search` candidate gathering and `findSessionById` so the limit only controls _display_, not search recall. |
+| Flag                                                 | Default         | Notes                                                                                                                                                                |
+| ---------------------------------------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--platform claude\|codex\|opencode\|pi\|zcode\|all` | `all`           | Validated by the CLI against the `MemSourceFilter` union (hand-written guard, no zod). Unknown value → exit 2.                                                       |
+| `--since YYYY-MM-DD`                                 | none            | Inclusive lower bound. Parsed by `new Date(value)`; invalid → exit 2.                                                                                                |
+| `--until YYYY-MM-DD`                                 | none            | Inclusive upper bound; parser appends `T23:59:59.999Z` so a date string covers the whole UTC day.                                                                    |
+| `--cwd <path>`                                       | `process.cwd()` | Project scope. Resolved with `path.resolve`. Combined with `--global` → `--global` wins.                                                                             |
+| `--global`                                           | off             | Drops cwd scoping (`f.cwd = undefined`).                                                                                                                             |
+| `--limit N`                                          | `50`            | Cap on output rows. Internally bumped to `1_000_000` for `search` candidate gathering and `findSessionById` so the limit only controls _display_, not search recall. |
 
 Subcommand-specific:
 
@@ -663,8 +663,8 @@ cover every shape Trellis users actually write:
 
 Concretely supported invokers + path forms:
 
-- `python ./.trellis/scripts/task.py create "title"`
-- `python3 ./.trellis/scripts/task.py create my-task`
+- `python ./.trellis/scripts/task.py create "title" --classification maintenance --product-intent-reason "Parser example with no product behavior change"`
+- `python3 ./.trellis/scripts/task.py create my-task --classification maintenance --product-intent-reason "Parser example with no product behavior change"`
 - `py -3 .trellis/scripts/task.py create ...` (Windows launcher)
 - `python3 .trellis\\scripts\\task.py start ...` (JSONL-double-escaped backslash)
 - `python3 .trellis\scripts\task.py start ...` (single backslash)
@@ -686,7 +686,7 @@ Bash idioms that surface in dogfood JSONL streams.
 
 | Pattern (real-world)                                                                                             | Edge                                               | Required handling                                                                                                                                           |
 | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `SMOKE=$(python3 task.py create demo --slug demo)`                                                               | trailing `)` glued onto last arg                   | `splitShellArgs` strips trailing `;                                                                                                                         | &()` from each token before yielding |
+| `SMOKE=$(python3 task.py create demo --slug demo --classification maintenance --product-intent-reason "Parser example")` | trailing `)` glued onto last arg                   | `splitShellArgs` strips trailing `;                                                                                                                         | &()` from each token before yielding |
 | `SMOKE=$(task.py create …); task.py start "$SMOKE"`                                                              | TWO `task.py` calls in one Bash command            | `parseTaskPyCommandsAll` returns ALL matches, not just the first                                                                                            |
 | `EOF\nWith --slug, task.py start runs after create…` (heredoc commit message body containing the literal phrase) | prose, not a command                               | False-positive guard: token after `task.py` must be a known subcommand at a word boundary; surrounding context must look like an invocation, not a sentence |
 | `python3 .trellis/scripts/task.py start .trellis/tasks/05-08-foo`                                                | task-dir has `MM-DD-` prefix from `task.py create` | `slugFromTaskDir` strips a leading `MM-DD-` so a `create --slug foo` pairs with this `start` via slug match                                                 |
@@ -779,7 +779,7 @@ machine-readable stdout used by `--json` consumers.
 | Claude   | Native — boundary detection on `tool_use` (Bash) blocks in raw JSONL                                                                        |
 | Codex    | Native — boundary detection on `function_call` events whose `name` is `exec_command` or `shell` (Codex's Bash twin)                         |
 | Pi       | Native — boundary detection on assistant `toolCall` blocks named `bash` / `shell` and `bashExecution.command` messages on the active branch |
-| ZCode    | Native — boundary detection on `part.data` Bash tool records after compaction has selected the effective dialogue                         |
+| ZCode    | Native — boundary detection on `part.data` Bash tool records after compaction has selected the effective dialogue                           |
 | OpenCode | Reader unavailable in 0.6.0-beta.4+ (returns empty + warning)                                                                               |
 
 `core/mem/adapters/codex.ts:collectCodexTurnsAndEvents` is the Codex twin of
@@ -945,23 +945,23 @@ discriminated union, which they do; trust the compiler here.
 
 ## Runtime validation (no zod)
 
-`core/mem/` does **not** use `zod` — `@mindfoldhq/trellis-core` keeps a
+`core/mem/` does **not** use `zod` — `@ecochain/trellis-core` keeps a
 zero-dependency surface (see `trellis-core-sdk.md`). External platform shapes
 are modeled as loose TypeScript `interface`s with every field optional, and
 the adapters guard fields at the point of use with plain `typeof` / `Array.isArray`
 checks. The public domain types live in `core/mem/types.ts`:
 
-| Type                                                                 | Domain                                                              |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Type                                                                 | Domain                                                                         |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | `MemSourceKind` / `MemSourceFilter`                                  | `"claude" \| "codex" \| "opencode" \| "pi" \| "zcode"` (+ `"all"` for filters) |
-| `MemSessionInfo`                                                     | unified session metadata across platforms                           |
-| `DialogueRole` / `DialogueTurn`                                      | `"user" \| "assistant"` and a cleaned turn                          |
-| `SearchExcerpt` / `SearchHit` / `MemSearchMatch` / `MemSearchResult` | search output                                                       |
-| `MemFilter`                                                          | normalized cross-cutting filter (CLI flags translate into this)     |
-| `MemContextTurn` / `MemContextResult`                                | dialogue-context window output                                      |
-| `BrainstormWindow` / `MemDialogueGroup` / `MemExtractResult`         | phase-slicing output                                                |
-| `MemProjectSummary`                                                  | project aggregation output                                          |
-| `MemWarning`                                                         | structured warning returned to the CLI                              |
+| `MemSessionInfo`                                                     | unified session metadata across platforms                                      |
+| `DialogueRole` / `DialogueTurn`                                      | `"user" \| "assistant"` and a cleaned turn                                     |
+| `SearchExcerpt` / `SearchHit` / `MemSearchMatch` / `MemSearchResult` | search output                                                                  |
+| `MemFilter`                                                          | normalized cross-cutting filter (CLI flags translate into this)                |
+| `MemContextTurn` / `MemContextResult`                                | dialogue-context window output                                                 |
+| `BrainstormWindow` / `MemDialogueGroup` / `MemExtractResult`         | phase-slicing output                                                           |
+| `MemProjectSummary`                                                  | project aggregation output                                                     |
+| `MemWarning`                                                         | structured warning returned to the CLI                                         |
 
 The loose per-platform event interfaces (`CodexEvent`, `CodexPayload`,
 `ClaudeEvent`, …) stay local to their adapter file.
@@ -1087,16 +1087,16 @@ When adding a feature to `mem`:
 
 ## Public API surface
 
-### Core — `@mindfoldhq/trellis-core/mem`
+### Core — `@ecochain/trellis-core/mem`
 
 The reusable retrieval API, importable by the CLI, daemons, and future SDK
 consumers. Exposed only on the `/mem` subpath — **not** the root barrel.
 
-| Export                                                                                                                                                      | Use                                                                                        |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Export                                                                                                                                                      | Use                                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `listMemSessions`, `searchMemSessions`, `readMemContext`, `extractMemDialogue`, `listMemProjects`                                                           | five orchestration entry points; search/context/extract return `warnings`, list/projects accept `onWarning` |
-| `MemSessionNotFoundError`                                                                                                                                   | typed error for `context` / `extract` against an unknown session id                        |
-| `MemSessionInfo`, `MemFilter`, `DialogueTurn`, `SearchHit`, `MemSearchResult`, `MemContextResult`, `MemExtractResult`, `MemProjectSummary`, `MemWarning`, … | input/output types (see `core/mem/types.ts`)                                               |
+| `MemSessionNotFoundError`                                                                                                                                   | typed error for `context` / `extract` against an unknown session id                                         |
+| `MemSessionInfo`, `MemFilter`, `DialogueTurn`, `SearchHit`, `MemSearchResult`, `MemContextResult`, `MemExtractResult`, `MemProjectSummary`, `MemWarning`, … | input/output types (see `core/mem/types.ts`)                                                                |
 
 Internal core modules (`filter.ts`, `search.ts`, `dialogue.ts`, `context.ts`,
 `phase.ts`, the adapters, and everything under `internal/`) are exercised
@@ -1119,7 +1119,7 @@ stderr, emits the OpenCode-unavailable notice, and owns exit codes.
 ## Reference
 
 - `packages/core/src/mem/` — retrieval engine (adapters, search, context, phase, projects)
-- `packages/core/src/mem/index.ts` — `@mindfoldhq/trellis-core/mem` public surface
+- `packages/core/src/mem/index.ts` — `@ecochain/trellis-core/mem` public surface
 - `packages/cli/src/commands/mem.ts` — CLI wrapper (`runMem`, argv parsing, rendering)
 - `packages/core/test/mem/` — core retrieval tests (helpers, adapters, phase, cross-day, api)
 - `packages/cli/test/commands/mem-helpers.test.ts` — CLI argv / formatting tests

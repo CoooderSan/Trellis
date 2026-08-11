@@ -26,6 +26,8 @@ Repository evidence establishes current behavior and technical constraints. The 
 
 Use this skill during Phase 1 planning to turn the user's request into clear requirements and planning artifacts.
 
+Natural-language development requests are the normal trigger; the user does not need to invoke this skill or follow a fixed command chain. Apply it to feature, bug-fix, refactor, and maintenance planning. Read-only questions and ordinary operational work should not be forced into a development task unless durable planning, review, or rollback coordination is genuinely needed.
+
 ## Preconditions
 
 Use this skill only after task-creation consent has been given and the user is ready to enter Trellis planning.
@@ -33,10 +35,17 @@ Use this skill only after task-creation consent has been given and the user is r
 If no task exists yet, create one:
 
 ```bash
-TASK_DIR=$({{PYTHON_CMD}} ./.trellis/scripts/task.py create "<short task title>" --slug <slug>)
+# Business feature: requires an already approved Product Intent link.
+TASK_DIR=$({{PYTHON_CMD}} ./.trellis/scripts/task.py create "<short task title>" --slug <slug> --classification business-feature --product-intent-link "<approved-link-or-document-id>")
+
+# Bugfix or maintenance: Product Intent may be NOT_REQUIRED, but the reason
+# and the remaining Task Basis are still required.
+TASK_DIR=$({{PYTHON_CMD}} ./.trellis/scripts/task.py create "<short task title>" --slug <slug> --classification <bugfix-or-maintenance> --product-intent-reason "<why Product Intent is not required>")
 ```
 
 Use a concise title from the user's request. Use a slug without a date prefix. `task.py create` adds the `MM-DD-` directory prefix automatically.
+
+Choose exactly one command shape after classifying the request. Do not create development tasks for read-only analysis or ordinary operational work merely to enter this skill. Review revisions reuse the existing task and review evidence instead of creating a duplicate task. Do not invent a Product Intent link or use a generic reason to bypass the gate.
 
 `task.py create` creates the default `prd.md`. Update that file with the current understanding before asking follow-up questions.
 
@@ -55,6 +64,8 @@ Use a concise title from the user's request. Use a slug without a date prefix. `
 4. If a user-owned decision remains, ask the single highest-value question, include your recommendation and trade-off, then stop. Do not perform implementation work in the same turn.
 5. After each user answer, update `prd.md`, recompute the decision inventory, and repeat from step 2.
 6. When no user-owned decision remains, create or update `design.md` and `implement.md` for complex tasks.
+   - Plan a risk-appropriate verification strategy.
+   - Treat TDD as optional: prefer it for reproducible bugs, rules, state machines, algorithms, and pure logic; use contract, integration, build, runtime, log, or manual evidence where a test category is not applicable.
 7. Run the requirement convergence gate, then the PRD convergence pass.
 8. Present the final planning summary and stop. Do not run `task.py start` or edit product code in the same turn.
 9. Only a subsequent user message that explicitly approves the latest planning summary authorizes `task.py start` and implementation. If the artifacts change materially after approval, repeat the final review.
@@ -123,7 +134,7 @@ The final planning summary must show Goal, In Scope, Out of Scope, Acceptance Cr
 
 Lightweight tasks may have only `prd.md`. Complex tasks must have `prd.md`, `design.md`, and `implement.md` before `task.py start`.
 
-`implement.md` is not a replacement for `implement.jsonl`. On sub-agent-dispatch workflows, `implement.jsonl` and `check.jsonl` must each contain at least one real spec/research entry before `task.py start`; the seed `_example` row does not count. Inline workflows skip this JSONL gate because Phase 2 loads context through `trellis-before-dev`.
+`implement.md` is not a replacement for `implement.jsonl`. On sub-agent-dispatch workflows, `implement.jsonl` and `check.jsonl` are context manifests, not implementation logs or quality-result stores. Curate the applicable role manifest before dispatching that implement/check sub-agent; a missing, empty, seed-only, or entry-invalid manifest is not ready and the dispatched agent must fail closed. `task.py start` does not choose the later execution route or enforce role-manifest readiness. Inline workflows skip only this JSONL gate because Phase 2 directly loads applicable context through `trellis-before-dev`; specs, review, and verification remain mandatory.
 
 ## PRD Convergence Pass
 
@@ -149,7 +160,7 @@ Before declaring planning ready:
 - Repository-answerable questions have already been answered through inspection.
 - Blocking open questions are empty.
 - Complex tasks have `design.md` and `implement.md`.
-- Sub-agent-dispatch tasks have real curated entries in both `implement.jsonl` and `check.jsonl`; seed-only manifests are not ready.
+- Each planned sub-agent dispatch has a real curated entry in its applicable `implement.jsonl` or `check.jsonl` before dispatch; seed-only manifests are not ready.
 - The latest final planning summary has been presented to the user.
 - In a subsequent message, the user explicitly approved that summary for implementation.
 

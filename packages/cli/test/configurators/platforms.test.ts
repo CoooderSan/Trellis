@@ -107,13 +107,14 @@ const CONFIGURE_ONLY_PATHS = new Set([".claude/hooks/statusline.py"]);
  * `Map<path, content>` cannot express an empty directory, so each one is
  * named here against the platform that needs it.
  */
-const CONFIGURE_ONLY_EMPTY_DIRS: Partial<Record<(typeof PLATFORM_IDS)[number], string[]>> =
-  {
-    // Trellis ships no Codex-specific skills (they all land in
-    // `.agents/skills/`, which Codex reads too). The directory is still
-    // created so users have the conventional place for their own.
-    codex: [".codex/skills"],
-  };
+const CONFIGURE_ONLY_EMPTY_DIRS: Partial<
+  Record<(typeof PLATFORM_IDS)[number], string[]>
+> = {
+  // Trellis ships no Codex-specific skills (they all land in
+  // `.agents/skills/`, which Codex reads too). The directory is still
+  // created so users have the conventional place for their own.
+  codex: [".codex/skills"],
+};
 
 /** Every file under `root`, as POSIX paths relative to `root`. */
 function walkFiles(root: string, rel = ""): string[] {
@@ -195,7 +196,10 @@ describe("getConfiguredPlatforms", () => {
     });
     expect(getConfiguredPlatforms(tmpDir).has("devin")).toBe(false);
 
-    fs.writeFileSync(path.join(workflowsDir, "trellis-continue.md"), "# Trellis");
+    fs.writeFileSync(
+      path.join(workflowsDir, "trellis-continue.md"),
+      "# Trellis",
+    );
     const result = getConfiguredPlatforms(tmpDir);
     expect(result.has("devin")).toBe(true);
   });
@@ -247,6 +251,30 @@ describe("configurePlatform", () => {
     await configurePlatform("claude-code", tmpDir);
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(true);
   });
+
+  it.each([
+    ["codex", ".codex/agents/trellis-check.toml"],
+    ["claude-code", ".claude/agents/trellis-check.md"],
+  ] as const)(
+    "configurePlatform('%s') writes the shared contract into the actual check executor",
+    async (platform, executorPath) => {
+      await configurePlatform(platform, tmpDir);
+      const executor = readConfiguredFile(tmpDir, executorPath);
+
+      expect(executor).not.toContain("{{TRELLIS_CHECK_CONTRACT}}");
+      expect(executor).toContain("`ITERATION`-profile verification");
+      expect(executor).toContain("git diff HEAD");
+      expect(executor).toContain("git diff --cached --no-ext-diff");
+      expect(executor).toContain("git status --short");
+      expect(executor).toContain("git ls-files --others --exclude-standard");
+      expect(executor).toContain(
+        "final structured Agent report is the independent `ITERATION` evidence artifact",
+      );
+      expect(executor).toContain(
+        "`check.jsonl` is only a sub-agent context manifest; never write quality results into it",
+      );
+    },
+  );
 
   it("configurePlatform('cursor') creates .cursor directory", async () => {
     await configurePlatform("cursor", tmpDir);
@@ -448,6 +476,7 @@ describe("configurePlatform", () => {
     expect(actualAgentNames).toEqual(
       expectedAgents.map((agent) => agent.name).sort(),
     );
+    const collected = collectPlatformTemplates("codex");
 
     for (const agent of expectedAgents) {
       const agentPath = path.join(codexAgentsRoot, `${agent.name}.toml`);
@@ -455,7 +484,7 @@ describe("configurePlatform", () => {
       const written = fs.readFileSync(agentPath, "utf-8");
       // Native SubagentStart injects context, while every profile retains a
       // marker-gated active-task pull fallback when the hook is unavailable.
-      expect(written).toBe(replacePythonCommandLiterals(agent.content));
+      expect(written).toBe(collected?.get(`.codex/agents/${agent.name}.toml`));
       expect(written).toContain("<!-- trellis-hook-injected -->");
       expect(written).toContain("Active task: <path>");
       expect(written).not.toContain("Required: Load Trellis Context First");
@@ -916,7 +945,9 @@ describe("configurePlatform", () => {
       fs.mkdirSync(path.join(emptyDir, ".snow"), { recursive: true });
       fs.writeFileSync(path.join(emptyDir, ".snow", "settings.json"), "{}");
       expect(getConfiguredPlatforms(emptyDir).has("snow")).toBe(false);
-      fs.mkdirSync(path.join(emptyDir, ".snow", "commands"), { recursive: true });
+      fs.mkdirSync(path.join(emptyDir, ".snow", "commands"), {
+        recursive: true,
+      });
       expect(getConfiguredPlatforms(emptyDir).has("snow")).toBe(false);
       fs.mkdirSync(path.join(emptyDir, ".snow", "agents"), { recursive: true });
       expect(getConfiguredPlatforms(emptyDir).has("snow")).toBe(false);

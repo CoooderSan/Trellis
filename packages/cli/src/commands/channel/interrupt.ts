@@ -1,7 +1,7 @@
 import {
   requestInterrupt,
   type ChannelScope,
-} from "@mindfoldhq/trellis-core/channel";
+} from "@ecochain/trellis-core/channel";
 
 import { parseChannelScope } from "./store/schema.js";
 import { resolveChannelTextBody } from "./text-body.js";

@@ -231,8 +231,10 @@ def _get_task_status(trellis_dir: Path, hook_input: dict) -> str:
     if not active.task_path:
         return (
             "Status: NO ACTIVE TASK\n"
-            "Next: Classify the current turn and ask for task-creation consent "
-            "before creating any Trellis task."
+            "Next: Classify the natural-language request first. Read-only questions and ordinary "
+            "operational work normally proceed without a development task. Feature, bug-fix, "
+            "refactor, or maintenance development asks for task-creation consent; review revisions "
+            "reuse their existing task and review evidence."
         )
 
     task_ref = active.task_path

@@ -197,6 +197,29 @@ describe("init() integration", () => {
         path.join(tmpDir, ".claude", "skills", "trellis-meta", "SKILL.md"),
       ),
     ).toBe(true);
+
+    const claudeBrainstorm = fs.readFileSync(
+      path.join(
+        tmpDir,
+        ".claude",
+        "skills",
+        "trellis-brainstorm",
+        "SKILL.md",
+      ),
+      "utf-8",
+    );
+    const workflow = fs.readFileSync(
+      path.join(tmpDir, DIR_NAMES.WORKFLOW, FILE_NAMES.WORKFLOW_GUIDE),
+      "utf-8",
+    );
+    expect(claudeBrainstorm).toContain("Dazz constraint voice");
+    expect(claudeBrainstorm).toContain(
+      "A bugfix or maintenance task may use `NOT_REQUIRED`",
+    );
+    expect(workflow).toContain("Dazz is a presentation layer");
+    expect(workflow).toContain(
+      "Readonly and ordinary operational work remain outside development gates",
+    );
   });
 
   it("#3 multi platform creates all selected platform directories", async () => {
@@ -285,6 +308,40 @@ describe("init() integration", () => {
     expect(fs.existsSync(path.join(tmpDir, ".claude"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".cursor"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".gemini"))).toBe(false);
+
+    const codexBrainstorm = fs.readFileSync(
+      path.join(
+        tmpDir,
+        ".agents",
+        "skills",
+        "trellis-brainstorm",
+        "SKILL.md",
+      ),
+      "utf-8",
+    );
+    const codexBeforeDev = fs.readFileSync(
+      path.join(
+        tmpDir,
+        ".agents",
+        "skills",
+        "trellis-before-dev",
+        "SKILL.md",
+      ),
+      "utf-8",
+    );
+    const workflow = fs.readFileSync(
+      path.join(tmpDir, DIR_NAMES.WORKFLOW, FILE_NAMES.WORKFLOW_GUIDE),
+      "utf-8",
+    );
+    expect(codexBrainstorm).toContain("Dazz constraint voice");
+    expect(codexBeforeDev).toContain("Dazz constraint voice");
+    expect(codexBeforeDev).toContain(
+      "eligible bugfix/maintenance work may use a complete Task Basis",
+    );
+    expect(workflow).toContain("Dazz is a presentation layer");
+    expect(workflow).toContain(
+      "Never recreate a blanket Product Intent requirement",
+    );
 
     const hashFile = path.join(
       tmpDir,
@@ -1134,20 +1191,43 @@ describe("init() integration", () => {
     // Canonical shape: legacy current_phase / next_action must NOT appear
     expect(taskJson.current_phase).toBeUndefined();
     expect(taskJson.next_action).toBeUndefined();
+    expect(taskJson.status).toBe("planning");
+    expect(taskJson.meta).toMatchObject({
+      classification: "maintenance",
+      product_intent: "NOT_REQUIRED",
+    });
 
     // relatedFiles point to spec/<name>/
     expect(taskJson.relatedFiles).toContain(".trellis/spec/core/");
     expect(taskJson.relatedFiles).toContain(".trellis/spec/ui/");
 
-    // prd.md mentions packages + renders per-package checklist items
+    const intent = fs.readFileSync(path.join(taskDir, "intent.md"), "utf-8");
+    expect(intent).toContain("## Classification\n\nmaintenance");
+    expect(intent).toContain("Status: NOT_REQUIRED");
+    expect(intent).toContain("## Requested Outcome");
+    expect(intent).toContain("## In Scope / Out of Scope");
+    expect(intent).toContain("## Acceptance or Verification Basis");
+
+    // prd.md mentions packages and reviews their fit/gaps without requiring
+    // boilerplate to be filled for every package.
     const prd = fs.readFileSync(path.join(taskDir, "prd.md"), "utf-8");
     const expectedPythonCmd =
       process.platform === "win32" ? "python" : "python3";
     expect(prd).toContain("core");
     expect(prd).toContain("ui");
     expect(prd).toContain("spec/");
-    expect(prd).toContain("- [ ] Fill guidelines for core");
-    expect(prd).toContain("- [ ] Fill guidelines for ui");
+    expect(prd).toContain(
+      "- [ ] Review project-specific fit and gaps for packages: core, ui",
+    );
+    expect(prd).toContain("explicit no-gap conclusion");
+    expect(prd).not.toContain("Fill guidelines for core");
+    expect(prd).not.toContain("Every AI coding task spawns two sub-agents");
+    expect(prd).toContain("## Goal");
+    expect(prd).toContain("## Requirements");
+    expect(prd).toContain("## Acceptance Criteria");
+    expect(prd).toContain(
+      `${expectedPythonCmd} ./.trellis/scripts/task.py start 00-bootstrap-guidelines`,
+    );
     expect(prd).toContain(
       `${expectedPythonCmd} ./.trellis/scripts/task.py finish`,
     );
@@ -1231,6 +1311,7 @@ describe("init() integration", () => {
 
     await init({
       yes: true,
+      user: "registry-owner",
       registry: `gitlab:local/registry/spec`,
       overwrite: true,
     });
@@ -1252,6 +1333,31 @@ describe("init() integration", () => {
     expect(hashFile.hashes?.[".trellis/spec/index.md"]).toBe(
       computeHash("# remote spec\n"),
     );
+
+    const bootstrapPrd = fs.readFileSync(
+      path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines", FILE_NAMES.PRD),
+      "utf-8",
+    );
+    const bootstrapTask = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          tmpDir,
+          PATHS.TASKS,
+          "00-bootstrap-guidelines",
+          FILE_NAMES.TASK_JSON,
+        ),
+        "utf-8",
+      ),
+    ) as { relatedFiles: string[] };
+    expect(bootstrapPrd).toContain("gitlab:local/registry/spec");
+    expect(bootstrapPrd).toContain(
+      "Treat it as the starting point and review only this repository's differences",
+    );
+    expect(bootstrapPrd).toContain("If no gap exists, record that conclusion");
+    expect(bootstrapPrd).toContain("`.trellis/spec/index.md`");
+    expect(bootstrapPrd).not.toContain("database-guidelines.md");
+    expect(bootstrapPrd).not.toContain("state-management.md");
+    expect(bootstrapTask.relatedFiles).toEqual([".trellis/spec/index.md"]);
   });
 
   it("#22 -y --registry --template records marketplace template source and tracks downloaded spec files", async () => {

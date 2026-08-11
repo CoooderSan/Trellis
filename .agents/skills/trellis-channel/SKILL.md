@@ -30,14 +30,14 @@ trellis channel context list <board> --scope global --thread <thread>
 
 ## Route By User Intent
 
-| User intent | Read |
-|---|---|
-| "和 codex/claude 讨论一下", "brainstorm with another agent" | `references/workflows.md` |
+| User intent                                                         | Read                                                    |
+| ------------------------------------------------------------------- | ------------------------------------------------------- |
+| "和 codex/claude 讨论一下", "brainstorm with another agent"         | `references/workflows.md`                               |
 | "派一个 implement/check agent", "让 agent review", "spawn a worker" | `references/workflows.md`, then `references/workers.md` |
-| "开 issue 区 / topic 群 / changelog / board", "make a forum" | `references/forum.md` |
-| "看看这个 thread / linked context", "inspect a thread" | `references/forum.md` |
-| "channel 卡住了 / 没输出 / progress 被截断", "worker stalled" | `references/progress-debugging.md` |
-| "具体命令怎么写", "what flags does X take" | `references/command-reference.md` |
+| "开 issue 区 / topic 群 / changelog / board", "make a forum"        | `references/forum.md`                                   |
+| "看看这个 thread / linked context", "inspect a thread"              | `references/forum.md`                                   |
+| "channel 卡住了 / 没输出 / progress 被截断", "worker stalled"       | `references/progress-debugging.md`                      |
+| "具体命令怎么写", "what flags does X take"                          | `references/command-reference.md`                       |
 
 ## Core Rules
 
@@ -50,7 +50,7 @@ trellis channel context list <board> --scope global --thread <thread>
 - For brainstorm, do multiple pressure-test rounds. One answer plus one confirmation is review, not brainstorm.
 - **Dispatcher wait pattern**: use `--kind done` / `--kind turn_finished` (trellis-emitted system events), NOT a user `--tag` as the completion signal. CLI help lists `phase_done` / `question` as `--tag` examples but only `interrupt` is a reserved tag with hardcoded trellis behavior; the others are opaque user labels. Relying on a worker to run `send --tag <my_signal>` is unreliable — LLM workers commonly write the tag string into prose instead of running the actual CLI command. See `references/command-reference.md` "tag vs kind".
 - Forum channels are event-sourced. Do not parse `events.jsonl` first; use `forum`, `thread`, `messages --thread`, and `context list`.
-- `@mindfoldhq/trellis-core` owns reusable channel/thread state, event append, seq allocation, context/title projection, reducers, and task helpers. The CLI owns flags, terminal rendering, prompts, worker lifecycle, and process exits.
+- `@ecochain/trellis-core` owns reusable channel/thread state, event append, seq allocation, context/title projection, reducers, and task helpers. The CLI owns flags, terminal rendering, prompts, worker lifecycle, and process exits.
 
 ## Reference Files
 

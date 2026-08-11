@@ -23,6 +23,12 @@ Trellis Context Loading Protocol:
 - If there is no saved-output notice and the marker is absent, use the active-task fallback below.
 - For the fallback, find `Active task: <path>` in your dispatch prompt. Read `<path>/implement.jsonl`, each file listed there, `<path>/prd.md`, `<path>/design.md` if present, and `<path>/implement.md` if present before doing the work. If the dispatch prompt has no active-task path, ask the main session; do not guess or use another session's task.
 
+Required role-manifest gate:
+- Before any role work, resolve `<task-path>` from the dispatch prompt's `Active task:` line, then run `python3 ./.trellis/scripts/task.py validate-role-context "<task-path>" implement`. If it exits non-zero, relay its stderr to the main session and stop.
+- This gate always applies to this sub-agent, even when hook context is present. `implement.jsonl` is ready only when it exists and is non-empty, every nonblank non-seed row is a JSON object with a non-empty string `file`, at least one valid `file` entry exists (`_example` seed rows do not count), and every referenced file is readable.
+- If the manifest is missing, empty, seed-only, malformed, contains an invalid entry, or references an unreadable file, stop before edits or checks. Report the exact manifest/path problem to the main session and ask it to curate `implement.jsonl`; do not choose specs heuristically or continue from task artifacts alone.
+- This gate does not apply to the main session's inline mode.
+
 Rules:
 - Read before write. Follow `.trellis/spec/` guidance relevant to the task.
 - Keep changes focused on the requested scope.

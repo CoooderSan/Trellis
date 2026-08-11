@@ -32,6 +32,11 @@ from .config import (
     validate_package,
 )
 from .git import branch_exists_locally, resolve_default_branch, run_git
+from .governance_gate import (
+    build_task_basis,
+    enforce_governance_gate,
+    normalize_classification,
+)
 from .io import read_json, write_json
 from .log import Colors, colored
 from .paths import (
@@ -147,7 +152,7 @@ _SEED_EXAMPLE = (
 )
 
 
-def _has_subagent_platform(repo_root: Path) -> bool:
+def has_subagent_platform(repo_root: Path) -> bool:
     """Return True if any sub-agent-capable platform is configured.
 
     Detected by probing well-known config directories at the repo root. Codex
@@ -237,6 +242,20 @@ def cmd_create(args: argparse.Namespace) -> int:
     if meta is None:
         return 1
 
+    classification = normalize_classification(
+        getattr(args, "classification", None) or meta.get("classification")
+    )
+    product_intent_link = (
+        getattr(args, "product_intent_link", None)
+        or meta.get("product_intent_link")
+        or ""
+    ).strip()
+    product_intent_reason = (
+        getattr(args, "product_intent_reason", None)
+        or meta.get("product_intent_reason")
+        or ""
+    ).strip()
+
     # Validate --package (CLI source: fail-fast)
     package: str | None = getattr(args, "package", None)
     if not is_monorepo(repo_root):
@@ -261,6 +280,23 @@ def cmd_create(args: argparse.Namespace) -> int:
         if not assignee:
             print(colored("Error: No developer set. Run init_developer.py first or use --assignee", Colors.RED), file=sys.stderr)
             return 1
+
+    if not enforce_governance_gate(
+        "task_create",
+        message=args.title,
+        classification=classification,
+        product_intent_link=product_intent_link,
+        repo_root=repo_root,
+    ):
+        return 1
+
+    if classification != "unknown":
+        meta["classification"] = classification
+        meta["product_intent"] = "LINKED" if product_intent_link else "NOT_REQUIRED"
+        if product_intent_link:
+            meta["product_intent_link"] = product_intent_link
+        if product_intent_reason:
+            meta["product_intent_reason"] = product_intent_reason
 
     ensure_tasks_dir(repo_root)
 
@@ -395,12 +431,24 @@ def cmd_create(args: argparse.Namespace) -> int:
             encoding="utf-8",
         )
 
+    intent_path = task_dir / "intent.md"
+    if not intent_path.exists():
+        intent_path.write_text(
+            build_task_basis(
+                classification,
+                product_intent_link=product_intent_link,
+                product_intent_reason=product_intent_reason,
+                requested_outcome=description or args.title,
+            ),
+            encoding="utf-8",
+        )
+
     # Seed implement.jsonl / check.jsonl for sub-agent-capable platforms.
     # Agent curates real entries during planning when the task needs them.
     # Agent-less platforms (Kilo / Antigravity / Devin) skip this — they
     # load specs via the trellis-before-dev skill instead of JSONL.
     seeded_jsonl = False
-    if _has_subagent_platform(repo_root):
+    if has_subagent_platform(repo_root):
         for jsonl_name in ("implement.jsonl", "check.jsonl"):
             jsonl_path = task_dir / jsonl_name
             if not jsonl_path.exists():
@@ -490,6 +538,7 @@ def cmd_create(args: argparse.Namespace) -> int:
     print("", file=sys.stderr)
     print(colored("Next steps:", Colors.BLUE), file=sys.stderr)
     print("  - Fill prd.md with requirements and acceptance criteria", file=sys.stderr)
+    print("  - Complete intent.md as the classified Task Basis", file=sys.stderr)
     print("  - Lightweight task: PRD-only is valid", file=sys.stderr)
     print("  - Complex task: add design.md and implement.md before task.py start", file=sys.stderr)
     if seeded_jsonl:

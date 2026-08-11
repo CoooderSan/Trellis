@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -19,16 +20,37 @@ type OmpExtension = (pi: {
   on: (event: string, handler: OmpEventHandler) => void;
 }) => void;
 
-function loadOmpExtension(): OmpExtension {
-  const compiled = ts.transpileModule(getExtensionTemplate(), {
-    compilerOptions: {
-      esModuleInterop: true,
-      module: ts.ModuleKind.CommonJS,
-      target: ts.ScriptTarget.ES2022,
+interface OmpExtensionInternals {
+  default: OmpExtension;
+  buildTaskContext: (
+    projectRoot: string,
+    taskDir: string,
+    agentType?:
+      | "trellis-implement"
+      | "trellis-check"
+      | "trellis-research"
+      | null,
+  ) => string;
+}
+
+function loadOmpInternals(): OmpExtensionInternals {
+  const compiled = ts.transpileModule(
+    `${getExtensionTemplate()}
+
+export { buildTaskContext };
+`,
+    {
+      compilerOptions: {
+        esModuleInterop: true,
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
     },
-  }).outputText;
+  ).outputText;
   const require = createRequire(import.meta.url);
-  const moduleObject: { exports: { default?: OmpExtension } } = { exports: {} };
+  const moduleObject: { exports: Partial<OmpExtensionInternals> } = {
+    exports: {},
+  };
   const sandboxProcess = Object.create(process) as NodeJS.Process;
   const sandboxEnv = { ...process.env };
   delete sandboxEnv.TRELLIS_CONTEXT_ID;
@@ -42,9 +64,14 @@ function loadOmpExtension(): OmpExtension {
     require,
   });
   vm.runInContext(compiled, sandbox);
-  const extension = moduleObject.exports.default;
-  if (!extension) throw new Error("OMP extension template has no default export");
-  return extension;
+  if (!moduleObject.exports.default || !moduleObject.exports.buildTaskContext) {
+    throw new Error("OMP extension template has incomplete exports");
+  }
+  return moduleObject.exports as OmpExtensionInternals;
+}
+
+function loadOmpExtension(): OmpExtension {
+  return loadOmpInternals().default;
 }
 
 function captureOmpHandlers(): Map<string, OmpEventHandler> {
@@ -72,6 +99,32 @@ describe("omp templates", () => {
     }
   });
 
+  it("keeps child-side role validation in source and tracked agents", () => {
+    const templates = collectOmpTemplates();
+
+    for (const role of ["implement", "check"] as const) {
+      const name = `trellis-${role}`;
+      const source = getAllAgents().find(
+        (agent) => agent.name === name,
+      )?.content;
+      const generated = templates.get(`.omp/agents/${name}.md`);
+      const tracked = fs.readFileSync(
+        path.resolve(__dirname, `../../../../.omp/agents/${name}.md`),
+        "utf8",
+      );
+
+      for (const content of [source, generated, tracked]) {
+        expect(content).toContain(
+          `task.py validate-role-context "<task-path>" ${role}`,
+        );
+        expect(content?.match(/validate-role-context/g)).toHaveLength(1);
+        expect(content).toContain("seed-only");
+        expect(content).toContain("malformed");
+        expect(content).toContain("unreadable file");
+      }
+    }
+  });
+
   it("getExtensionTemplate returns a non-empty string", () => {
     const extension = getExtensionTemplate();
     expect(extension.length).toBeGreaterThan(0);
@@ -92,7 +145,9 @@ describe("omp templates", () => {
     expect(extension).not.toContain("process.env.TRELLIS_CONTEXT_ID =");
     expect(extension).toContain('buildContextKey("omp", "session", sessionId)');
     expect(extension).toContain("realpathSync");
-    expect(extension).toContain("resolveProjectFile(projectRoot, file, trustedRoots)");
+    expect(extension).toContain(
+      "resolveProjectFile(projectRoot, file, trustedRoots)",
+    );
     expect(extension).toContain("readFileSync(targetPath");
     expect(extension).toContain("if (!key) return null;");
     expect(extension).toContain("return key;");
@@ -117,7 +172,12 @@ describe("omp templates", () => {
     };
 
     handler(
-      { type: "tool_call", toolName: "bash", toolCallId: "call-1", input: params },
+      {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: "call-1",
+        input: params,
+      },
       { sessionManager: { getSessionId: () => "session/a" } },
     );
 
@@ -136,7 +196,12 @@ describe("omp templates", () => {
     };
 
     handler(
-      { type: "tool_call", toolName: "bash", toolCallId: "call-2", input: params },
+      {
+        type: "tool_call",
+        toolName: "bash",
+        toolCallId: "call-2",
+        input: params,
+      },
       { sessionManager: { getSessionId: () => "session/b" } },
     );
 
@@ -150,7 +215,12 @@ describe("omp templates", () => {
     const params: Record<string, unknown> = { path: "README.md" };
 
     handler(
-      { type: "tool_call", toolName: "read", toolCallId: "call-3", input: params },
+      {
+        type: "tool_call",
+        toolName: "read",
+        toolCallId: "call-3",
+        input: params,
+      },
       { sessionManager: { getSessionId: () => "session/c" } },
     );
 
@@ -179,6 +249,16 @@ describe("omp templates", () => {
     expect(extension).toContain("check.jsonl");
   });
 
+  it("keeps the tracked extension identical to the rendered OMP template", () => {
+    const tracked = fs.readFileSync(
+      path.resolve(__dirname, "../../../../.omp/extensions/trellis/index.ts"),
+      "utf8",
+    );
+    expect(tracked).toBe(
+      collectOmpTemplates().get(".omp/extensions/trellis/index.ts"),
+    );
+  });
+
   it("no settings.json or Python hooks exist in the template directory", () => {
     // OMP is extension-backed: native provider auto-discovers .omp/ subdirs,
     // so no settings.json is needed and no Python hooks should be present.
@@ -188,6 +268,188 @@ describe("omp templates", () => {
     // Agents must not reference Python hook scripts
     for (const agent of getAllAgents()) {
       expect(agent.content).not.toContain("inject-subagent-context.py");
+    }
+  });
+});
+
+describe("omp extension role context", () => {
+  function createTaskRoot(): { root: string; taskDir: string } {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "trellis-omp-context-"));
+    const taskDir = path.join(root, ".trellis", "tasks", "08-11-role-gate");
+    fs.mkdirSync(path.join(root, ".trellis", "spec"), { recursive: true });
+    fs.mkdirSync(taskDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(root, ".trellis", "spec", "demo.md"),
+      "SPEC CONTENT",
+    );
+    fs.writeFileSync(path.join(taskDir, "prd.md"), "PRD CONTENT");
+    fs.writeFileSync(path.join(taskDir, "design.md"), "DESIGN CONTENT");
+    fs.writeFileSync(path.join(taskDir, "implement.md"), "PLAN CONTENT");
+    fs.writeFileSync(path.join(taskDir, "info.md"), "LEGACY INFO CONTENT");
+    return { root, taskDir };
+  }
+
+  it("loads valid role JSONL content before PRD, design, and implementation plan", () => {
+    const { root, taskDir } = createTaskRoot();
+    try {
+      fs.writeFileSync(
+        path.join(taskDir, "implement.jsonl"),
+        `${JSON.stringify({ file: ".trellis/spec/demo.md", type: "file" })}\n`,
+      );
+
+      const output = loadOmpInternals().buildTaskContext(
+        root,
+        taskDir,
+        "trellis-implement",
+      );
+
+      expect(output).toContain("SPEC CONTENT");
+      expect(output).toContain("PRD CONTENT");
+      expect(output).toContain("DESIGN CONTENT");
+      expect(output).toContain("PLAN CONTENT");
+      expect(output).not.toContain("LEGACY INFO CONTENT");
+      expect(output.indexOf("SPEC CONTENT")).toBeLessThan(
+        output.indexOf("PRD CONTENT"),
+      );
+      expect(output.indexOf("PRD CONTENT")).toBeLessThan(
+        output.indexOf("DESIGN CONTENT"),
+      );
+      expect(output.indexOf("DESIGN CONTENT")).toBeLessThan(
+        output.indexOf("PLAN CONTENT"),
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ["missing", null, "manifest is missing"],
+    ["empty", "", "manifest is empty"],
+    ["seed-only", '{"_example":"curate me"}\n', "seed rows do not count"],
+    ["malformed", '{"file":\n', "invalid JSON"],
+    ["non-object", "[]\n", "entry must be a JSON object"],
+    [
+      "invalid entry",
+      '{"file":".trellis/spec/demo.md","type":"glob"}\n',
+      "type must be 'file' or 'directory'",
+    ],
+    [
+      "missing path",
+      '{"file":".trellis/spec/missing.md"}\n',
+      "cannot be resolved or read",
+    ],
+  ])("fails closed for a %s implement manifest", (_name, content, expected) => {
+    const { root, taskDir } = createTaskRoot();
+    try {
+      if (content !== null) {
+        fs.writeFileSync(path.join(taskDir, "implement.jsonl"), content);
+      }
+      const output = loadOmpInternals().buildTaskContext(
+        root,
+        taskDir,
+        "trellis-implement",
+      );
+
+      expect(output).toContain('<blocked-role-context role="implement">');
+      expect(output).toContain(expected);
+      expect(output).toContain("validate-role-context");
+      expect(output).not.toContain("PRD CONTENT");
+      expect(output).not.toContain("DESIGN CONTENT");
+      expect(output).not.toContain("PLAN CONTENT");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when the role manifest itself is unreadable", () => {
+    const { root, taskDir } = createTaskRoot();
+    const manifestPath = path.join(taskDir, "implement.jsonl");
+    try {
+      fs.writeFileSync(
+        manifestPath,
+        `${JSON.stringify({ file: ".trellis/spec/demo.md" })}\n`,
+      );
+      fs.chmodSync(manifestPath, 0o000);
+      const output = loadOmpInternals().buildTaskContext(
+        root,
+        taskDir,
+        "trellis-implement",
+      );
+
+      expect(output).toContain('<blocked-role-context role="implement">');
+      expect(output).toContain("manifest cannot be read");
+      expect(output).not.toContain("PRD CONTENT");
+    } finally {
+      fs.chmodSync(manifestPath, 0o600);
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when a valid role entry is accompanied by an invalid row", () => {
+    const { root, taskDir } = createTaskRoot();
+    try {
+      fs.writeFileSync(
+        path.join(taskDir, "check.jsonl"),
+        `${JSON.stringify({ file: ".trellis/spec/demo.md" })}\nnot json\n`,
+      );
+      const output = loadOmpInternals().buildTaskContext(
+        root,
+        taskDir,
+        "trellis-check",
+      );
+
+      expect(output).toContain('<blocked-role-context role="check">');
+      expect(output).toContain("invalid JSON");
+      expect(output).not.toContain("SPEC CONTENT");
+      expect(output).not.toContain("PRD CONTENT");
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when a referenced role file is unreadable", () => {
+    const { root, taskDir } = createTaskRoot();
+    const specPath = path.join(root, ".trellis", "spec", "demo.md");
+    try {
+      fs.chmodSync(specPath, 0o000);
+      fs.writeFileSync(
+        path.join(taskDir, "check.jsonl"),
+        `${JSON.stringify({ file: ".trellis/spec/demo.md" })}\n`,
+      );
+      const output = loadOmpInternals().buildTaskContext(
+        root,
+        taskDir,
+        "trellis-check",
+      );
+
+      expect(output).toContain('<blocked-role-context role="check">');
+      expect(output).toContain("cannot be read");
+      expect(output).not.toContain("PRD CONTENT");
+    } finally {
+      fs.chmodSync(specPath, 0o600);
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not gate research or the main session on invalid role manifests", () => {
+    const { root, taskDir } = createTaskRoot();
+    try {
+      fs.writeFileSync(path.join(taskDir, "implement.jsonl"), "not json\n");
+      fs.writeFileSync(path.join(taskDir, "check.jsonl"), "not json\n");
+      const { buildTaskContext } = loadOmpInternals();
+
+      for (const output of [
+        buildTaskContext(root, taskDir, "trellis-research"),
+        buildTaskContext(root, taskDir),
+      ]) {
+        expect(output).not.toContain("blocked-role-context");
+        expect(output).toContain("PRD CONTENT");
+        expect(output).toContain("DESIGN CONTENT");
+        expect(output).toContain("PLAN CONTENT");
+        expect(output).not.toContain("LEGACY INFO CONTENT");
+      }
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
     }
   });
 });
@@ -215,5 +477,39 @@ describe("omp command frontmatter", () => {
   it("collectOmpTemplates does not emit a start command", () => {
     const templates = collectOmpTemplates();
     expect(templates.has(".omp/commands/trellis-start.md")).toBe(false);
+  });
+
+  it("keeps continuation and generated meta docs on per-dispatch JSONL and Task Basis semantics", () => {
+    const templates = collectOmpTemplates();
+    const continueCmd = templates.get(".omp/commands/trellis-continue.md");
+    const taskSystem = templates.get(
+      ".omp/skills/trellis-meta/references/local-architecture/task-system.md",
+    );
+    const contextLoading = templates.get(
+      ".omp/skills/trellis-meta/references/customize-local/change-context-loading.md",
+    );
+
+    expect(continueCmd).toContain("JSONL readiness is not a start gate");
+    expect(continueCmd).toContain("before that role dispatch");
+    expect(taskSystem).toContain("Structured Task Basis");
+    expect(taskSystem).toContain("--classification business-feature");
+    expect(taskSystem).toContain("task.py validate-role-context");
+    expect(taskSystem).not.toContain("info.md");
+
+    expect(contextLoading).not.toContain("info.md");
+    const readOrder = contextLoading?.slice(
+      contextLoading.indexOf(
+        "In both modes, make sure the agent ultimately reads:",
+      ),
+    );
+    const jsonlIndex = readOrder?.indexOf("the corresponding JSONL") ?? -1;
+    const prdIndex = readOrder?.indexOf("`prd.md`") ?? -1;
+    const designIndex = readOrder?.indexOf("`design.md` if present") ?? -1;
+    const implementIndex =
+      readOrder?.indexOf("`implement.md` if present") ?? -1;
+    expect(jsonlIndex).toBeGreaterThanOrEqual(0);
+    expect(jsonlIndex).toBeLessThan(prdIndex);
+    expect(prdIndex).toBeLessThan(designIndex);
+    expect(designIndex).toBeLessThan(implementIndex);
   });
 });

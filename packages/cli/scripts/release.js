@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_DIR = path.resolve(__dirname, "..");
+const RELEASE_REMOTE = process.env.TRELLIS_RELEASE_REMOTE || "private";
 
 const RELEASE_TYPES = new Set([
   "patch",
@@ -110,17 +111,25 @@ function assertBranchMatchesType(type, branch) {
  * observable after the fact.
  */
 function assertPushLanded(branch, tag) {
-  run("git fetch origin --quiet");
+  run(`git fetch "${RELEASE_REMOTE}" --quiet`);
   try {
-    run(`git merge-base --is-ancestor "${tag}" "origin/${branch}"`, {
+    run(`git merge-base --is-ancestor "${tag}" "${RELEASE_REMOTE}/${branch}"`, {
       capture: true,
     });
   } catch {
     fail(
-      `tag ${tag} is not reachable from origin/${branch} after push. ` +
+      `tag ${tag} is not reachable from ${RELEASE_REMOTE}/${branch} after push. ` +
         `The tag may already be published — inspect before re-running.`,
     );
   }
+}
+
+export function releaseTag(version) {
+  return `ecochain-v${version}`;
+}
+
+export function releasePushRefspecs(branch, tag) {
+  return [`HEAD:${branch}`, `refs/tags/${tag}:refs/tags/${tag}`];
 }
 
 function main() {
@@ -135,7 +144,7 @@ function main() {
 
   run("node scripts/check-manifest-continuity.js");
   docsGuard(type);
-  run("pnpm --filter @mindfoldhq/trellis-core test");
+  run("pnpm --filter @ecochain/trellis-core test");
   run("pnpm test");
 
   // Exclude .trellis/ from the pre-release sweep: dirty task/workspace files
@@ -148,15 +157,23 @@ function main() {
   }
 
   const version = output(`node scripts/bump-versions.js ${type}`);
+  const tag = releaseTag(version);
   run("node scripts/release-preflight.js check-versions");
   run("git add package.json ../core/package.json");
   run(`git commit -m "${version}"`);
-  run(`git tag "v${version}"`);
+  run(`git tag "${tag}"`);
   // Push HEAD to the branch we are actually on, by name. `HEAD` alone relies
   // on the remote having a same-named branch, and a bare `main` pushes the
   // local main ref regardless of where the release commit lives.
-  run(`git push origin "HEAD:${branch}" --tags`);
-  assertPushLanded(branch, `v${version}`);
+  for (const refspec of releasePushRefspecs(branch, tag)) {
+    run(`git push "${RELEASE_REMOTE}" "${refspec}"`);
+  }
+  assertPushLanded(branch, tag);
 }
 
-main();
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main();
+}

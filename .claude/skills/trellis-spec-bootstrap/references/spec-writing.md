@@ -1,6 +1,8 @@
 # Spec Writing
 
-Trellis specs are coding guidance for future agents. They should explain how to work in this repository, not how a generic project might be organized.
+Trellis specs are coding guidance for future agents. Loaded team
+registry/template content is the baseline; local writing should explain only
+what is genuinely different or missing in this repository.
 
 ## Write From Evidence
 
@@ -12,6 +14,11 @@ Each important rule should be backed by one of these:
 - A repeated pattern across multiple files.
 
 Use short snippets only when they make the rule clearer. Prefer linking to the file path and naming the symbol or behavior.
+
+Before adding a rule, confirm that the loaded spec does not already cover it.
+Do not restate an organization-wide or generic framework standard in local
+words. If the baseline fits without changes, document the no-gap result in the
+bootstrap task rather than editing spec files.
 
 ## File Structure
 
@@ -40,6 +47,8 @@ Avoid:
 - Tool instructions that only work in one agent host.
 - Long copied code blocks.
 - Rules based on a single accidental implementation detail.
+- Copies of broad company or framework rulebooks already owned by a registry.
+- Content added only to replace an empty heading or satisfy a completion count.
 
 ## Example Shape
 
@@ -53,6 +62,7 @@ Command handlers should keep argument parsing, validation, and side effects sepa
 - Keep filesystem writes in the command or service layer, not in template helpers.
 
 Reference files:
+
 - `packages/cli/src/commands/example.ts`
 - `packages/cli/test/commands/example.test.ts`
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Bump @mindfoldhq/trellis and @mindfoldhq/trellis-core to the same next
+ * Bump @ecochain/trellis and @ecochain/trellis-core to the same next
  * version. Replaces the per-package `pnpm version --no-git-tag-version`
  * calls in the release scripts so the two packages can never drift.
  *
@@ -103,7 +103,8 @@ export function computeNext(current, type) {
 
 function main() {
   const [type] = process.argv.slice(2);
-  if (!type) fail(`usage: bump-versions.js <patch|minor|major|beta|rc|promote>`);
+  if (!type)
+    fail(`usage: bump-versions.js <patch|minor|major|beta|rc|promote>`);
 
   const core = readJSON(CORE_PKG);
   const cli = readJSON(CLI_PKG);
@@ -122,7 +123,7 @@ function main() {
   writeJSON(CLI_PKG, cli);
   // Human message to stderr so stdout stays a clean machine-readable value.
   process.stderr.write(
-    `${GREEN}ok${RESET} bumped @mindfoldhq/trellis and @mindfoldhq/trellis-core (${type}) -> ${next}\n`,
+    `${GREEN}ok${RESET} bumped @ecochain/trellis and @ecochain/trellis-core (${type}) -> ${next}\n`,
   );
   process.stdout.write(next + "\n");
 }

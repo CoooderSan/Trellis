@@ -271,7 +271,7 @@ function buildSessionContext(projectRoot: string, contextKey: string | null): st
 }
 
 // ---------------------------------------------------------------------------
-// Task context — prd.md, info.md, and jsonl-referenced spec/research files
+// Task context — jsonl-referenced spec/research, then planning artifacts
 // ---------------------------------------------------------------------------
 
 type AgentType = "trellis-implement" | "trellis-check" | "trellis-research" | null;
@@ -282,61 +282,123 @@ function buildTaskContext(projectRoot: string, taskDir: string, agentType?: Agen
    // config.yaml for every jsonl row.
    const trustedRoots = resolveTrustedRoots(projectRoot);
 
-   // prd.md and info.md — always included
-   let prd = "";
-   try { prd = readFileSync(join(taskDir, "prd.md"), "utf-8"); } catch { }
-   if (prd.trim()) parts.push(`## PRD\n\n${prd.trim()}`);
-
-   let info = "";
-   try { info = readFileSync(join(taskDir, "info.md"), "utf-8"); } catch { }
-   if (info.trim()) parts.push(`## Info\n\n${info.trim()}`);
-
-   // Determine which jsonl files to read based on agent type
-   let jsonlNames: string[];
-   if (agentType === "trellis-implement") {
-      jsonlNames = ["implement.jsonl"];
-   } else if (agentType === "trellis-check") {
-      jsonlNames = ["check.jsonl"];
-   } else if (agentType === "trellis-research") {
-      jsonlNames = []; // research agent gets only prd + info
-   } else {
-      jsonlNames = ["implement.jsonl", "check.jsonl"]; // main session: all
-   }
+   const strictRole = agentType === "trellis-implement"
+      ? "implement"
+      : agentType === "trellis-check"
+         ? "check"
+         : null;
+   const jsonlNames = strictRole
+      ? [`${strictRole}.jsonl`]
+      : agentType === "trellis-research"
+         ? []
+         : ["implement.jsonl", "check.jsonl"];
 
    for (const jsonlName of jsonlNames) {
       const jsonlPath = join(taskDir, jsonlName);
-      if (!existsSync(jsonlPath)) continue;
-
-      let lines: string[];
-      try {
-         lines = readFileSync(jsonlPath, "utf-8").split(/\r?\n/);
-      } catch {
-         continue;
+      const errors: string[] = [];
+      if (!existsSync(jsonlPath)) {
+         errors.push(`${jsonlName}: manifest is missing`);
       }
 
-      const fileChunks: string[] = [];
-      for (const line of lines) {
-         const trimmed = line.trim();
-         if (!trimmed) continue;
+      let lines: string[] = [];
+      if (errors.length === 0) {
          try {
-            const row = JSON.parse(trimmed) as Record<string, unknown>;
-            const file = typeof row.file === "string" ? row.file.trim() : "";
-            if (!file) continue;
-            const targetPath = resolveProjectFile(projectRoot, file, trustedRoots);
-            if (!targetPath) continue;
-            let content = "";
-            try { content = readFileSync(targetPath, "utf-8"); } catch { }
-            if (content.trim()) {
-               fileChunks.push(`### ${file}\n\n${content.trim()}`);
+            const manifestStat = lstatSync(jsonlPath);
+            if (!manifestStat.isFile() || (manifestStat.mode & 0o444) === 0) {
+               throw new Error("no read permission");
             }
-         } catch {
-            // seed rows and malformed lines are non-fatal
+            lines = readFileSync(jsonlPath, "utf-8").split(/\r?\n/);
+         } catch (error) {
+            errors.push(`${jsonlName}: manifest cannot be read: ${String(error)}`);
          }
       }
 
+      const fileChunks: string[] = [];
+      let nonEmptyRows = 0;
+      let validEntries = 0;
+      for (const [index, line] of lines.entries()) {
+         const trimmed = line.trim();
+         if (!trimmed) continue;
+         nonEmptyRows += 1;
+
+         let row: Record<string, unknown>;
+         try {
+            const parsed = JSON.parse(trimmed) as unknown;
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+               errors.push(`${jsonlName}:${index + 1}: entry must be a JSON object`);
+               continue;
+            }
+            row = parsed as Record<string, unknown>;
+         } catch (error) {
+            errors.push(`${jsonlName}:${index + 1}: invalid JSON: ${String(error)}`);
+            continue;
+         }
+
+         if (row.file === undefined && "_example" in row) continue;
+         if (typeof row.file !== "string" || !row.file.trim()) {
+            errors.push(`${jsonlName}:${index + 1}: entry requires a non-empty string field 'file'`);
+            continue;
+         }
+         const file = row.file.trim();
+         const entryType = row.type === undefined ? "file" : row.type;
+         if (entryType !== "file" && entryType !== "directory") {
+            errors.push(`${jsonlName}:${index + 1}: type must be 'file' or 'directory'`);
+            continue;
+         }
+
+         const targetPath = resolveProjectFile(projectRoot, file, trustedRoots);
+         if (!targetPath) {
+            errors.push(`${jsonlName}:${index + 1}: referenced ${entryType} cannot be resolved or read: ${file}`);
+            continue;
+         }
+
+         try {
+            const stat = lstatSync(targetPath);
+            if ((stat.mode & 0o444) === 0) throw new Error("no read permission");
+            if (entryType === "file") {
+               if (!stat.isFile()) throw new Error("not a file");
+               const content = readFileSync(targetPath, "utf-8");
+               if (content.trim()) fileChunks.push(`### ${file}\n\n${content.trim()}`);
+            } else {
+               if (!stat.isDirectory()) throw new Error("not a directory");
+               for (const child of readdirSync(targetPath).filter((name) => name.endsWith(".md")).sort()) {
+                  const childPath = resolveProjectFile(projectRoot, join(file, child), trustedRoots);
+                  if (!childPath) throw new Error(`child cannot be resolved or read: ${child}`);
+                  const childStat = lstatSync(childPath);
+                  if (!childStat.isFile() || (childStat.mode & 0o444) === 0) {
+                     throw new Error(`child cannot be read: ${child}`);
+                  }
+                  const content = readFileSync(childPath, "utf-8");
+                  if (content.trim()) fileChunks.push(`### ${file}/${child}\n\n${content.trim()}`);
+               }
+            }
+            validEntries += 1;
+         } catch (error) {
+            errors.push(`${jsonlName}:${index + 1}: referenced ${entryType} cannot be read: ${file} (${String(error)})`);
+         }
+      }
+
+      if (nonEmptyRows === 0) errors.push(`${jsonlName}: manifest is empty`);
+      if (validEntries === 0) {
+         errors.push(`${jsonlName}: manifest has no valid readable 'file' entry (seed rows do not count)`);
+      }
+
+      if (strictRole && errors.length > 0) {
+         return `<blocked-role-context role="${strictRole}">\nRole context is not ready for ${strictRole} dispatch. Stop before role work and relay these blockers to the main session:\n${errors.map((error) => `- ${error}`).join("\n")}\nRun \`python3 ./.trellis/scripts/task.py validate-role-context "<task-path>" ${strictRole}\` after curating ${jsonlName}.\n</blocked-role-context>`;
+      }
       if (fileChunks.length > 0) {
          parts.push(`## ${jsonlName}\n\n${fileChunks.join("\n\n---\n\n")}`);
       }
+   }
+
+   for (const [fileName, heading] of [
+      ["prd.md", "PRD"],
+      ["design.md", "Design"],
+      ["implement.md", "Implementation Plan"],
+   ] as const) {
+      let content = "";
+      try { content = readFileSync(join(taskDir, fileName), "utf-8"); } catch { }
+      if (content.trim()) parts.push(`## ${heading}\n\n${content.trim()}`);
    }
 
    return parts.length > 0
