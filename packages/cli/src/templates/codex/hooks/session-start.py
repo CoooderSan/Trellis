@@ -92,10 +92,16 @@ def _normalize_windows_shell_path(path_str: str) -> str:
 warnings.filterwarnings("ignore")
 
 FIRST_REPLY_NOTICE = """<first-reply-notice>
-On the first visible assistant reply in this session, begin with exactly one short Chinese sentence:
-Trellis SessionStart 已注入：workflow、当前任务状态、开发者身份、git 状态、active tasks、spec 索引已加载。
-Then continue directly with the user's request. This notice is one-shot: do not repeat it after the first assistant reply in the same session.
+On the first visible assistant reply in this session, briefly acknowledge that Trellis SessionStart context loaded.
+Choose the acknowledgment language in this order:
+1. Use the language of the user's current request (the user message that triggered this reply).
+2. If that request has no clear natural language, use an explicitly established project communication language.
+3. If neither provides a language, output the language-neutral fallback exactly: `Trellis SessionStart ✓`.
+Continue directly with the user's request after the acknowledgment.
+The acknowledgment must not alter the language used for the remainder of the response.
+This notice is one-shot: do not repeat it after the first visible assistant reply in this session.
 </first-reply-notice>"""
+
 
 def should_skip_injection() -> bool:
     if os.environ.get("TRELLIS_HOOKS") == "0":
@@ -225,8 +231,10 @@ def _get_task_status(trellis_dir: Path, hook_input: dict) -> str:
     if not active.task_path:
         return (
             "Status: NO ACTIVE TASK\n"
-            "Next: Classify the current turn and ask for task-creation consent "
-            "before creating any Trellis task."
+            "Next: Classify the natural-language request first. Read-only questions and ordinary "
+            "operational work normally proceed without a development task. Feature, bug-fix, "
+            "refactor, or maintenance development asks for task-creation consent; review revisions "
+            "reuse their existing task and review evidence."
         )
 
     task_ref = active.task_path
@@ -255,21 +263,20 @@ def _get_task_status(trellis_dir: Path, hook_input: dict) -> str:
             "or start a new task."
         )
 
-    has_intent = (task_dir / "intent.md").is_file()
     has_prd = (task_dir / "prd.md").is_file()
     has_design = (task_dir / "design.md").is_file()
     has_implement = (task_dir / "implement.md").is_file()
     present = [
         name
-        for name in ("intent.md", "prd.md", "design.md", "implement.md", "implement.jsonl", "check.jsonl")
+        for name in ("prd.md", "design.md", "implement.md", "implement.jsonl", "check.jsonl")
         if (task_dir / name).is_file()
     ]
     present_line = ", ".join(present) if present else "none"
 
-    if not has_intent or not has_prd:
+    if not has_prd:
         return (
             f"Status: PLANNING\nTask: {task_title}\nPresent: {present_line}\n"
-            "Next: Load trellis-brainstorm and write intent.md / prd.md. Stay in planning."
+            "Next: Load trellis-brainstorm and write prd.md. Stay in planning."
         )
 
     if task_status == "planning":
@@ -277,7 +284,7 @@ def _get_task_status(trellis_dir: Path, hook_input: dict) -> str:
             next_action = "Review planning artifacts with the user before `task.py start`."
         else:
             next_action = (
-                "Lightweight task can ask for start review with intent.md + prd.md; "
+                "Lightweight task can ask for start review with PRD-only; "
                 "complex task must add design.md and implement.md before `task.py start`."
             )
         return (
@@ -288,7 +295,7 @@ def _get_task_status(trellis_dir: Path, hook_input: dict) -> str:
     return (
         f"Status: {task_status.upper()}\nTask: {task_title}\nPresent: {present_line}\n"
         "Next: Follow the matching per-turn workflow-state. Context order is jsonl entries, "
-        "intent.md, prd.md, design.md if present, implement.md if present."
+        "prd.md, design.md if present, implement.md if present."
     )
 
 
@@ -505,7 +512,7 @@ Trellis compact SessionStart context. Use it to orient the session; load details
 
     output.write("<guidelines>\n")
     output.write(
-        "Task context order for implementation/check: jsonl entries -> `intent.md` -> `prd.md` -> "
+        "Task context order for implementation/check: jsonl entries -> `prd.md` -> "
         "`design.md if present` -> `implement.md if present`. Missing optional artifacts "
         "are skipped for lightweight tasks.\n\n"
     )

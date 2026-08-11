@@ -1,26 +1,34 @@
 # Repository Analysis
 
-The goal is to discover the project's real architecture before writing rules. Do not start from generic spec templates and fill blanks. Start from the code, then let the spec structure follow.
+The goal is to compare the loaded team spec baseline with the project's real
+architecture. Do not start from generic templates and fill blanks. First learn
+what the registry/template already covers, then investigate only potential
+project-specific differences.
 
 ## Analysis Order
 
-1. Read the existing `.trellis/spec/` tree and note which files are templates, outdated, or already project-specific.
-2. Inspect package manifests, build scripts, workspace config, and top-level documentation to identify packages and runtime layers.
-3. Use GitNexus for execution flows, module clusters, dependency hubs, and impact-sensitive areas.
-4. Use ABCoder or language-native tooling for exact signatures, types, class boundaries, and implementation examples.
-5. Read representative source and test files directly before turning any finding into a spec rule.
+1. Inspect `.trellis/config.yaml` for the spec registry/template source, then
+   read the existing `.trellis/spec/` indexes and applicable guidance.
+2. Inspect package manifests, build scripts, workspace config, and top-level
+   documentation to identify concrete project differences.
+3. Build a short fit/gap list for stack, commands, module boundaries, domain
+   patterns, verification, and local exceptions. Stop if everything fits.
+4. For suspected gaps, use GitNexus for execution flows and dependency hubs,
+   and ABCoder or language-native tooling for exact code shapes.
+5. Read representative source and tests before turning any finding into a spec
+   rule. Preserve applicable loaded guidance.
 
 ## What To Capture
 
-| Area | Questions |
-|------|-----------|
-| Package boundaries | What does each package own? What imports cross boundaries? |
-| Runtime layers | Which code is CLI, backend, frontend, worker, shared library, test-only, or tooling? |
-| Core abstractions | Which types, services, stores, commands, routes, or adapters define the system shape? |
-| Data flow | Where does user input enter, how is it validated, and where does state persist? |
-| Error handling | How are failures represented, logged, surfaced, and tested? |
-| Configuration | Where do defaults, environment config, generated files, and templates live? |
-| Tests | Which test styles are trusted examples for new work? |
+| Area               | Questions                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| Package boundaries | What does each package own? What imports cross boundaries?                            |
+| Runtime layers     | Which code is CLI, backend, frontend, worker, shared library, test-only, or tooling?  |
+| Core abstractions  | Which types, services, stores, commands, routes, or adapters define the system shape? |
+| Data flow          | Where does user input enter, how is it validated, and where does state persist?       |
+| Error handling     | How are failures represented, logged, surfaced, and tested?                           |
+| Configuration      | Where do defaults, environment config, generated files, and templates live?           |
+| Tests              | Which test styles are trusted examples for new work?                                  |
 
 ## GitNexus Usage
 
@@ -57,3 +65,4 @@ Keep short notes while analyzing. The notes should include:
 - Rules the spec should teach.
 - Anti-patterns found in old code, comments, tests, or migration paths.
 - Spec files that should be created, deleted, renamed, or merged.
+- An explicit no-gap conclusion when the loaded baseline already fits.

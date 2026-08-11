@@ -12,9 +12,6 @@ import { fileURLToPath } from "node:url";
 interface PackageJson {
   name: string;
   version: string;
-  publishConfig?: {
-    registry?: string;
-  };
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,5 +22,3 @@ const packageJson: PackageJson = JSON.parse(
 
 export const VERSION: string = packageJson.version;
 export const PACKAGE_NAME: string = packageJson.name;
-export const PACKAGE_REGISTRY: string =
-  packageJson.publishConfig?.registry ?? "https://registry.npmjs.org/";

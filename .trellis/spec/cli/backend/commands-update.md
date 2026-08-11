@@ -35,7 +35,7 @@ trellis update
   [--migrate]            apply pending file migrations (renames/deletes)
 ```
 
-The action handler in `cli/index.ts` constructs `UpdateOptions` and calls `commands/update.ts:update`. There is no env override surface today — flags are the only knobs. (Note: `setupProxy()` in `commands/update.ts:update` reads `HTTP_PROXY` / `HTTPS_PROXY` for the npm version check, but that's the only env input.)
+The action handler in `cli/index.ts` constructs `UpdateOptions` and calls `commands/update.ts:update`. There is no command-specific env override surface today — flags are the only knobs. The advisory npm lookup runs `npm view` as a shell-free subprocess and deliberately omits registry, auth, proxy, and environment overrides, so npm inherits its normal active configuration. `setupProxy()` still configures repository-owned HTTP fetches such as registry-spec refreshes.
 
 `UpdateOptions` is the public interface:
 
@@ -142,13 +142,13 @@ Permits `cliVersion < projectVersion`. Without it, `update()` exits early with a
 Opt-in to apply file migrations (renames/deletes/dir renames). Without it: migrations are listed in the plan but not executed; a "Tip: Use --migrate" hint prints. With it:
 
 1. `commands/update.ts:executeMigrations` runs on the classified plan.
-2. The hardcoded 0.2.0 `traces-*.md → journal-*.md` rename in `update()` runs (workspace/<dev>/ pattern walk; cannot live in the manifest because the path includes a variable developer slug).
+2. The hardcoded 0.2.0 `traces-*.md → journal-*.md` rename runs via `commands/update.ts:renameTracesToJournal(workspaceDir)` (workspace/<dev>/ pattern walk; cannot live in the manifest because the path includes a variable developer slug). It never overwrites: if the `journal-*.md` target already exists, that file is left as-is and reported back in a `skipped` list instead of being renamed over — `.trellis/workspace/` is outside the backup snapshot, so an overwrite there would be unrecoverable. See [Filesystem Safety § 3](./filesystem-safety.md).
 
-`safe-file-delete` migrations are independent of `--migrate` — they always run when their hash gate passes (see Apply Phase). Rationale in `migrations.md`.
+`safe-file-delete` migrations are independent of `--migrate` — they always run when their hash gate passes (see Apply Phase). A historical deletion is ignored when its path is present in the current template snapshot: current template ownership takes precedence if a later release intentionally restores a retired path. Rationale in `migrations.md`.
 
 ### Tag flag (`--tag <beta|rc|latest>`)
 
-There is no `--tag` flag on `trellis update` today. Version selection is implicit: `update()` always uses the version of the installed CLI (`constants/version.ts:VERSION`). Users who want a specific CLI channel should run `trellis upgrade --tag beta` (or `latest` / `rc`) first, then run `trellis update`. The npm-version check in `commands/update.ts:getLatestNpmVersion` only looks at the `latest` dist-tag and is purely advisory ("⚠️ Your CLI is behind npm").
+There is no `--tag` flag on `trellis update` today. Version selection is implicit: `update()` always uses the version of the installed CLI (`constants/version.ts:VERSION`). Users who want a specific CLI channel should run `trellis upgrade --tag beta` (or `latest` / `rc`) first, then run `trellis update`. The npm-version check in `commands/update.ts:getLatestNpmVersion` asks npm for the package's current `version` (`npm view <package> version --json`), which resolves through the active registry and its `latest` dist-tag. It is purely advisory ("⚠️ Your CLI is behind npm").
 
 ---
 
@@ -165,7 +165,9 @@ Migration state is then run through `commands/update.ts:classifyMigrations` agai
 | `auto` | source unmodified, target free or matches template |
 | `confirm` | source modified by user (hash mismatch) |
 | `conflict` | both source and target exist with user content |
-| `skip` | source missing, or path is `PROTECTED_PATHS` |
+| `skip` | source missing, path is `PROTECTED_PATHS`, or (see below) an unowned `rename-dir` source |
+
+`rename-dir` has an extra ownership gate when the target is absent: `commands/update.ts:dirHasManifestEntries(item.from, hashes)` must find at least one manifest-tracked file under that source directory before it lands in `auto`. If the manifest has no record of the directory — e.g. a user's own `.windsurf/` editor config that merely shares a path with a retired Trellis platform dir — the item goes to `skip` instead, even under `--force` (skip never executes). See [Filesystem Safety § 2–3](./filesystem-safety.md) for the rationale and the other ownership/backup gates it's modeled after.
 
 Sorting before execution is by `commands/update.ts:sortMigrationsForExecution`: deeper `rename-dir` first, then other `rename-dir`, then `rename` / `delete`. Critical for nested directory renames — without depth ordering, a parent move would leave child entries pointing at a dead source.
 
@@ -210,9 +212,9 @@ Order of operations in `commands/update.ts:update` (after the `Proceed?` confirm
 
 1. **Backup** — `commands/update.ts:createFullBackup` snapshots every `BACKUP_DIRS` (= `configurators/index.ts:ALL_MANAGED_DIRS`) entry plus `BACKUP_FILES` (= `AGENTS.md`) into `.trellis/.backup-<ISO-timestamp>/`. `commands/update.ts:shouldExcludeFromBackup` filters out previous backups, `node_modules/`, user-data dirs (`workspace/`, `tasks/`, `spec/`, `backlog/`, `agent-traces/`), and platform-native worktree dirs (`/worktrees/`, `/worktree/`). Symlinks (and Windows directory junctions) are never followed in `commands/update.ts:collectAllFiles` — a junction to an ancestor would loop forever.
 
-2. **Migrations** (only if `--migrate`) — `commands/update.ts:executeMigrations` runs `auto` items first (sorted by depth), then `confirm` items via `commands/update.ts:promptMigrationAction` (or `--force` / `--skip-all` short-circuits). Default action for prompts is `backup-rename`: leaves `<new-path>.backup` of the user's modified content alongside the rename, so users can diff inline without digging through the snapshot. Hash tracking is updated via `utils/template-hash.ts:renameHash` / `removeHash`. Empty source dirs are pruned by `commands/update.ts:cleanupEmptyDirs` (gated by `configurators/index.ts:isManagedPath` + `isManagedRootDir` — never deletes managed roots themselves, never crosses into unmanaged paths). After regular migrations, the hardcoded `traces-*.md → journal-*.md` workspace walk runs.
+2. **Migrations** (only if `--migrate`) — `commands/update.ts:executeMigrations` runs `auto` items first (sorted by depth), then `confirm` items via `commands/update.ts:promptMigrationAction` (or `--force` / `--skip-all` short-circuits). Default action for prompts is `backup-rename`: leaves `<new-path>.backup` of the user's modified content alongside the rename, so users can diff inline without digging through the snapshot. Hash tracking is updated via `utils/template-hash.ts:renameHash` / `removeHash`. Empty source dirs are pruned by `commands/update.ts:cleanupEmptyDirs` (gated by `configurators/index.ts:isManagedPath` + `isManagedRootDir` — never deletes managed roots themselves, never crosses into unmanaged paths). After regular migrations, the hardcoded `traces-*.md → journal-*.md` workspace walk (`commands/update.ts:renameTracesToJournal`) runs; files whose journal target already exists are skipped (not overwritten) and printed as a yellow "Kept ... its journal target already exists" warning.
 
-3. **`safe-file-delete`** — `commands/update.ts:executeSafeFileDeletes` deletes files in the `delete` action bucket (hash matched, not protected, not in `update.skip` unless bypassed), removes their hash entries, and prunes empty parent directories. `migrations.md` covers the full classification matrix.
+3. **`safe-file-delete`** — `commands/update.ts:executeSafeFileDeletes` deletes files in the `delete` action bucket (hash matched, not protected, not in `update.skip` unless bypassed), removes their hash entries, and prunes empty parent directories. `commands/update.ts:collectSafeFileDeletes` first excludes paths owned by the current template snapshot so historical cleanup cannot conflict with a reintroduced template. `migrations.md` covers the full classification matrix.
 
 4. **New file writes** — straight `mkdir -p` + `writeFileSync`. `.sh` and `.py` get `chmod 755`.
 
@@ -241,6 +243,8 @@ Order of operations in `commands/update.ts:update` (after the `Proceed?` confirm
 - `isTemplateModified(cwd, path, hashes)` in `classifyMigrations`
 - `renameHash` / `removeHash` during migrations
 - `updateHashes(cwd, files)` at the end
+
+`saveHashes` (called by `updateHashes`/`renameHash`/`removeHash`) writes `.trellis/.template-hashes.json` via `writeFileAtomic` (temp file in the same dir + rename), not a direct `writeFileSync`. A crash mid-write can no longer truncate the manifest to `{}`, which would otherwise make every managed file look user-modified on the next run. See [Filesystem Safety § 1](./filesystem-safety.md).
 
 `migrations.md` documents the relationship to `allowed_hashes` in `safe-file-delete` migrations: the hash file tracks "Trellis-installed bytes" (so update can detect user edits); `allowed_hashes` is a bounded set of "known-pristine bytes" the manifest blesses for auto-deletion. They are different sets — a user file might have a recorded hash but not be `allowed_hashes`-eligible.
 
@@ -341,12 +345,20 @@ Migrations are forward-only. A user who downgrades while staying on the same maj
 
 ### Codex two-layer upgrade
 
-Old Trellis used `.agents/skills/` as the Codex configDir; current Trellis uses `.codex/` plus a shared `.agents/skills/` layer. `commands/update.ts:needsCodexUpgrade` detects the legacy state by looking for command-as-skill marker entries (`trellis-continue/SKILL.md`, `trellis-finish-work/SKILL.md`) in the hash file, then excludes any configured non-Codex platform whose current template collector declares those same marker paths. Current non-Codex platforms with a private command surface, such as ZCode, must not declare those marker paths under `.agents/skills`; this keeps combined installs from producing hash churn and keeps the Codex legacy detector unambiguous. When legacy Codex is detected, `update()` injects `codex` into `extraPlatforms` so `collectTemplateFiles` produces the missing `.codex/` files. Don't add platform-detection-via-hashes for any other case without a similarly tight marker and non-owner exclusion — false positives here would create bogus directories.
+Old Trellis used `.agents/skills/` as the Codex configDir; current Trellis uses `.codex/` plus a shared `.agents/skills/` layer. `commands/update.ts:needsCodexUpgrade` detects the legacy state by looking for command-as-skill marker entries (`trellis-continue/SKILL.md`, `trellis-finish-work/SKILL.md`) in the hash file, then excludes any configured non-Codex platform whose current template collector declares those same marker paths. Current non-Codex platforms with a private command surface, such as ZCode, must not declare those marker paths under `.agents/skills`; this keeps combined installs from producing hash churn and keeps the Codex legacy detector unambiguous. When legacy Codex is detected, `update()` injects `codex` into `extraPlatforms` so `collectTemplateFiles` produces the missing `.codex/` files.
+
+General platform detection also uses template hashes, but with a stricter
+ownership intersection: a platform counts only when the manifest contains a
+path declared by that platform's current `collectTemplates()` output and the
+path is under its private `configDir`. Shared `.agents/skills/` entries cannot
+activate Codex, Gemini, Pi, or Kimi, and native platform directories cannot
+activate themselves. Keep both filters; dropping either one can create bogus
+platform detections and unsafe update/uninstall plans.
 
 ### Things that look like bugs but aren't
 
 - The `Proceed?` prompt asks for confirmation even when the only "change" is a version bump. Some of those cases short-circuit before the prompt (no file changes, no migrations, no safe-deletes — see the early return after `analyzeChanges`); others legitimately have changes worth confirming.
-- `getLatestNpmVersion` failure ("unable to fetch") is silent on the npm side and prints a single grayed-out line. The proxy setup happens in `commands/update.ts:update` via `utils/proxy.ts:setupProxy`; users behind a corporate proxy without `HTTP_PROXY` / `HTTPS_PROXY` set will see the gray line forever. This is intentional — the npm check is advisory only.
+- `getLatestNpmVersion` failure (missing npm, timeout, registry/auth/proxy failure, malformed output, or any other subprocess error) is silent on the npm side and prints a single grayed-out line. The subprocess is shell-free, applies a five-second timeout, and passes no `--registry` or custom `env`, so npm resolves registry, credentials, and proxy settings using its normal precedence. This is intentional — the npm check is advisory only.
 
 ---
 
@@ -355,7 +367,7 @@ Old Trellis used `.agents/skills/` as the Codex configDir; current Trellis uses 
 Integration tests live in `test/commands/update.integration.test.ts` (numbered cases `#1 .. #27` plus named cases like `workflow-md-r4`). The fixture pattern:
 
 ```typescript
-beforeEach: mkdtemp + cwd-spy + console-mute + fetch-stub
+beforeEach: mkdtemp + cwd-spy + console-mute + npm-subprocess stub
 setupProject(): await init({ yes: true, force: true })
 test body:
   1. mutate the temp project to simulate the scenario (delete a file, edit a file, swap hashes, edit config.yaml, ...)
@@ -364,7 +376,7 @@ test body:
 afterEach: restoreAllMocks + rm -rf tmp
 ```
 
-External mocks: `figlet` (banner), `inquirer` (prompts; usually default `{ proceed: true }` and per-test overrides for migration-action and conflict-resolution prompts), `node:child_process.execSync` (Python detection), `globalThis.fetch` (npm registry). No filesystem or VERSION mocks — tests rely on the real CLI version and real bundled templates.
+External mocks: `figlet` (banner), `inquirer` (prompts; usually default `{ proceed: true }` and per-test overrides for migration-action and conflict-resolution prompts), `node:child_process.execSync` (Python detection), `node:child_process.execFile` (npm advisory), and `globalThis.fetch` only in registry-spec refresh cases. No filesystem or VERSION mocks — tests rely on the real CLI version and real bundled templates.
 
 Hash file helpers `readHashesV2` / `writeHashesV2` (defined in the test file) bypass `utils/template-hash.ts` to inject precise hash states. Use them when the test's behavior depends on a specific tracked-vs-modified condition that's awkward to construct via `init` + edit.
 

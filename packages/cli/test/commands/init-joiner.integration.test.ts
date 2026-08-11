@@ -13,6 +13,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const templateScriptsDir = fileURLToPath(
+  new URL("../../src/templates/trellis/scripts/", import.meta.url),
+);
 
 // === External dependency mocks (hoisted by vitest) ===
 
@@ -34,7 +39,9 @@ vi.mock("node:child_process", () => ({
 // === Imports ===
 
 import { init } from "../../src/commands/init.js";
+import { getConfiguredPlatforms } from "../../src/configurators/index.js";
 import { DIR_NAMES, FILE_NAMES, PATHS } from "../../src/constants/paths.js";
+import { loadHashes } from "../../src/utils/template-hash.js";
 import { execSync } from "node:child_process";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -79,8 +86,17 @@ describe("init() joiner onboarding", () => {
     fs.mkdirSync(path.join(workflow, DIR_NAMES.TASKS, "archive"), {
       recursive: true,
     });
-    fs.mkdirSync(path.join(workflow, DIR_NAMES.SPEC), { recursive: true });
+    const specDir = path.join(workflow, DIR_NAMES.SPEC);
+    fs.mkdirSync(path.join(specDir, "backend"), { recursive: true });
+    fs.writeFileSync(
+      path.join(specDir, "backend", "quality-guidelines.md"),
+      "# Project quality guidelines\n",
+      "utf-8",
+    );
     fs.mkdirSync(path.join(workflow, DIR_NAMES.WORKSPACE), { recursive: true });
+    fs.cpSync(templateScriptsDir, path.join(workflow, DIR_NAMES.SCRIPTS), {
+      recursive: true,
+    });
   }
 
   /** Helper: simulate same-dev re-init — both `.trellis/` and `.developer` exist */
@@ -93,15 +109,94 @@ describe("init() joiner onboarding", () => {
     );
   }
 
+  async function expectClassifiedPlanningTaskStartsSuccessfully(
+    taskDir: string,
+  ): Promise<void> {
+    const taskJson = JSON.parse(
+      fs.readFileSync(path.join(taskDir, FILE_NAMES.TASK_JSON), "utf-8"),
+    );
+    expect(taskJson.status).toBe("planning");
+    expect(taskJson.meta).toMatchObject({
+      classification: "maintenance",
+      product_intent: "NOT_REQUIRED",
+    });
+    expect(taskJson.meta.product_intent_reason).toContain(
+      "engineering workflow context",
+    );
+
+    const intent = fs.readFileSync(path.join(taskDir, "intent.md"), "utf-8");
+    expect(intent).toContain("## Classification\n\nmaintenance");
+    expect(intent).toContain("Status: NOT_REQUIRED");
+    expect(intent).toContain("## Requested Outcome");
+    expect(intent).toContain("## In Scope / Out of Scope");
+    expect(intent).toContain("## Acceptance or Verification Basis");
+
+    const prd = fs.readFileSync(path.join(taskDir, FILE_NAMES.PRD), "utf-8");
+    expect(prd).toContain("## Goal");
+    expect(prd).toContain("## Requirements");
+    expect(prd).toContain("## Acceptance Criteria");
+    expect(prd).toContain("task.py start");
+
+    const configPath = path.join(tmpDir, DIR_NAMES.WORKFLOW, "config.yaml");
+    if (!fs.existsSync(configPath)) {
+      fs.writeFileSync(
+        configPath,
+        "governance:\n  enabled: true\n  enforce:\n    task_create: true\n    task_start: true\n",
+        "utf-8",
+      );
+    }
+
+    const actualChildProcess =
+      await vi.importActual<typeof import("node:child_process")>(
+        "node:child_process",
+      );
+    const pythonCommand = process.platform === "win32" ? "python" : "python3";
+    const taskName = path.basename(taskDir);
+    const contextId = `init-integration-${taskName}`;
+    const taskScript = path.join(tmpDir, PATHS.SCRIPTS, "task.py");
+    expect(fs.existsSync(taskScript)).toBe(true);
+
+    const output = actualChildProcess.execFileSync(
+      pythonCommand,
+      [taskScript, "start", taskName],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, TRELLIS_CONTEXT_ID: contextId },
+      },
+    );
+    expect(output).toContain(`Current task set to: .trellis/tasks/${taskName}`);
+    expect(output).toContain("Status: planning → in_progress");
+
+    const startedTaskJson = JSON.parse(
+      fs.readFileSync(path.join(taskDir, FILE_NAMES.TASK_JSON), "utf-8"),
+    );
+    expect(startedTaskJson.status).toBe("in_progress");
+
+    const sessionState = JSON.parse(
+      fs.readFileSync(
+        path.join(
+          tmpDir,
+          DIR_NAMES.WORKFLOW,
+          ".runtime",
+          "sessions",
+          `${contextId}.json`,
+        ),
+        "utf-8",
+      ),
+    );
+    expect(sessionState.current_task).toBe(`.trellis/tasks/${taskName}`);
+    expect(fs.existsSync(path.join(tmpDir, PATHS.CURRENT_TASK_FILE))).toBe(
+      false,
+    );
+  }
+
   it("#1 empty cwd + init → creator bootstrap task created", async () => {
     await init({ yes: true, user: "alice" });
 
-    const bootstrap = path.join(
-      tmpDir,
-      PATHS.TASKS,
-      "00-bootstrap-guidelines",
-    );
+    const bootstrap = path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines");
     expect(fs.existsSync(bootstrap)).toBe(true);
+    await expectClassifiedPlanningTaskStartsSuccessfully(bootstrap);
 
     // No joiner task present
     const joiner = path.join(tmpDir, PATHS.TASKS, "00-join-alice");
@@ -121,12 +216,13 @@ describe("init() joiner onboarding", () => {
     );
     expect(taskJson.id).toBe("00-join-bob");
     expect(taskJson.name).toBe("00-join-bob");
-    expect(taskJson.status).toBe("in_progress");
+    expect(taskJson.status).toBe("planning");
     expect(taskJson.dev_type).toBe("docs");
     expect(taskJson.priority).toBe("P1");
     expect(taskJson.creator).toBe("bob");
     expect(taskJson.assignee).toBe("bob");
     expect(taskJson.title).toContain("bob");
+    await expectClassifiedPlanningTaskStartsSuccessfully(joiner);
 
     const prd = fs.readFileSync(path.join(joiner, FILE_NAMES.PRD), "utf-8");
     // PRD is AI-facing instructions ("you (the AI) are running this task").
@@ -137,13 +233,21 @@ describe("init() joiner onboarding", () => {
     expect(prd).toContain("workflow.md");
     expect(prd).toContain(".trellis/spec/");
     expect(prd).toContain("00-join-bob");
+    expect(prd).toContain("This is a joiner flow, not creator bootstrap");
+    expect(prd).toContain("do not recreate, rewrite");
+    expect(prd).toContain("In inline mode");
+    expect(prd).not.toContain("Core slash commands");
+    expect(prd).not.toContain("implement via sub-agents");
     // Fallback text for empty archive
     expect(prd).toContain("archive is empty");
-    const expectedPythonCmd = process.platform === "win32" ? "python" : "python3";
+    const expectedPythonCmd =
+      process.platform === "win32" ? "python" : "python3";
     expect(prd).toContain(
       `${expectedPythonCmd} ./.trellis/scripts/task.py list --assignee bob`,
     );
-    expect(prd).toContain(`${expectedPythonCmd} ./.trellis/scripts/task.py finish`);
+    expect(prd).toContain(
+      `${expectedPythonCmd} ./.trellis/scripts/task.py finish`,
+    );
     expect(prd).toContain(
       `${expectedPythonCmd} ./.trellis/scripts/task.py archive 00-join-bob`,
     );
@@ -154,6 +258,126 @@ describe("init() joiner onboarding", () => {
     );
 
     // Bootstrap task NOT created
+    expect(
+      fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines")),
+    ).toBe(false);
+  });
+
+  it("#2.1 force joiner re-init preserves existing platform ownership", async () => {
+    await init({ yes: true, user: "creator", claude: true, codex: true });
+
+    const hashesBefore = loadHashes(tmpDir);
+    const platformHashesBefore = Object.fromEntries(
+      Object.entries(hashesBefore).filter(([relativePath]) =>
+        [".claude/", ".codex/"].some((prefix) =>
+          relativePath.startsWith(prefix),
+        ),
+      ),
+    );
+    expect(Object.keys(platformHashesBefore).length).toBeGreaterThan(0);
+    expect(getConfiguredPlatforms(tmpDir)).toEqual(
+      new Set(["claude-code", "codex"]),
+    );
+
+    const userSpec = path.join(tmpDir, PATHS.SPEC, "team-owned.md");
+    fs.writeFileSync(userSpec, "# Team-owned spec\n", "utf-8");
+
+    // A fresh clone keeps the creator's committed templates + hash manifest,
+    // but not the gitignored per-checkout developer identity. The mocked
+    // init_developer command leaves that exact state for this second init.
+    await init({ yes: true, force: true, user: "joiner", codex: true });
+
+    const hashesAfter = loadHashes(tmpDir);
+    expect(hashesAfter).toMatchObject(platformHashesBefore);
+    expect(getConfiguredPlatforms(tmpDir)).toEqual(
+      new Set(["claude-code", "codex"]),
+    );
+    expect(fs.readFileSync(userSpec, "utf-8")).toBe("# Team-owned spec\n");
+    expect(
+      fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-join-joiner")),
+    ).toBe(true);
+  });
+
+  it("#2a existing checkout without a meaningful spec baseline → bootstrap repair, not joiner", async () => {
+    simulateExistingCheckout();
+    const specDir = path.join(tmpDir, PATHS.SPEC);
+    fs.rmSync(specDir, { recursive: true, force: true });
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(specDir, "index.md"),
+      "# Placeholder index only\n",
+      "utf-8",
+    );
+
+    // No --force: this must bypass handleReinit and repair the baseline through
+    // the full init path before creating the creator/bootstrap task.
+    await init({ yes: true, user: "repair-owner" });
+
+    const bootstrap = path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines");
+    expect(fs.existsSync(bootstrap)).toBe(true);
+    expect(
+      fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-join-repair-owner")),
+    ).toBe(false);
+    expect(fs.existsSync(path.join(specDir, "backend", "index.md"))).toBe(true);
+
+    const prd = fs.readFileSync(path.join(bootstrap, FILE_NAMES.PRD), "utf-8");
+    expect(prd).toContain("## Detected spec inventory");
+    expect(prd).not.toContain("This is a joiner flow, not creator bootstrap");
+  });
+
+  it("#2a.1 configured registry without loaded specs stays fail-closed in bootstrap", async () => {
+    simulateExistingCheckout();
+    const specDir = path.join(tmpDir, PATHS.SPEC);
+    fs.rmSync(specDir, { recursive: true, force: true });
+    fs.mkdirSync(specDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, DIR_NAMES.WORKFLOW, "config.yaml"),
+      "registry:\n  spec:\n    source: gitlab:team/spec-registry\n",
+      "utf-8",
+    );
+
+    await init({ yes: true, user: "registry-repair-owner" });
+
+    const bootstrap = path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines");
+    expect(fs.existsSync(bootstrap)).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, PATHS.TASKS, "00-join-registry-repair-owner"),
+      ),
+    ).toBe(false);
+
+    const prd = fs.readFileSync(path.join(bootstrap, FILE_NAMES.PRD), "utf-8");
+    expect(prd).toContain(
+      "A spec source is configured as **gitlab:team/spec-registry**",
+    );
+    expect(prd).toContain("did not confirm a successful load");
+    expect(prd).toContain("generated fallback files");
+    expect(prd).not.toContain("was loaded during init");
+
+    const taskJson = JSON.parse(
+      fs.readFileSync(path.join(bootstrap, FILE_NAMES.TASK_JSON), "utf-8"),
+    );
+    expect(taskJson.notes).toContain("configured but unconfirmed");
+  });
+
+  it("#2a.2 a non-empty nested spec index is a meaningful local baseline", async () => {
+    simulateExistingCheckout();
+    const specDir = path.join(tmpDir, PATHS.SPEC);
+    fs.rmSync(specDir, { recursive: true, force: true });
+    fs.mkdirSync(path.join(specDir, "backend"), { recursive: true });
+    fs.writeFileSync(
+      path.join(specDir, "backend", "index.md"),
+      "# Backend team spec\n",
+      "utf-8",
+    );
+
+    await init({ yes: true, user: "nested-index-joiner" });
+
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, PATHS.TASKS, "00-join-nested-index-joiner"),
+      ),
+    ).toBe(true);
     expect(
       fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines")),
     ).toBe(false);
@@ -175,9 +399,9 @@ describe("init() joiner onboarding", () => {
     expect(
       fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines")),
     ).toBe(true);
-    expect(
-      fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-join-alice")),
-    ).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-join-alice"))).toBe(
+      false,
+    );
   });
 
   it("#2c issue #204 with --force: empty tasks/ also triggers bootstrap fallback (not joiner)", async () => {
@@ -194,9 +418,9 @@ describe("init() joiner onboarding", () => {
     expect(
       fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines")),
     ).toBe(true);
-    expect(
-      fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-join-alice")),
-    ).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-join-alice"))).toBe(
+      false,
+    );
   });
 
   it("#3 existing .trellis/ + .developer → no task created", async () => {
@@ -204,9 +428,9 @@ describe("init() joiner onboarding", () => {
 
     await init({ yes: true, user: "carol", force: true });
 
-    expect(
-      fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-join-carol")),
-    ).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-join-carol"))).toBe(
+      false,
+    );
     expect(
       fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines")),
     ).toBe(false);
@@ -288,19 +512,17 @@ describe("init() joiner onboarding", () => {
     simulateExistingCheckout();
 
     const originalWriteFileSync = fs.writeFileSync;
-    const writeSpy = vi
-      .spyOn(fs, "writeFileSync")
-      .mockImplementation(((
-        filePath: fs.PathOrFileDescriptor,
-        data: string | NodeJS.ArrayBufferView,
-        options?: fs.WriteFileOptions,
-      ) => {
-        const pathStr = String(filePath);
-        if (pathStr.includes("00-join-eve") && pathStr.endsWith("task.json")) {
-          throw new Error("simulated write failure");
-        }
-        return originalWriteFileSync(filePath, data, options);
-      }) as typeof fs.writeFileSync);
+    const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(((
+      filePath: fs.PathOrFileDescriptor,
+      data: string | NodeJS.ArrayBufferView,
+      options?: fs.WriteFileOptions,
+    ) => {
+      const pathStr = String(filePath);
+      if (pathStr.includes("00-join-eve") && pathStr.endsWith("task.json")) {
+        throw new Error("simulated write failure");
+      }
+      return originalWriteFileSync(filePath, data, options);
+    }) as typeof fs.writeFileSync);
 
     const warnSpy = vi.spyOn(console, "warn");
 
@@ -339,7 +561,8 @@ describe("init() joiner onboarding", () => {
       fs.readFileSync(path.join(joiner, FILE_NAMES.TASK_JSON), "utf-8"),
     );
     expect(taskJson.creator).toBe("frank");
-    expect(taskJson.status).toBe("in_progress");
+    expect(taskJson.status).toBe("planning");
+    await expectClassifiedPlanningTaskStartsSuccessfully(joiner);
 
     expect(fs.existsSync(path.join(tmpDir, PATHS.CURRENT_TASK_FILE))).toBe(
       false,
@@ -351,9 +574,9 @@ describe("init() joiner onboarding", () => {
 
     await init({ yes: true, user: "grace" });
 
-    expect(
-      fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-join-grace")),
-    ).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-join-grace"))).toBe(
+      false,
+    );
     expect(
       fs.existsSync(path.join(tmpDir, PATHS.TASKS, "00-bootstrap-guidelines")),
     ).toBe(false);

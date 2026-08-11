@@ -11,7 +11,7 @@ and translates its output back into channel events.
 trellis channel create impl-task --by dispatcher --cwd /path/to/repo
 trellis channel spawn impl-task --provider codex --as codex-impl --timeout 30m
 
-echo "Implement the schema for table X per .trellis/.../intent.md and prd.md" \
+echo "Implement the schema for table X per .trellis/.../prd.md" \
   | trellis channel send impl-task --as dispatcher --to codex-impl --stdin
 
 trellis channel wait impl-task --as dispatcher --from codex-impl --kind done --timeout 30m
@@ -93,7 +93,6 @@ Example spawning a check agent against a task directory:
 ```bash
 TASK=.trellis/tasks/05-13-example
 trellis channel spawn cr-example --agent check --provider codex --as check-cx \
-  --file "$TASK/intent.md" \
   --file "$TASK/prd.md" \
   --file "$TASK/design.md" \
   --file "$TASK/implement.md" \

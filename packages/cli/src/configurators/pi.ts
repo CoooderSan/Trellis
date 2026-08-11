@@ -1,6 +1,4 @@
-import path from "node:path";
 import { AI_TOOLS } from "../types/ai-tools.js";
-import { ensureDir, writeFile } from "../utils/file-writer.js";
 import {
   applyPullBasedPreludeMarkdown,
   collectSkillTemplates,
@@ -8,9 +6,7 @@ import {
   resolveCommands,
   resolveBundledSkills,
   resolvePlaceholders,
-  resolveSkills,
-  writeAgents,
-  writeSkills,
+  resolveSkillsNeutral,
 } from "./shared.js";
 import {
   getAllAgents,
@@ -32,6 +28,9 @@ function resolvePiCommands(): ReturnType<typeof resolveCommands> {
   return start ? [start, ...commands] : commands;
 }
 
+/**
+ * The Pi file set — written at init and diffed by `trellis update`.
+ */
 export function collectPiTemplates(): Map<string, string> {
   const files = new Map<string, string>();
   const ctx = AI_TOOLS.pi.templateContext;
@@ -40,19 +39,31 @@ export function collectPiTemplates(): Map<string, string> {
     files.set(`.pi/prompts/trellis-${command.name}.md`, command.content);
   }
 
-  // Skills written under `.pi/skills/` (Pi-owned skill root). Pi can also
-  // discover `.agents/skills/` shared with Codex/Gemini; switching is
-  // intentionally deferred to a follow-up because Pi has its own skill
-  // discovery semantics that aren't covered by this task.
+  // Shared skills go to `.agents/skills/` (Pi discovers this cross-platform
+  // workspace alias natively). Neutral resolver keeps content byte-identical
+  // to Codex's/Gemini's writes for the same skill names, avoiding the
+  // duplicate/conflicting-skill installs reported in #447.
   for (const [filePath, content] of collectSkillTemplates(
-    ".pi/skills",
-    resolveSkills(ctx),
+    ".agents/skills",
+    resolveSkillsNeutral(ctx),
     resolveBundledSkills(ctx),
   )) {
     files.set(filePath, content);
   }
 
-  for (const agent of applyPullBasedPreludeMarkdown(getAllAgents())) {
+  const agents = getAllAgents();
+  const renderedAgents = agents.map((agent) => {
+    const [injectedAgent] = applyPullBasedPreludeMarkdown([agent]);
+    const withRoleGate = agent.content.includes("validate-role-context")
+      ? agent
+      : (injectedAgent ?? agent);
+    return {
+      ...withRoleGate,
+      content: replacePythonCommandLiterals(withRoleGate.content),
+    };
+  });
+
+  for (const agent of renderedAgents) {
     files.set(`.pi/agents/${agent.name}.md`, agent.content);
   }
 
@@ -65,42 +76,4 @@ export function collectPiTemplates(): Map<string, string> {
   );
 
   return files;
-}
-
-export async function configurePi(cwd: string): Promise<void> {
-  const config = AI_TOOLS.pi;
-  const ctx = config.templateContext;
-  const configRoot = path.join(cwd, config.configDir);
-
-  ensureDir(path.join(configRoot, "prompts"));
-  for (const command of resolvePiCommands()) {
-    await writeFile(
-      path.join(configRoot, "prompts", `trellis-${command.name}.md`),
-      command.content,
-    );
-  }
-
-  // See collectPiTemplates(): Pi keeps a private `.pi/skills/` root for now.
-  // Cross-platform `.agents/skills/` adoption is a separate decision.
-  await writeSkills(
-    path.join(configRoot, "skills"),
-    resolveSkills(ctx),
-    resolveBundledSkills(ctx),
-  );
-  await writeAgents(
-    path.join(configRoot, "agents"),
-    applyPullBasedPreludeMarkdown(getAllAgents()),
-  );
-
-  ensureDir(path.join(configRoot, "extensions", "trellis"));
-  await writeFile(
-    path.join(configRoot, "extensions", "trellis", "index.ts"),
-    replacePythonCommandLiterals(getExtensionTemplate()),
-  );
-
-  const settings = getSettingsTemplate();
-  await writeFile(
-    path.join(configRoot, settings.targetPath),
-    resolvePlaceholders(settings.content),
-  );
 }

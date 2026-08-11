@@ -13,7 +13,7 @@ File locations and formats differ by platform, but responsibility boundaries sho
 | Agent | Responsibility |
 | --- | --- |
 | `trellis-research` | Investigate the question and write findings into the current task's `research/`. |
-| `trellis-implement` | Implement against `intent.md`, `prd.md`, optional `design.md` / `implement.md`, `implement.jsonl`, and related spec/research. |
+| `trellis-implement` | Implement against `prd.md`, optional `design.md` / `implement.md`, `implement.jsonl`, and related spec/research. |
 | `trellis-check` | Review changes, fix discovered issues, and run necessary checks. |
 
 Agent files should not become generic chat prompts. They should define input sources, write boundaries, whether code may be changed, and how results are reported.
@@ -34,6 +34,7 @@ Agent files should not become generic chat prompts. They should define input sou
 | Pi Agent | `.pi/agents/trellis-*.md` |
 | Reasonix | `.reasonix/skills/trellis-*/SKILL.md` (subagent frontmatter) |
 | ZCode | `.zcode/agents/trellis-*.md` |
+| Kimi Code | `.kimi-code/agents/trellis-*.md` (custom sub-agents; the same prompts also ship as `.kimi-code/skills/trellis-*/SKILL.md`) |
 
 GitHub Copilot agent/prompt support is provided by a combination of directories such as `.github/agents/`, `.github/prompts/`, and `.github/skills/`; inspect the files actually generated in the user project.
 
@@ -54,7 +55,7 @@ The agent file instructs the agent to read after startup:
 - `python3 ./.trellis/scripts/task.py current --source`
 - `implement.jsonl` or `check.jsonl`
 - spec/research files referenced by JSONL
-- current task `intent.md` and `prd.md`
+- current task `prd.md`
 - `design.md` if present
 - `implement.md` if present
 
@@ -73,7 +74,7 @@ This mode fits platforms whose hooks cannot reliably rewrite sub-agent prompts.
 ## Modification Principles
 
 1. **Keep responsibilities single-purpose**. Do not mix research, implement, and check responsibilities into one agent.
-2. **Specify the read order**. Agents must know to start from the active task, read jsonl/spec context, then read `intent.md`, `prd.md`, `design.md` if present, and `implement.md` if present.
+2. **Specify the read order**. Agents must know to start from the active task, read jsonl/spec context, then read `prd.md`, `design.md` if present, and `implement.md` if present.
 3. **Specify write boundaries**. Research usually only writes `research/`; implement can write code; check can fix issues.
 4. **Keep semantics synchronized in multi-platform projects**. If the user configured Claude, Codex, and Cursor together, decide whether changes to one platform's agent also need to be applied to others.
 

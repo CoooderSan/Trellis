@@ -16,7 +16,7 @@ Hooks are the automation layer that connects a platform to Trellis. When the use
 | --- | --- |
 | session-start | Injects a Trellis overview when a session starts, clears, or compacts. |
 | workflow-state | Injects a state hint on each user input. |
-| sub-agent context | Injects Intent/PRD/spec/research before an agent starts. |
+| sub-agent context | Injects PRD/spec/research before an agent starts. |
 | shell session bridge | Lets `task.py` commands in shell see the same session identity. |
 
 ## Modification Steps

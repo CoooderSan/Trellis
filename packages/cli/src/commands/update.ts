@@ -6,11 +6,7 @@ import inquirer from "inquirer";
 
 import { DIR_NAMES, FILE_NAMES, PATHS } from "../constants/paths.js";
 import type { AITool } from "../types/ai-tools.js";
-import {
-  VERSION,
-  PACKAGE_NAME,
-  PACKAGE_REGISTRY,
-} from "../constants/version.js";
+import { VERSION, PACKAGE_NAME } from "../constants/version.js";
 import {
   getMigrationsForVersion,
   getAllMigrations,
@@ -64,6 +60,8 @@ import {
   isManagedRootDir,
 } from "../configurators/index.js";
 import { replacePythonCommandLiterals } from "../configurators/shared.js";
+import { preserveCodexAgentModelKeys } from "../configurators/codex.js";
+import { ensureGitattributes } from "../configurators/workflow.js";
 import { pruneOrphanManifestKeys } from "../utils/manifest-prune.js";
 import {
   fetchRegistrySpecTemplates,
@@ -104,8 +102,8 @@ interface ChangeAnalysis {
 type ConflictAction = "overwrite" | "skip" | "create-new";
 
 const CLAUDE_SETTINGS_PATH = ".claude/settings.json";
-const TRELLIS_BLOCK_START = "<!-- TRELLIS:START -->";
-const TRELLIS_BLOCK_END = "<!-- TRELLIS:END -->";
+export const TRELLIS_BLOCK_START = "<!-- TRELLIS:START -->";
+export const TRELLIS_BLOCK_END = "<!-- TRELLIS:END -->";
 const LEGACY_UNTRACKED_AGENTS_MD_BLOCK_HASHES = new Set<string>([
   // v0.5.0-beta.17 and earlier wrote AGENTS.md but did not hash-track it.
   // This hash is the pristine Trellis-managed block before the Subagents
@@ -321,11 +319,13 @@ interface SafeFileDeleteClassified {
  * - File exists
  * - Content hash matches allowed_hashes
  * - Path is not protected or in update.skip
+ * - Path is not owned by the current template set
  */
 function collectSafeFileDeletes(
   migrations: MigrationItem[],
   cwd: string,
   skipPaths: string[],
+  currentTemplatePaths: ReadonlySet<string>,
   /**
    * Bypass `update.skip` for safe-file-delete. Enable this for breaking releases
    * where honoring skip would leave the project half-migrated (old files at
@@ -335,7 +335,11 @@ function collectSafeFileDeletes(
    */
   bypassUpdateSkip = false,
 ): SafeFileDeleteClassified[] {
-  const safeDeletes = migrations.filter((m) => m.type === "safe-file-delete");
+  // Historical migrations are loaded forever, so current template ownership
+  // must win when a later release intentionally restores a retired path.
+  const safeDeletes = migrations.filter(
+    (m) => m.type === "safe-file-delete" && !currentTemplatePaths.has(m.from),
+  );
   const results: SafeFileDeleteClassified[] = [];
 
   for (const item of safeDeletes) {
@@ -908,6 +912,15 @@ async function collectTemplateFiles(
     }
   }
 
+  // Users configure sub-agent models by editing `model` /
+  // `model_reasoning_effort` directly on the generated agent tomls. Preserve
+  // those two keys from the on-disk files into the freshly rendered desired
+  // content so a project whose only local edit is these keys is not flagged
+  // as a modified-file conflict by the hash comparison below.
+  if (platforms.has("codex")) {
+    preserveCodexAgentModelKeys(cwd, files);
+  }
+
   preserveExistingClaudeStatusLine(cwd, files);
 
   for (const [filePath, content] of await collectRegistrySpecTemplates(cwd)) {
@@ -1306,23 +1319,39 @@ function getInstalledVersion(cwd: string): string {
 }
 
 /**
- * Fetch latest version from npm registry
+ * Ask npm for the latest version using its active registry/auth/proxy config.
+ * This lookup is advisory, so every failure resolves to null.
  */
 async function getLatestNpmVersion(): Promise<string | null> {
   try {
-    const registryBase = PACKAGE_REGISTRY.endsWith("/")
-      ? PACKAGE_REGISTRY
-      : `${PACKAGE_REGISTRY}/`;
-    const metadataUrl = new URL(
-      `${encodeURIComponent(PACKAGE_NAME)}/latest`,
-      registryBase,
-    );
-    const response = await fetch(metadataUrl);
-    if (!response.ok) {
-      return null;
-    }
-    const data = (await response.json()) as { version?: string };
-    return data.version ?? null;
+    const { execFile } = await import("node:child_process");
+    const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+    return await new Promise<string | null>((resolve) => {
+      execFile(
+        npmCommand,
+        ["view", PACKAGE_NAME, "version", "--json"],
+        {
+          encoding: "utf8",
+          maxBuffer: 64 * 1024,
+          timeout: 5_000,
+          windowsHide: true,
+        },
+        (error, stdout) => {
+          if (error) {
+            resolve(null);
+            return;
+          }
+
+          try {
+            const value: unknown = JSON.parse(stdout);
+            const version = typeof value === "string" ? value.trim() : "";
+            resolve(version || null);
+          } catch {
+            resolve(null);
+          }
+        },
+      );
+    });
   } catch {
     return null;
   }
@@ -1370,6 +1399,39 @@ function collectAllFiles(dirPath: string, cwd = process.cwd()): string[] {
   }
 
   return files;
+}
+
+/**
+ * Whether every file under `dirRelativePath` byte-matches the CURRENT
+ * template content for its path. Stricter than {@link isDirectorySafeToReplace},
+ * which also accepts files that are merely unmodified relative to an old
+ * stored hash (i.e. stale-but-untouched). Used to decide the safe *direction*
+ * of a rename-dir merge when both source and target exist: if the target
+ * already holds canonical current-version bytes, the source (however it got
+ * there) must not be allowed to overwrite it with older/differently-flavored
+ * content (#447 — a legacy `.pi/skills/` copy rendered with the Pi-specific
+ * resolver must not clobber the shared, neutral `.agents/skills/` content
+ * Codex/Gemini already wrote).
+ */
+function dirMatchesCurrentTemplates(
+  cwd: string,
+  dirRelativePath: string,
+  templates: Map<string, string>,
+): boolean {
+  const dirFullPath = path.join(cwd, dirRelativePath);
+  if (!fs.existsSync(dirFullPath)) return false;
+
+  const files = collectAllFiles(dirFullPath, cwd);
+  if (files.length === 0) return false;
+
+  for (const fullPath of files) {
+    const relativePath = toPosix(path.relative(cwd, fullPath));
+    const templateContent = templates.get(relativePath);
+    if (templateContent === undefined) return false;
+    if (fs.readFileSync(fullPath, "utf-8") !== templateContent) return false;
+  }
+
+  return true;
 }
 
 /**
@@ -1448,7 +1510,26 @@ function isFileSafeToReplace(
 /**
  * Classify migrations based on file state and user modifications
  */
-function classifyMigrations(
+/**
+ * Whether the manifest records any file under `dirRelativePath` — i.e. whether
+ * Trellis actually created this directory. Used to gate rename-dir migrations:
+ * a directory Trellis never wrote (e.g. a user's own `.windsurf/` editor
+ * config that merely shares a path with a retired Trellis platform dir) must
+ * not be auto-moved.
+ */
+export function dirHasManifestEntries(
+  dirRelativePath: string,
+  hashes: TemplateHashes,
+): boolean {
+  const prefix = dirRelativePath.endsWith("/")
+    ? dirRelativePath
+    : dirRelativePath + "/";
+  return Object.keys(hashes).some(
+    (key) => key === dirRelativePath || key.startsWith(prefix),
+  );
+}
+
+export function classifyMigrations(
   migrations: MigrationItem[],
   cwd: string,
   hashes: TemplateHashes,
@@ -1524,9 +1605,17 @@ function classifyMigrations(
           // Target has user modifications - conflict
           result.conflict.push(item);
         }
-      } else {
-        // Directory rename - always auto (includes user files)
+      } else if (dirHasManifestEntries(item.from, hashes)) {
+        // Trellis created this directory (the manifest tracks files under it),
+        // so the rename is ours to make.
         result.auto.push(item);
+      } else {
+        // Target absent and the source has no manifest record: this is very
+        // likely a user-owned directory that merely shares a path with a
+        // retired Trellis platform dir (e.g. a real `.windsurf/` editor
+        // config). Skipping avoids silently moving the user's data out from
+        // under their editor — even under --force, since skip never executes.
+        result.skip.push(item);
       }
     } else if (item.type === "delete") {
       if (isTemplateModified(cwd, item.from, hashes)) {
@@ -1601,7 +1690,9 @@ function printMigrationSummary(classified: ClassifiedMigrations): void {
   }
 
   if (classified.skip.length > 0) {
-    console.log(chalk.gray("  ○ Skipping (old file not found):"));
+    console.log(
+      chalk.gray("  ○ Skipping (not found, protected, or not Trellis-owned):"),
+    );
     for (const item of classified.skip.slice(0, 3)) {
       console.log(chalk.gray(`    ${item.from}`));
     }
@@ -1759,10 +1850,11 @@ export function sortMigrationsForExecution(
  * @param options.skipAll - Skip all modified files without asking
  * If neither is set, prompts interactively for modified files
  */
-async function executeMigrations(
+export async function executeMigrations(
   classified: ClassifiedMigrations,
   cwd: string,
   options: { force?: boolean; skipAll?: boolean },
+  templates: Map<string, string>,
 ): Promise<MigrationResult> {
   const result: MigrationResult = {
     renamed: 0,
@@ -1799,6 +1891,31 @@ async function executeMigrations(
     } else if (item.type === "rename-dir" && item.to) {
       const oldPath = path.join(cwd, item.from);
       const newPath = path.join(cwd, item.to);
+      const oldPrefix = item.from.endsWith("/") ? item.from : item.from + "/";
+      const newPrefix = item.to.endsWith("/") ? item.to : item.to + "/";
+
+      // Target already exists and already holds canonical, current-version
+      // content (e.g. Codex/Gemini already wrote the shared `.agents/skills/`
+      // root before Pi's legacy `.pi/skills/` copy gets retired). Renaming
+      // the source in would clobber good content with older/differently-
+      // flavored bytes, so just drop the now-redundant source instead (#447).
+      if (
+        fs.existsSync(newPath) &&
+        dirMatchesCurrentTemplates(cwd, item.to, templates)
+      ) {
+        removeDirectoryRecursive(oldPath);
+
+        const hashes = loadHashes(cwd);
+        const updatedHashes: TemplateHashes = {};
+        for (const [hashPath, hashValue] of Object.entries(hashes)) {
+          if (hashPath.startsWith(oldPrefix)) continue; // source retired
+          updatedHashes[hashPath] = hashValue;
+        }
+        saveHashes(cwd, updatedHashes);
+
+        result.deleted++;
+        continue;
+      }
 
       // If target exists (safe to replace, already checked in classification)
       // delete it first before renaming
@@ -1814,8 +1931,6 @@ async function executeMigrations(
 
       // Batch update hash tracking for all files in the directory
       const hashes = loadHashes(cwd);
-      const oldPrefix = item.from.endsWith("/") ? item.from : item.from + "/";
-      const newPrefix = item.to.endsWith("/") ? item.to : item.to + "/";
 
       const updatedHashes: TemplateHashes = {};
       for (const [hashPath, hashValue] of Object.entries(hashes)) {
@@ -1947,6 +2062,43 @@ function printMigrationResult(result: MigrationResult): void {
   if (parts.length > 0) {
     console.log(chalk.cyan(`Migration complete: ${parts.join(", ")}`));
   }
+}
+
+/**
+ * One-time 0.2.0 migration: rename `traces-*.md` → `journal-*.md` in every
+ * developer workspace directory.
+ *
+ * Never overwrites an existing `journal-N.md`: a newer session may already
+ * have created it, and `.trellis/workspace/` is excluded from the update
+ * backup (see `BACKUP_EXCLUDE_PATTERNS`), so clobbering it would be
+ * unrecoverable data loss. Conflicting `traces-N.md` files are left in place
+ * and reported instead.
+ */
+export function renameTracesToJournal(workspaceDir: string): {
+  renamed: number;
+  skipped: string[];
+} {
+  const skipped: string[] = [];
+  let renamed = 0;
+  if (!fs.existsSync(workspaceDir)) return { renamed, skipped };
+
+  for (const dev of fs.readdirSync(workspaceDir)) {
+    const devPath = path.join(workspaceDir, dev);
+    if (!fs.statSync(devPath).isDirectory()) continue;
+
+    for (const file of fs.readdirSync(devPath)) {
+      if (!(file.startsWith("traces-") && file.endsWith(".md"))) continue;
+      const oldPath = path.join(devPath, file);
+      const newPath = path.join(devPath, file.replace("traces-", "journal-"));
+      if (fs.existsSync(newPath)) {
+        skipped.push(oldPath);
+        continue;
+      }
+      fs.renameSync(oldPath, newPath);
+      renamed++;
+    }
+  }
+  return { renamed, skipped };
 }
 
 /**
@@ -2115,6 +2267,7 @@ export async function update(options: UpdateOptions): Promise<void> {
     allMigrations,
     cwd,
     skipPaths,
+    new Set(templates.keys()),
     breakingBypass,
   );
   const hasSafeDeletes =
@@ -2267,6 +2420,14 @@ export async function update(options: UpdateOptions): Promise<void> {
     );
   }
 
+  // Ensure project-root .gitattributes carries the journal merge=union rule.
+  // Additive-only (see ensureGitattributes) — runs regardless of whether
+  // other template files changed, so it must sit before the "nothing to do"
+  // early-return below. Never touches disk in --dry-run.
+  if (!options.dryRun) {
+    ensureGitattributes(cwd);
+  }
+
   // Check if there's anything to do
   const isUpgrade = cliVsProject > 0;
   const isDowngrade = cliVsProject < 0;
@@ -2410,10 +2571,15 @@ export async function update(options: UpdateOptions): Promise<void> {
 
   // Execute migrations if --migrate flag is set
   if (options.migrate && classifiedMigrations) {
-    const migrationResult = await executeMigrations(classifiedMigrations, cwd, {
-      force: options.force,
-      skipAll: options.skipAll,
-    });
+    const migrationResult = await executeMigrations(
+      classifiedMigrations,
+      cwd,
+      {
+        force: options.force,
+        skipAll: options.skipAll,
+      },
+      templates,
+    );
     printMigrationResult(migrationResult);
 
     // Hardcoded: Rename traces-*.md to journal-*.md in workspace directories
@@ -2422,29 +2588,19 @@ export async function update(options: UpdateOptions): Promise<void> {
     // and variable file numbers (traces-1.md, traces-2.md, etc.), so we can't enumerate them
     // in the migration manifest. This is a one-time migration for the 0.2.0 naming redesign.
     const workspaceDir = path.join(cwd, PATHS.WORKSPACE);
-    if (fs.existsSync(workspaceDir)) {
-      let journalRenamed = 0;
-      const devDirs = fs.readdirSync(workspaceDir);
-      for (const dev of devDirs) {
-        const devPath = path.join(workspaceDir, dev);
-        if (!fs.statSync(devPath).isDirectory()) continue;
-
-        const files = fs.readdirSync(devPath);
-        for (const file of files) {
-          if (file.startsWith("traces-") && file.endsWith(".md")) {
-            const oldPath = path.join(devPath, file);
-            const newFile = file.replace("traces-", "journal-");
-            const newPath = path.join(devPath, newFile);
-            fs.renameSync(oldPath, newPath);
-            journalRenamed++;
-          }
-        }
-      }
-      if (journalRenamed > 0) {
-        console.log(
-          chalk.cyan(`Renamed ${journalRenamed} traces file(s) to journal`),
-        );
-      }
+    const { renamed: journalRenamed, skipped: journalSkipped } =
+      renameTracesToJournal(workspaceDir);
+    if (journalRenamed > 0) {
+      console.log(
+        chalk.cyan(`Renamed ${journalRenamed} traces file(s) to journal`),
+      );
+    }
+    for (const oldPath of journalSkipped) {
+      console.warn(
+        chalk.yellow(
+          `Kept ${path.relative(cwd, oldPath)}: its journal target already exists`,
+        ),
+      );
     }
   }
 
@@ -2680,41 +2836,12 @@ export async function update(options: UpdateOptions): Promise<void> {
         const taskJsonPath = path.join(taskDir, "task.json");
         fs.writeFileSync(taskJsonPath, JSON.stringify(taskJson, null, 2));
 
-        const intentContent = [
-          `# Intent: Migrate to v${cliVersion}`,
-          "",
-          "## Intent",
-          `Upgrade this Trellis project from v${projectVersion} to v${cliVersion} and resolve any breaking migration work before normal development continues.`,
-          "",
-          "## Source",
-          "- Created by `trellis update` after detecting breaking migration guidance.",
-          "",
-          "## Scope",
-          "- In scope: review migration guides, update local Trellis customizations, rerun update/migration commands, and test the workflow.",
-          "- Out of scope: unrelated feature development and repository refactors.",
-          "",
-          "## Acceptance Criteria",
-          "- [ ] Migration guide has been reviewed.",
-          "- [ ] Custom Trellis files have been reconciled.",
-          "- [ ] Workflow smoke tests pass after migration.",
-          "",
-          "## Risk",
-          "- Level: Medium",
-          "- Approval: Migration task generated by Trellis update.",
-          "",
-        ].join("\n");
-
-        fs.writeFileSync(path.join(taskDir, FILE_NAMES.INTENT), intentContent);
-
         // Build PRD content
         let prdContent = `# Migration Task: Upgrade to v${cliVersion}\n\n`;
         prdContent += `**Created**: ${todayStr}\n`;
         prdContent += `**From Version**: ${projectVersion}\n`;
         prdContent += `**To Version**: ${cliVersion}\n`;
         prdContent += `**Assignee**: ${currentDeveloper}\n\n`;
-        prdContent += `## Goal\n\nComplete the Trellis migration from v${projectVersion} to v${cliVersion}.\n\n`;
-        prdContent += `## Requirements\n\n- Review the migration guide.\n- Update custom Trellis files.\n- Run \`trellis update --migrate\` when required.\n- Test workflows after migration.\n\n`;
-        prdContent += `## Acceptance Criteria\n\n- [ ] Migration guide has been reviewed.\n- [ ] Custom files have been updated or intentionally kept.\n- [ ] Trellis workflows have been smoke tested.\n\n`;
         prdContent += `## Status\n\n- [ ] Review migration guide\n- [ ] Update custom files\n- [ ] Run \`trellis update --migrate\`\n- [ ] Test workflows\n\n`;
 
         for (const {

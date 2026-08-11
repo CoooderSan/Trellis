@@ -21,7 +21,12 @@ vi.mock("inquirer", () => ({
   default: { prompt: vi.fn().mockResolvedValue({ proceed: true }) },
 }));
 
+const childProcessMocks = vi.hoisted(() => ({
+  execFile: vi.fn(),
+}));
+
 vi.mock("node:child_process", () => ({
+  execFile: childProcessMocks.execFile,
   execSync: vi.fn().mockImplementation((cmd: string) => {
     const py = process.platform === "win32" ? "python" : "python3";
     return cmd === `${py} --version` ? "Python 3.11.12" : "";
@@ -51,8 +56,12 @@ vi.mock("giget", async () => {
 // === Imports ===
 
 import { init } from "../../src/commands/init.js";
-import { update } from "../../src/commands/update.js";
-import { VERSION } from "../../src/constants/version.js";
+import {
+  update,
+  classifyMigrations,
+  executeMigrations,
+} from "../../src/commands/update.js";
+import { PACKAGE_NAME, VERSION } from "../../src/constants/version.js";
 import { DIR_NAMES, FILE_NAMES, PATHS } from "../../src/constants/paths.js";
 import { computeHash } from "../../src/utils/template-hash.js";
 import { workflowMdTemplate } from "../../src/templates/trellis/index.js";
@@ -62,10 +71,20 @@ import {
   COPILOT_INSTRUCTIONS_PATH,
   getCopilotInstructions,
 } from "../../src/templates/copilot/index.js";
-import { replacePythonCommandLiterals } from "../../src/configurators/shared.js";
+import {
+  replacePythonCommandLiterals,
+  resolveSkills,
+  resolveSkillsNeutral,
+  resolveAllAsSkillsNeutral,
+  resolveBundledSkills,
+  collectSkillTemplates,
+} from "../../src/configurators/shared.js";
+import { AI_TOOLS } from "../../src/types/ai-tools.js";
 
 // A managed template file that update always handles (Python script)
 const MANAGED_FILE = `${PATHS.SCRIPTS}/get_context.py`;
+const NPM_COMMAND = process.platform === "win32" ? "npm.cmd" : "npm";
+const NPM_VIEW_ARGS = ["view", PACKAGE_NAME, "version", "--json"];
 
 /** Remove a key from a hash object (avoids eslint no-dynamic-delete) */
 function removeHashEntry(
@@ -171,13 +190,15 @@ describe("update() integration", () => {
     const noop = () => {};
     vi.spyOn(console, "log").mockImplementation(noop);
     vi.spyOn(console, "error").mockImplementation(noop);
-    // Mock fetch for npm registry
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ version: VERSION }),
-      }),
+    childProcessMocks.execFile.mockImplementation(
+      (
+        _command: string,
+        _args: string[],
+        _options: Record<string, unknown>,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(null, JSON.stringify(VERSION), "");
+      },
     );
   });
 
@@ -246,11 +267,65 @@ describe("update() integration", () => {
     expect(entries.filter((e) => e.startsWith(".backup-")).length).toBe(0);
   });
 
+  it("lets npm use its active configuration for the version advisory", async () => {
+    await setupProject();
+    childProcessMocks.execFile.mockClear();
+
+    await update({});
+
+    expect(childProcessMocks.execFile).toHaveBeenCalledWith(
+      NPM_COMMAND,
+      NPM_VIEW_ARGS,
+      {
+        encoding: "utf8",
+        maxBuffer: 64 * 1024,
+        timeout: 5_000,
+        windowsHide: true,
+      },
+      expect.any(Function),
+    );
+    const npmArgs = childProcessMocks.execFile.mock.calls[0]?.[1] as string[];
+    expect(npmArgs).not.toContain("--registry");
+  });
+
+  it("continues silently when the npm version advisory fails", async () => {
+    await setupProject();
+    vi.mocked(console.log).mockClear();
+    vi.mocked(console.error).mockClear();
+    childProcessMocks.execFile.mockImplementation(
+      (
+        _command: string,
+        _args: string[],
+        _options: Record<string, unknown>,
+        callback: (error: Error | null, stdout: string, stderr: string) => void,
+      ) => {
+        callback(new Error("npm unavailable"), "", "npm unavailable");
+      },
+    );
+
+    await update({});
+
+    const output = vi.mocked(console.log).mock.calls.flat().join("\n");
+    expect(output).toContain("Latest on npm:   (unable to fetch)");
+    expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("#1b current OpenCode templates are not classified as deprecated", async () => {
+    const startPath = ".opencode/commands/trellis/start.md";
+    await init({ yes: true, force: true, opencode: true });
+    expect(fs.existsSync(projectFile(startPath))).toBe(true);
+
+    await update({ dryRun: true });
+
+    const output = vi.mocked(console.log).mock.calls.flat().join("\n");
+    expect(output).not.toContain(`${startPath} (modified, skipped)`);
+  });
+
   it("[issue-zcode-codex-upgrade] zcode private skills do not trigger legacy Codex backfill", async () => {
     await init({ yes: true, force: true, zcode: true });
 
     expect(fs.existsSync(projectFile(".zcode/commands/trellis/start.md"))).toBe(
-      true,
+      false,
     );
     expect(
       fs.existsSync(projectFile(".zcode/skills/trellis-start/SKILL.md")),
@@ -284,6 +359,110 @@ describe("update() integration", () => {
       fs.existsSync(projectFile(".zcode/agents/trellis-research.md")),
     ).toBe(true);
     expect(fs.existsSync(projectFile(".agents/skills"))).toBe(false);
+  });
+
+  it("[issue-447] 0.6.8 rename-dir migration moves legacy .pi/skills/ into shared .agents/skills/ even when Codex already installed the shared root", async () => {
+    // Simulate a pre-0.6.8 project: Pi + Codex both installed. Pre-fix Pi
+    // wrote its own Pi-flavored copy under `.pi/skills/` (via resolveSkills,
+    // not resolveSkillsNeutral), while Codex already wrote the shared,
+    // neutral `.agents/skills/` root. Reproduces the #447 repro shape.
+    //
+    // This exercises classifyMigrations()/executeMigrations() directly
+    // (like the existing "rename-dir ownership gate" tests in
+    // update-internals.test.ts) rather than the full update() CLI flow,
+    // because the 0.6.8 manifest only becomes "pending" once the CLI's own
+    // package.json version reaches 0.6.8 — a release-time bump orthogonal to
+    // this bug fix.
+    await init({ yes: true, force: true, pi: true, codex: true });
+
+    // `.agents/skills/` now holds the correct, neutral, current-version
+    // content (written by both Codex and current Pi in current code).
+    const neutralContent = readProjectFile(
+      ".agents/skills/trellis-update-spec/SKILL.md",
+    );
+
+    // Fabricate the pre-fix `.pi/skills/` leftover with Pi-flavored bytes
+    // (old pi.ts used resolveSkills(ctx), not resolveSkillsNeutral(ctx)).
+    const piCtx = AI_TOOLS.pi.templateContext;
+    const legacyPiSkillFiles = collectSkillTemplates(
+      ".pi/skills",
+      resolveSkills(piCtx),
+      resolveBundledSkills(piCtx),
+    );
+
+    const legacyContent = legacyPiSkillFiles.get(
+      ".pi/skills/trellis-update-spec/SKILL.md",
+    );
+    expect(legacyContent).toBeDefined();
+    // Sanity: the Pi-flavored bytes actually differ from the shared neutral
+    // bytes already on disk (otherwise this test wouldn't be exercising the
+    // reported bug at all).
+    expect(legacyContent).not.toBe(neutralContent);
+
+    const hashes = readHashesV2(hashFilePath());
+    for (const [relativePath, content] of legacyPiSkillFiles) {
+      writeProjectFile(relativePath, content);
+      hashes[relativePath] = computeHash(content);
+    }
+    writeHashesV2(hashFilePath(), hashes);
+
+    expect(fs.existsSync(projectFile(".pi/skills/trellis-update-spec"))).toBe(
+      true,
+    );
+    expect(
+      fs.existsSync(projectFile(".agents/skills/trellis-update-spec")),
+    ).toBe(true);
+
+    // Build the current-version templates map for `.agents/skills/` the way
+    // both real writers (Codex, Pi) produce it — mirrors what update()'s
+    // collectTemplateFiles() would assemble for this project.
+    const codexCtx = AI_TOOLS.codex.templateContext;
+    const currentTemplates = new Map<string, string>([
+      ...collectSkillTemplates(
+        ".agents/skills",
+        resolveAllAsSkillsNeutral(codexCtx),
+        resolveBundledSkills(codexCtx),
+      ),
+      ...collectSkillTemplates(
+        ".agents/skills",
+        resolveSkillsNeutral(piCtx),
+        resolveBundledSkills(piCtx),
+      ),
+    ]);
+
+    const migrationItem = {
+      type: "rename-dir" as const,
+      from: ".pi/skills",
+      to: ".agents/skills",
+    };
+    const finalHashes = readHashesV2(hashFilePath());
+    const classified = classifyMigrations(
+      [migrationItem],
+      tmpDir,
+      finalHashes,
+      currentTemplates,
+    );
+
+    // The merged 0.6.8 migration must resolve this automatically — not
+    // punt to the user as an unresolved conflict.
+    expect(classified.conflict).toHaveLength(0);
+    expect(classified.auto).toHaveLength(1);
+
+    await executeMigrations(
+      classified,
+      tmpDir,
+      { force: true, skipAll: false },
+      currentTemplates,
+    );
+
+    // No duplicate/leftover `.pi/skills/` directory should survive.
+    expect(fs.existsSync(projectFile(".pi/skills"))).toBe(false);
+
+    // `.agents/skills/` must end up with the correct, current, neutral
+    // content — not the stale Pi-flavored bytes from the deleted legacy dir.
+    expect(readProjectFile(".agents/skills/trellis-update-spec/SKILL.md")).toBe(
+      neutralContent,
+    );
   });
 
   it("#2 dry run makes no file changes even when changes exist", async () => {
@@ -763,16 +942,7 @@ describe("update() integration", () => {
     registryDownload.files.set("index.md", "# remote spec v2\n");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((input: string | URL) => {
-        const url = String(input);
-        if (url.includes("registry.npmjs.org")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ version: VERSION }),
-          });
-        }
-        return Promise.resolve({ status: 404, ok: false });
-      }),
+      vi.fn().mockResolvedValue({ status: 404, ok: false }),
     );
 
     await update({ force: true });
@@ -802,16 +972,7 @@ describe("update() integration", () => {
     registryDownload.files.set("index.md", "# remote spec v2\n");
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((input: string | URL) => {
-        const url = String(input);
-        if (url.includes("registry.npmjs.org")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ version: VERSION }),
-          });
-        }
-        return Promise.resolve({ status: 404, ok: false });
-      }),
+      vi.fn().mockResolvedValue({ status: 404, ok: false }),
     );
 
     await update({ skipAll: true });
@@ -849,14 +1010,7 @@ describe("update() integration", () => {
     });
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockImplementation((input: string | URL) => {
-        const url = String(input);
-        if (url.includes("registry.npmjs.org")) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ version: VERSION }),
-          });
-        }
+      vi.fn().mockImplementation(() => {
         return Promise.resolve({
           ok: true,
           text: () => Promise.resolve(index),
@@ -896,6 +1050,31 @@ describe("update() integration", () => {
 
     // File SHOULD be created (no hash = truly new)
     expect(fs.existsSync(targetPath)).toBe(true);
+  });
+
+  it("#15a backfills .gitattributes journal merge=union rule when missing (#415)", async () => {
+    await setupProject();
+
+    const gitattributesPath = path.join(tmpDir, ".gitattributes");
+    fs.rmSync(gitattributesPath, { force: true });
+
+    await update({ force: true });
+
+    const content = fs.readFileSync(gitattributesPath, "utf-8");
+    expect(content).toContain(".trellis/workspace/*/journal-*.md merge=union");
+  });
+
+  it("#15b does not duplicate an existing user journal merge=union rule (#415)", async () => {
+    await setupProject();
+
+    const gitattributesPath = path.join(tmpDir, ".gitattributes");
+    const userContent =
+      "# my own rules\n*.png binary\n.trellis/workspace/*/journal-*.md merge=union\n";
+    fs.writeFileSync(gitattributesPath, userContent);
+
+    await update({ force: true });
+
+    expect(fs.readFileSync(gitattributesPath, "utf-8")).toBe(userContent);
   });
 
   it("#16 config.yaml update.skip prevents file from being updated", async () => {
@@ -1355,10 +1534,10 @@ describe("update() integration", () => {
     const updated = fs.readFileSync(workflowPath, "utf-8");
     expect(updated).toBe(replacePythonCommandLiterals(workflowMdTemplate));
     expect(updated).toContain(
-      "[codex-sub-agent, Gemini, Qoder, Copilot, ZCode, Reasonix, Trae]",
+      "[Gemini, Qoder, Copilot, Reasonix, Trae, Grok, Kimi Code]",
     );
     expect(updated).toContain(
-      "[/Claude Code, Cursor, OpenCode, CodeBuddy, Droid, Pi]",
+      "[/Claude Code, Cursor, OpenCode, codex-sub-agent, CodeBuddy, Droid, Pi, ZCode, Snow, Oh My Pi]",
     );
     expect(updated).toContain("[codex-inline, Kilo, Antigravity, Devin]");
     expect(updated).not.toContain("[Codex]");

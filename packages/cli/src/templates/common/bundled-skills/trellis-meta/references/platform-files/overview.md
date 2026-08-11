@@ -5,7 +5,7 @@ Trellis connects the same local architecture to different AI tools. `.trellis/` 
 When a local AI modifies Trellis, it should distinguish two file categories first:
 
 - **Shared files**: `.trellis/workflow.md`, `.trellis/tasks/`, `.trellis/spec/`, `.trellis/scripts/`.
-- **Platform files**: `.claude/`, `.codex/`, `.cursor/`, `.opencode/`, `.kiro/`, `.gemini/`, `.qoder/`, `.codebuddy/`, `.github/`, `.factory/`, `.pi/`, `.trae/`, `.kilocode/`, `.agent/`, `.devin/`, `.reasonix/`, `.zcode/`, and similar directories.
+- **Platform files**: `.claude/`, `.snow/`, `.codex/`, `.cursor/`, `.opencode/`, `.kiro/`, `.gemini/`, `.qoder/`, `.codebuddy/`, `.github/`, `.factory/`, `.pi/`, `.trae/`, `.kilocode/`, `.agent/`, `.devin/`, `.reasonix/`, `.zcode/`, `.kimi-code/`, and similar directories.
 
 Platform files do not store business state. They let the corresponding AI tool read Trellis state, call Trellis scripts, and load Trellis skills/agents/hooks.
 
@@ -29,14 +29,14 @@ Common capabilities:
 
 - session-start injection of a `.trellis/` overview.
 - workflow-state hints for each user turn.
-- Intent/PRD/spec/research injection when sub-agents start.
+- PRD/spec/research injection when sub-agents start.
 - Shell commands inheriting session identity.
 
 To change "when the AI knows what," inspect hooks/plugins/extensions and settings first.
 
 ### 2. Agent Prelude / Pull-Based
 
-Some platforms cannot reliably let hooks rewrite sub-agent prompts, so the agent file itself instructs the agent to read the active task, Intent, PRD, and JSONL context after startup.
+Some platforms cannot reliably let hooks rewrite sub-agent prompts, so the agent file itself instructs the agent to read the active task, PRD, and JSONL context after startup.
 
 To change how sub-agents load context, inspect the agent files themselves.
 

@@ -20,5 +20,5 @@
       "reason": "Cognition renamed Windsurf to Devin Desktop and moved its config dir from .windsurf/ to .devin/. Trellis renamed the platform to match."
     }
   ],
-  "notes": "Windsurf → Devin rename (#325). If you initialized Trellis with `--windsurf`, run `trellis update --migrate` to move your installed `.windsurf/workflows/` and `.windsurf/skills/` directories to `.devin/`. Projects without a `.windsurf/` directory are unaffected (the migration silently skips). `--windsurf` still works as a deprecated alias for `--devin` this release.\n\nInstall: `npm install -g @ecochain/trellis`"
+  "notes": "Windsurf → Devin rename (#325). If you initialized Trellis with `--windsurf`, run `trellis update --migrate` to move your installed `.windsurf/workflows/` and `.windsurf/skills/` directories to `.devin/`. Projects without a `.windsurf/` directory are unaffected (the migration silently skips). `--windsurf` still works as a deprecated alias for `--devin` this release.\n\nInstall: `npm install -g @mindfoldhq/trellis`"
 }

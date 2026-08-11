@@ -4,26 +4,26 @@ These guidelines apply to `packages/core`.
 
 ## Purpose
 
-`@mindfoldhq/trellis-core` owns reusable SDK/domain primitives that must stay
+`@ecochain/trellis-core` owns reusable SDK/domain primitives that must stay
 independent of CLI rendering and process-control concerns.
 
 ## Source Map
 
-| Area | Path | Purpose |
-| --- | --- | --- |
-| Root exports | `packages/core/src/index.ts` | Package root public API. Keep this small. |
-| Channel API | `packages/core/src/channel/` | Durable channel/event APIs, reducers, workers, inbox, runtime contracts. |
-| Mem API | `packages/core/src/mem/` | Persisted AI session readers, search, filtering, dialogue extraction, and project aggregation. |
-| Task API | `packages/core/src/task/` | Reusable task record, schema, phase, and path helpers. |
-| Testing API | `packages/core/src/testing/` | Public test helpers intended for package consumers. |
-| Tests | `packages/core/test/` | Core-owned unit/integration coverage. |
+| Area         | Path                         | Purpose                                                                                        |
+| ------------ | ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| Root exports | `packages/core/src/index.ts` | Package root public API. Keep this small.                                                      |
+| Channel API  | `packages/core/src/channel/` | Durable channel/event APIs, reducers, workers, inbox, runtime contracts.                       |
+| Mem API      | `packages/core/src/mem/`     | Persisted AI session readers, search, filtering, dialogue extraction, and project aggregation. |
+| Task API     | `packages/core/src/task/`    | Reusable task record, schema, phase, and path helpers.                                         |
+| Testing API  | `packages/core/src/testing/` | Public test helpers intended for package consumers.                                            |
+| Tests        | `packages/core/test/`        | Core-owned unit/integration coverage.                                                          |
 
 ## Contracts
 
 - Core APIs must not print terminal output, call `process.exit`, parse CLI argv,
   or depend on Chalk / Commander / Inquirer.
 - CLI code must import core through public exports such as
-  `@mindfoldhq/trellis-core/channel`, not deep paths under `packages/core/src`.
+  `@ecochain/trellis-core/channel`, not deep paths under `packages/core/src`.
 - Public subpaths must be declared explicitly in `packages/core/package.json`.
 - Core and CLI publish together with the same version.
 - Detailed package-boundary rules currently live in
@@ -46,9 +46,9 @@ independent of CLI rendering and process-control concerns.
 Run the package-scoped checks that match the change:
 
 ```bash
-pnpm --filter @mindfoldhq/trellis-core lint
-pnpm --filter @mindfoldhq/trellis-core typecheck
-pnpm --filter @mindfoldhq/trellis-core test
+pnpm --filter @ecochain/trellis-core lint
+pnpm --filter @ecochain/trellis-core typecheck
+pnpm --filter @ecochain/trellis-core test
 ```
 
 For changes that affect CLI imports or release packaging, also run the root

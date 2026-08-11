@@ -36,39 +36,41 @@
  *   X.Y.Z   → X.Y.(Z+1)-beta.0
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import { npmInvocation } from "./npm-invocation.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MANIFESTS_DIR = path.join(__dirname, "../src/migrations/manifests");
 const PACKAGE_NAME = "@ecochain/trellis";
-
-function npmRegistry() {
-  const pkg = JSON.parse(
-    fs.readFileSync(path.join(__dirname, "../package.json"), "utf-8"),
-  );
-  return (
-    process.env.NPM_CONFIG_REGISTRY ||
-    process.env.npm_config_registry ||
-    pkg.publishConfig?.registry ||
-    "https://registry.npmjs.org/"
-  );
-}
 
 /**
  * Check whether `version` is already published on npm. Returns false on network
  * error so we fail open (don't block dev flow when npm is unreachable); the
  * release-time continuity check is the authoritative gate.
  */
-function versionOnNpm(version) {
+export function versionOnNpm(
+  version,
+  {
+    platform = process.platform,
+    comSpec = process.env.ComSpec || "cmd.exe",
+    execFile = execFileSync,
+  } = {},
+) {
   try {
-    const out = execSync(`npm view ${PACKAGE_NAME}@${version} version --registry=${npmRegistry()} 2>/dev/null`, {
-      encoding: "utf-8",
-      timeout: 8_000,
-    }).trim();
+    const invocation = npmInvocation(platform, comSpec);
+    const out = execFile(
+      invocation.executable,
+      [...invocation.args, "view", `${PACKAGE_NAME}@${version}`, "version"],
+      {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 8_000,
+      },
+    ).trim();
     return out === version;
   } catch {
     return false;
@@ -87,8 +89,8 @@ function guardAgainstPublishedManifest(version, manifestPath, allowOverwrite) {
   if (onNpm) {
     console.error(
       `\n✗ Version ${version} is already published on npm.\n` +
-      `  Its manifest is part of the update contract and must NOT be rewritten.\n` +
-      `  If you need to release additional migrations, use the NEXT version number.\n`,
+        `  Its manifest is part of the update contract and must NOT be rewritten.\n` +
+        `  If you need to release additional migrations, use the NEXT version number.\n`,
     );
     process.exit(1);
   }
@@ -96,8 +98,8 @@ function guardAgainstPublishedManifest(version, manifestPath, allowOverwrite) {
   if (exists && !allowOverwrite) {
     console.error(
       `\n✗ ${manifestPath} already exists.\n` +
-      `  Use --force in non-interactive modes, or answer "y" to the overwrite prompt\n` +
-      `  in interactive mode, if you really intend to rewrite a NOT-YET-PUBLISHED manifest.\n`,
+        `  Use --force in non-interactive modes, or answer "y" to the overwrite prompt\n` +
+        `  in interactive mode, if you really intend to rewrite a NOT-YET-PUBLISHED manifest.\n`,
     );
     process.exit(1);
   }
@@ -105,7 +107,7 @@ function guardAgainstPublishedManifest(version, manifestPath, allowOverwrite) {
 
 function readPackageVersion() {
   const pkg = JSON.parse(
-    fs.readFileSync(path.join(__dirname, "../package.json"), "utf-8")
+    fs.readFileSync(path.join(__dirname, "../package.json"), "utf-8"),
   );
   return pkg.version;
 }
@@ -116,7 +118,10 @@ function getNextVersion(currentVersion) {
   if (betaMatch) {
     const base = betaMatch[1];
     const next = parseInt(betaMatch[2], 10) + 1;
-    return { suggested: `${base}-beta.${next}`, hint: `or ${base}-rc.0 to promote to RC` };
+    return {
+      suggested: `${base}-beta.${next}`,
+      hint: `or ${base}-rc.0 to promote to RC`,
+    };
   }
   // rc.N → next rc
   const rcMatch = currentVersion.match(/^(\d+\.\d+\.\d+)-rc\.(\d+)$/);
@@ -151,7 +156,9 @@ function unescapeLiterals(str) {
 }
 
 function askQuestion(rl, question, defaultValue = "") {
-  const prompt = defaultValue ? `${question} [${defaultValue}]: ` : `${question}: `;
+  const prompt = defaultValue
+    ? `${question} [${defaultValue}]: `
+    : `${question}: `;
   return new Promise((resolve) => {
     rl.question(prompt, (answer) => {
       resolve(answer.trim() || defaultValue);
@@ -166,7 +173,9 @@ function readStdin() {
   return new Promise((resolve, reject) => {
     let data = "";
     process.stdin.setEncoding("utf-8");
-    process.stdin.on("data", (chunk) => { data += chunk; });
+    process.stdin.on("data", (chunk) => {
+      data += chunk;
+    });
     process.stdin.on("end", () => resolve(data));
     process.stdin.on("error", reject);
   });
@@ -196,7 +205,9 @@ async function main() {
       process.exit(1);
     }
     if (!data.version || !data.description || !data.changelog) {
-      console.error("Error: --stdin JSON requires version, description, and changelog fields");
+      console.error(
+        "Error: --stdin JSON requires version, description, and changelog fields",
+      );
       process.exit(1);
     }
     const breaking = data.breaking ?? false;
@@ -209,12 +220,16 @@ async function main() {
     if (breaking && recommendMigrate && !data.migrationGuide) {
       console.error(
         "Error: breaking + recommendMigrate manifests require a migrationGuide field (narrative migration doc that gets templated into the user's migration task PRD). " +
-        "Also recommend aiInstructions (AI hints for helping users migrate)."
+          "Also recommend aiInstructions (AI hints for helping users migrate).",
       );
       process.exit(1);
     }
     const manifestPath = path.join(MANIFESTS_DIR, `${data.version}.json`);
-    guardAgainstPublishedManifest(data.version, manifestPath, data.force === true);
+    guardAgainstPublishedManifest(
+      data.version,
+      manifestPath,
+      data.force === true,
+    );
     const manifest = {
       version: data.version,
       description: data.description,
@@ -241,13 +256,17 @@ async function main() {
     if (isBreaking) {
       // See rationale in --stdin branch above.
       console.error(
-        "Error: -y mode cannot produce a breaking manifest — migrationGuide + aiInstructions are required and -y has no way to supply them. Use --stdin with JSON input instead."
+        "Error: -y mode cannot produce a breaking manifest — migrationGuide + aiInstructions are required and -y has no way to supply them. Use --stdin with JSON input instead.",
       );
       process.exit(1);
     }
     const version = versionArg || suggested;
     const manifestPath = path.join(MANIFESTS_DIR, `${version}.json`);
-    guardAgainstPublishedManifest(version, manifestPath, args.includes("--force"));
+    guardAgainstPublishedManifest(
+      version,
+      manifestPath,
+      args.includes("--force"),
+    );
 
     const manifest = {
       version,
@@ -258,9 +277,9 @@ async function main() {
       migrations: [],
       notes: notesArg
         ? unescapeLiterals(notesArg)
-        : (isBreaking
+        : isBreaking
           ? "Review changelog and run with --migrate if needed."
-          : "No migration required."),
+          : "No migration required.",
     };
 
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
@@ -293,8 +312,8 @@ async function main() {
     if (versionOnNpm(version)) {
       console.error(
         `\n✗ Version ${version} is already published on npm.\n` +
-        `  Rewriting its manifest would break \`trellis update\` for users\n` +
-        `  currently at that version. Use the NEXT version number instead.\n`,
+          `  Rewriting its manifest would break \`trellis update\` for users\n` +
+          `  currently at that version. Use the NEXT version number instead.\n`,
       );
       rl.close();
       process.exit(1);
@@ -310,22 +329,32 @@ async function main() {
     }
 
     // Get description
-    const description = descriptionArg || await askQuestion(rl, "Description (short)");
+    const description =
+      descriptionArg || (await askQuestion(rl, "Description (short)"));
 
     // Get changelog
-    const changelog = changelogArg || await askQuestion(rl, "Changelog (one line summary)");
+    const changelog =
+      changelogArg || (await askQuestion(rl, "Changelog (one line summary)"));
 
     // Get breaking status
     let breaking = isBreaking;
     if (!isBreaking) {
-      const breakingAnswer = await askQuestion(rl, "Breaking change? (y/n)", "n");
+      const breakingAnswer = await askQuestion(
+        rl,
+        "Breaking change? (y/n)",
+        "n",
+      );
       breaking = breakingAnswer.toLowerCase() === "y";
     }
 
     // Get recommend migrate
     let recommendMigrate = false;
     if (breaking) {
-      const migrateAnswer = await askQuestion(rl, "Recommend --migrate? (y/n)", "y");
+      const migrateAnswer = await askQuestion(
+        rl,
+        "Recommend --migrate? (y/n)",
+        "y",
+      );
       recommendMigrate = migrateAnswer.toLowerCase() === "y";
     }
 
@@ -339,12 +368,14 @@ async function main() {
     if (breaking && recommendMigrate) {
       console.log(
         "\n⚠ Breaking releases require migrationGuide + aiInstructions fields.\n" +
-        "   Interactive mode can't capture multi-paragraph content cleanly;\n" +
-        "   the manifest will be written with TODO placeholders, then you\n" +
-        "   MUST hand-edit the JSON (or re-run via --stdin with full JSON).\n"
+          "   Interactive mode can't capture multi-paragraph content cleanly;\n" +
+          "   the manifest will be written with TODO placeholders, then you\n" +
+          "   MUST hand-edit the JSON (or re-run via --stdin with full JSON).\n",
       );
-      migrationGuide = "TODO: narrative migration guide (gets templated into the user's migration task PRD on trellis update --migrate).";
-      aiInstructions = "TODO: AI hints for helping users migrate (what to check, common pitfalls).";
+      migrationGuide =
+        "TODO: narrative migration guide (gets templated into the user's migration task PRD on trellis update --migrate).";
+      aiInstructions =
+        "TODO: AI hints for helping users migrate (what to check, common pitfalls).";
     }
 
     // Build manifest
@@ -357,9 +388,11 @@ async function main() {
       ...(migrationGuide ? { migrationGuide } : {}),
       ...(aiInstructions ? { aiInstructions } : {}),
       migrations: [],
-      notes: notesArg || (breaking
-        ? "Review changelog and run with --migrate if needed."
-        : "No migration required."),
+      notes:
+        notesArg ||
+        (breaking
+          ? "Review changelog and run with --migrate if needed."
+          : "No migration required."),
     };
 
     // Write manifest
@@ -370,14 +403,25 @@ async function main() {
     console.log(JSON.stringify(manifest, null, 2));
 
     // Detect release type for next steps hint
-    const releaseCmd = version.includes("-beta.") ? "pnpm release:beta" : version.includes("-rc.") ? "pnpm release:rc" : "pnpm release";
+    const releaseCmd = version.includes("-beta.")
+      ? "pnpm release:beta"
+      : version.includes("-rc.")
+        ? "pnpm release:rc"
+        : "pnpm release";
 
     console.log("\n📋 Next steps:");
-    console.log(`  1. Edit ${version}.json if needed (add migrations, migrationGuide, etc.)`);
+    console.log(
+      `  1. Edit ${version}.json if needed (add migrations, migrationGuide, etc.)`,
+    );
     console.log(`  2. ${releaseCmd}`);
   } finally {
     rl.close();
   }
 }
 
-main().catch(console.error);
+if (
+  process.argv[1] &&
+  fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main().catch(console.error);
+}

@@ -8,28 +8,38 @@
 
 Trellis publishes two npm packages from one git tag:
 
-| Package | Role | Published by |
-|---|---|---|
-| `@mindfoldhq/trellis` | User-facing CLI | GitHub Actions only |
-| `@mindfoldhq/trellis-core` | Programmatic core APIs used by the CLI and external integrations | GitHub Actions only |
+| Package                  | Role                                                             | Published by                                        |
+| ------------------------ | ---------------------------------------------------------------- | --------------------------------------------------- |
+| `@ecochain/trellis`      | User-facing CLI                                                  | Controlled CI; GitHub is manual npmjs recovery only |
+| `@ecochain/trellis-core` | Programmatic core APIs used by the CLI and external integrations | Controlled CI; GitHub is manual npmjs recovery only |
 
 The package pair is version-locked. Every published version must exist for both packages with the exact same version and npm dist-tag.
 
 ---
 
-## CI-only publishing
+## GitLab-first, CI-only publishing
 
-Official npm publishing must happen through `.github/workflows/publish.yml`.
+The source-of-truth repository and release push target are the GitLab `private`
+remote. `packages/cli/scripts/release.js` defaults to
+`TRELLIS_RELEASE_REMOTE=private`; overriding it is an explicit exceptional
+operation, not the normal release path.
+
+Official npm publishing must happen through a controlled CI executor. The
+repository does not yet contain a GitLab publishing pipeline, so
+`.github/workflows/publish.yml` is temporarily retained as a **manual recovery
+executor**. It has no tag/release trigger: first mirror the already-reviewed
+GitLab tag to GitHub, then explicitly dispatch the workflow with that existing
+tag. GitHub is not the development primary or the release push target.
 
 Do not run `npm publish` or `pnpm publish` locally for official Trellis packages. Local machines may run `pnpm pack`, `release-preflight`, tests, lint, typecheck, and dry-run checks, but not package publication.
 
 If a CI publish looks partial or inconsistent:
 
-1. Inspect the GitHub Actions publish run.
-2. Verify public npm visibility:
+1. Inspect the controlled publish run and confirm it checked out the intended GitLab-originated tag.
+2. Verify package visibility using npm's active configuration:
    ```bash
-   npm view @mindfoldhq/trellis@<version> version dist-tags --json --registry=https://registry.npmjs.org/
-   npm view @mindfoldhq/trellis-core@<version> version dist-tags --json --registry=https://registry.npmjs.org/
+   npm view @ecochain/trellis@<version> version dist-tags --json
+   npm view @ecochain/trellis-core@<version> version dist-tags --json
    ```
 3. Fix the workflow or release scripts.
 4. Re-run the CI path or move the tag after the fix when the same version is still the intended release artifact.
@@ -46,13 +56,13 @@ node packages/cli/scripts/release-preflight.js verify-npm --package all
 
 ## Version invariants
 
-| Invariant | Rule |
-|---|---|
-| Shared version | `packages/cli/package.json` and `packages/core/package.json` must have the same `version`. |
-| Shared tag | Git tag `v<version>` must match both package versions. |
-| Shared npm dist-tag | `beta` for `-beta.N`, `rc` for `-rc.N`, `alpha` for `-alpha.N`, `latest` for GA. |
-| Source dependency | CLI source depends on core with `workspace:*`. |
-| Packed dependency | Published CLI package must depend on `@mindfoldhq/trellis-core` with the exact release version. |
+| Invariant           | Rule                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Shared version      | `packages/cli/package.json` and `packages/core/package.json` must have the same `version`.                                |
+| Shared tag          | Ecochain Git tag `ecochain-v<version>` must match both package versions. Upstream `v<version>` tags are never repurposed. |
+| Shared npm dist-tag | `beta` for `-beta.N`, `rc` for `-rc.N`, `alpha` for `-alpha.N`, `latest` for GA.                                          |
+| Source dependency   | CLI source depends on core with `workspace:*`.                                                                            |
+| Packed dependency   | Published CLI package must depend on `@ecochain/trellis-core` with the exact release version.                             |
 
 `packages/cli/scripts/release-preflight.js` is the source of truth for these checks.
 
@@ -68,12 +78,12 @@ node packages/cli/scripts/release-preflight.js publish-plan
 
 ## Branch and release tracks
 
-| Track | Branch pattern | Version pattern | npm tag | Notes |
-|---|---|---|---|---|
-| Stable | `main` | `X.Y.Z` | `latest` | Patch/minor/major GA releases. |
-| Beta | `feat/vX.Y.Z-beta` or equivalent long-lived beta branch | `X.Y.Z-beta.N` | `beta` | Feature incubation. CLI and core both publish beta versions. |
-| RC | release candidate branch or the stabilized beta branch | `X.Y.Z-rc.N` | `rc` | Pre-GA validation. CLI and core both publish rc versions. |
-| GA promotion | stable release branch / `main` | `X.Y.Z` | `latest` | Promote the release candidate into the stable docs and latest npm tag. |
+| Track        | Branch pattern                                          | Version pattern | npm tag  | Notes                                                                  |
+| ------------ | ------------------------------------------------------- | --------------- | -------- | ---------------------------------------------------------------------- |
+| Stable       | `main`                                                  | `X.Y.Z`         | `latest` | Patch/minor/major GA releases.                                         |
+| Beta         | `feat/vX.Y.Z-beta` or equivalent long-lived beta branch | `X.Y.Z-beta.N`  | `beta`   | Feature incubation. CLI and core both publish beta versions.           |
+| RC           | release candidate branch or the stabilized beta branch  | `X.Y.Z-rc.N`    | `rc`     | Pre-GA validation. CLI and core both publish rc versions.              |
+| GA promotion | stable release branch / `main`                          | `X.Y.Z`         | `latest` | Promote the release candidate into the stable docs and latest npm tag. |
 
 A new beta cycle starts from the current stable/release baseline and uses the next minor or major version, for example `0.6.0-beta.0` after `0.5.x`. It does not continue an older beta line after that line has moved to RC or GA.
 
@@ -85,11 +95,11 @@ Stable fixes normally flow from `main` to beta/rc by cherry-pick. Beta-only feat
 
 The docs-site root path holds the current stable docs. Beta and RC content live under `beta/` and `rc/`.
 
-| Transition | Script | When |
-|---|---|---|
+| Transition       | Script                                 | When                                                                                    |
+| ---------------- | -------------------------------------- | --------------------------------------------------------------------------------------- |
 | Start a new beta | `docs-site/scripts/docs-beta-start.sh` | Before the first `pnpm release:beta` for a new minor/major, for example `0.6.0-beta.0`. |
-| Beta to RC | `docs-site/scripts/docs-beta-to-rc.sh` | Before the first `pnpm release:rc`, for example `0.6.0-rc.0`. |
-| RC to GA | `docs-site/scripts/docs-promote.sh` | Before `pnpm release:promote`. |
+| Beta to RC       | `docs-site/scripts/docs-beta-to-rc.sh` | Before the first `pnpm release:rc`, for example `0.6.0-rc.0`.                           |
+| RC to GA         | `docs-site/scripts/docs-promote.sh`    | Before `pnpm release:promote`.                                                          |
 
 Per-patch beta, RC, or GA releases do not run these lifecycle scripts. They add changelog MDX files, update `docs-site/docs.json`, commit the docs-site submodule first, then bump the submodule pointer in the main repo.
 
@@ -99,25 +109,29 @@ Full docs details live in `.trellis/spec/docs-site/docs/release-lifecycle.md`.
 
 ## Submodule commit ordering
 
-When a release touches `docs-site` or `marketplace`, commit and push the submodule first, then commit the submodule pointer in the main repo.
+When a release touches `docs-site` or `marketplace`, commit and push the
+submodule to its team-owned primary remote first, then commit the submodule
+pointer in the main repo. Do not bump a pointer while the only writable target
+is an upstream GitHub repository the team does not own.
 
 Correct order:
 
 ```bash
 cd docs-site
-git add . && git commit -m "docs: changelog v<version>" && git push origin main
+git add . && git commit -m "docs: changelog v<version>"
+git push <team-submodule-remote> main
 
 cd ..
 git add docs-site
 git commit -m "chore: bump docs-site for v<version>"
-git push origin <branch>
+git push private <branch>
 ```
 
 `packages/cli/scripts/release.js` excludes `docs-site` and `marketplace` from its automatic pre-release staging so submodule pointer changes cannot be hidden inside a generic release commit.
 
 ### Contract: every modified submodule must be pushed before the version tag
 
-The tag-triggered `publish.yml` CI runs `git submodule update --init --recursive` against the tagged commit. If **any** submodule pointer references a SHA that doesn't exist on the submodule's remote, CI fails at checkout with:
+The controlled publish executor runs `git submodule update --init --recursive` against the selected tagged commit. If **any** submodule pointer references a SHA that doesn't exist on the submodule's remote, CI fails at checkout with:
 
 ```
 fatal: remote error: upload-pack: not our ref <SHA>
@@ -127,10 +141,36 @@ fatal: Fetched in submodule path '<name>', but it did not contain <SHA>. Direct 
 This is per-submodule. Pushing `docs-site` but forgetting `marketplace` (or vice versa) still fails. Verify all submodules before `pnpm release`:
 
 ```bash
-git submodule foreach 'sha=$(git rev-parse HEAD); git ls-remote origin $sha | grep -q $sha && echo "ok $name" || echo "FAIL $name $sha not on remote"'
+git submodule foreach 'remote=<team-submodule-remote>; git fetch "$remote" -q; sha=$(git rev-parse HEAD); \
+  git merge-base --is-ancestor $sha "$remote/main" \
+    && echo "ok $name" || echo "FAIL $name $sha not on remote"'
 ```
 
-Any `FAIL` line means: `cd <submodule> && git checkout -B main && git push origin main` before tagging. If the tag was already pushed when you discover the miss, recover by pushing the submodule then re-running the failed CI jobs (`gh run rerun <id> --failed`) — no new tag is needed.
+### Don't: test submodule reachability with `ls-remote`
+
+**Problem**:
+
+```bash
+git submodule foreach 'sha=$(git rev-parse HEAD); git ls-remote origin $sha | grep -q $sha && ...'
+```
+
+**Why it's bad**: `ls-remote` matches **ref names**, not commits. It finds a SHA
+only when that SHA is itself a branch or tag tip. A submodule pointer at any
+earlier commit on `main` — which is the normal case, since pointers are bumped
+after the submodule moves on — reports `FAIL` while CI fetches it without
+trouble. Observed 2026-08-06 while preparing v0.6.13: both submodules reported
+`FAIL`, both were reachable.
+
+A check that fails on healthy input is worse than no check. It trains you to
+ignore it, which is how the v0.6.4 incident below happens a second time.
+
+**Instead**: fetch, then ask whether the SHA is an ancestor of the remote branch
+— that is the same question CI answers when it materialises the pointer.
+
+Any `FAIL` line means: provision or select the team-owned submodule remote,
+push the referenced commit there, verify reachability, and only then bump/tag
+the parent repository. If no such writable remote exists, the parent pointer
+change is blocked; do not create a local-only submodule commit.
 
 > **Incident note (2026-06, v0.6.4).** `marketplace/workflows/native/workflow.md` was touched as a parity mirror for a bundled template edit, committed in-submodule, and pointer-bumped in the main repo — but the submodule itself was never pushed to its `origin/main`. `pnpm release` happily tagged `v0.6.4`; CI fetched the new tag, tried to materialise the marketplace pointer `680bcbb`, and died at checkout. Fix took two commands (`git -C marketplace push origin main` + `gh run rerun --failed`) but the failure mode is invisible from main-repo `git status` (the submodule is "clean" locally), which is exactly why the verify step above is mandatory and not advisory.
 
@@ -179,6 +219,79 @@ git commit -m "chore: restore manifest <version> from main"
 
 Restore published manifests deliberately. Do not auto-merge whole manifest directories across release branches, because branch-specific manifests can mention files that do not exist on the other branch.
 
+### Scenario: invoking npm from release scripts on Windows
+
+#### 1. Scope / Trigger
+
+This contract applies whenever a Node release script calls npm through
+`execFileSync` or an injected equivalent. Windows installs npm as a `.cmd`
+shim, which cannot be executed directly by `execFileSync`.
+
+#### 2. Signatures
+
+```js
+npmExecutable((platform = process.platform));
+npmInvocation(
+  (platform = process.platform),
+  (comSpec = process.env.ComSpec || "cmd.exe"),
+);
+```
+
+All release-script npm calls use the shared
+`packages/cli/scripts/npm-invocation.js` helper.
+
+#### 3. Contracts
+
+- Windows returns `{ executable: comSpec, args: ["/d", "/s", "/c", "npm.cmd"] }`.
+- Unix-like platforms return `{ executable: "npm", args: [] }`.
+- The caller appends its npm arguments to `args`; it must not construct a shell
+  command string.
+- `ComSpec` is optional and falls back to `cmd.exe`.
+
+#### 4. Validation & Error Matrix
+
+| Call site                      | Registry result                        | Required behavior                                                        |
+| ------------------------------ | -------------------------------------- | ------------------------------------------------------------------------ |
+| `check-manifest-continuity.js` | npm E404                               | Treat as no published versions                                           |
+| `check-manifest-continuity.js` | auth, network, parse, or other failure | Rethrow and fail the release gate closed                                 |
+| `create-manifest.js`           | published version returned             | Refuse to overwrite the published manifest                               |
+| `create-manifest.js`           | lookup or network failure              | Return false and preserve the existing development-time fail-open policy |
+
+#### 5. Good / Base / Bad Cases
+
+- Good: Windows invokes `cmd.exe /d /s /c npm.cmd view ...` and honors
+  `ComSpec`.
+- Base: macOS and Linux invoke `npm view ...` directly without a shell.
+- Bad: calling `execFileSync("npm", ...)` or `execFileSync("npm.cmd", ...)`
+  directly on Windows, or weakening continuity failures while fixing process
+  invocation.
+
+#### 6. Tests Required
+
+- Assert exact executable and argv shapes for Windows and Unix.
+- Exercise both continuity lookup and published-manifest protection through
+  injectable process runners.
+- Assert continuity maps E404 to an empty version list but propagates other
+  failures; assert manifest creation keeps its fail-open lookup behavior.
+- Fixtures that copy a release script must also copy `npm-invocation.js`.
+
+#### 7. Wrong vs Correct
+
+```js
+// Wrong: Windows .cmd shims are not directly executable by execFileSync.
+execFileSync("npm", ["view", packageName, "versions", "--json"]);
+
+// Correct: use one shared prefix and append call-site-specific arguments.
+const invocation = npmInvocation();
+execFileSync(invocation.executable, [
+  ...invocation.args,
+  "view",
+  packageName,
+  "versions",
+  "--json",
+]);
+```
+
 ---
 
 ## Release command sequence
@@ -202,30 +315,38 @@ pnpm release:promote
 6. `bump-versions.js <type>` to update both package versions together
 7. `release-preflight check-versions`
 8. version commit with the version string as the commit message
-9. git tag `v<version>`
-10. push branch and tags
-11. GitHub Actions publish workflow builds, tests, packs, publishes, and verifies both packages
+9. git tag `ecochain-v<version>`
+10. push the branch, then only the exact `ecochain-v<version>` tag, to the GitLab `private` remote; never use `git push --tags`
+11. mirror the reviewed tag to GitHub only when publishing or mirroring is intentionally requested
+12. manually dispatch the retained GitHub recovery workflow, or use a future team-owned GitLab CI executor, to build, test, pack, publish, and verify both packages
 
-The release script does not publish locally. The pushed tag is what starts official npm publication.
+The release script does not publish locally. The pushed GitLab tag establishes
+the immutable release-candidate identity; publication begins only when a
+maintainer explicitly starts the controlled executor for that tag.
 
 ---
 
 ## Publish workflow sequence
 
-`.github/workflows/publish.yml` runs on `v*` tag push and GitHub Release publication. It is idempotent for reruns on the same tag.
+`.github/workflows/publish.yml` is manually dispatched with an existing
+`ecochain-v*` tag after that exact tag has been mirrored from GitLab. It is an
+npmjs recovery executor, is idempotent for reruns on the same tag, and must
+remain non-triggering so mirroring cannot publish by accident.
 
 Required order:
 
-1. install dependencies
-2. `release-preflight check-versions --require-tag`
-3. `pnpm typecheck`
-4. `pnpm test`
-5. `pnpm build`
-6. `release-preflight verify-packed-cli`
-7. `release-preflight publish-plan --github`
-8. publish `@mindfoldhq/trellis-core` if missing
-9. publish `@mindfoldhq/trellis` if missing
-10. `release-preflight verify-npm --package all`
+1. validate the `ecochain-v*` input, checkout `refs/tags/<input>`, and assert the exact tag commit is checked out
+2. assert both manifest names are exactly `@ecochain/trellis` and `@ecochain/trellis-core`
+3. install dependencies
+4. `release-preflight check-versions --require-tag`
+5. `pnpm typecheck`
+6. `pnpm build`
+7. `pnpm test`
+8. `release-preflight verify-packed-cli`
+9. `release-preflight publish-plan --github`
+10. publish `@ecochain/trellis-core` to npmjs if missing
+11. publish `@ecochain/trellis` to npmjs if missing
+12. `release-preflight verify-npm --package all`
 
 Core publishes first because the CLI package depends on the exact core version in the packed artifact.
 
@@ -259,7 +380,7 @@ the npm package contains it.
 Example for a built-in multi-file skill:
 
 ```bash
-pnpm --filter @mindfoldhq/trellis build
+pnpm --filter @ecochain/trellis build
 
 cd packages/cli
 npm pack --dry-run --json | grep 'dist/templates/common/bundled-skills/<skill>/SKILL.md'
@@ -293,7 +414,10 @@ git -C "$tmpdir" init -q
 - [ ] Release-claimed bundled assets are verified in `npm pack --dry-run --json` and a fresh temp-directory `trellis init` / `trellis update --dry-run` smoke test.
 - [ ] `pnpm lint && pnpm typecheck && pnpm test` pass or the blocker is recorded.
 - [ ] Breaking releases include `migrationGuide` and `aiInstructions` in the manifest.
-- [ ] Official package publication is left to CI.
+- [ ] Release branch and only the exact current `ecochain-v<version>` tag were pushed to GitLab `private`, not GitHub.
+- [ ] Any GitHub tag used for publication was mirrored from the reviewed GitLab tag.
+- [ ] Official package publication is left to the controlled CI executor.
+- [ ] npmjs `@ecochain` scope permission and `NPM_TOKEN` are provisioned and independently verified in the recovery executor; local tests do not prove these external prerequisites.
 
 ---
 

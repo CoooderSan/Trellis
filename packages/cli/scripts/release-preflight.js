@@ -29,9 +29,9 @@
  *                                    "workspace:*" or a loose range).
  *   verify-npm [--package all|core|cli]
  *                                    Verify the published package version and
- *                                    dist-tag are visible on the public npm
- *                                    registry. Used after CI publish so a
- *                                    registry visibility problem fails the
+ *                                    dist-tag are visible through npm's active
+ *                                    configuration. Used after CI publish so a
+ *                                    visibility problem fails the
  *                                    release pipeline instead of being fixed
  *                                    by a local publish.
  *
@@ -40,15 +40,21 @@
  * version/tag mismatch. Version equality is checked first; npm existence
  * decides per-package skip.
  */
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { npmInvocation } from "./npm-invocation.js";
+
+export { npmExecutable, npmInvocation } from "./npm-invocation.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const CORE_PKG = path.join(REPO_ROOT, "packages/core/package.json");
 const CLI_PKG = path.join(REPO_ROOT, "packages/cli/package.json");
+const CORE_PACKAGE_NAME = "@ecochain/trellis-core";
+const CLI_PACKAGE_NAME = "@ecochain/trellis";
+const RELEASE_TAG_PREFIX = "ecochain-v";
 
 const RED = "\x1b[31m";
 const YELLOW = "\x1b[33m";
@@ -71,21 +77,13 @@ function readVersions() {
   };
 }
 
-function npmRegistry() {
-  const cli = readJSON(CLI_PKG);
-  return (
-    process.env.NPM_CONFIG_REGISTRY ||
-    process.env.npm_config_registry ||
-    cli.publishConfig?.registry ||
-    "https://registry.npmjs.org/"
-  );
-}
-
 function tagVersionFromEnv() {
-  // GITHUB_REF for `push: tags: v*` looks like `refs/tags/v0.6.0-beta.12`.
-  // GITHUB_REF_NAME on `release.published` is the tag name.
+  // Manual recovery passes an Ecochain tag through GITHUB_REF_NAME. Keep
+  // GITHUB_REF support for other controlled executors using this preflight.
   const ref = process.env.GITHUB_REF_NAME || process.env.GITHUB_REF || "";
-  const m = ref.match(/(?:refs\/tags\/)?v(\d+\.\d+\.\d+(?:-[A-Za-z0-9.+-]+)?)$/);
+  const m = ref.match(
+    /^(?:refs\/tags\/)?ecochain-v(\d+\.\d+\.\d+(?:-[A-Za-z0-9.+-]+)?)$/,
+  );
   return m ? m[1] : null;
 }
 
@@ -96,12 +94,18 @@ export function computeNpmTag(version) {
   return "latest";
 }
 
+function npmView(args) {
+  const invocation = npmInvocation();
+  return execFileSync(
+    invocation.executable,
+    [...invocation.args, "view", ...args, "--json"],
+    { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 15_000 },
+  ).trim();
+}
+
 export function npmVersionExists(pkgName, version) {
   try {
-    const out = execSync(
-      `npm view ${pkgName}@${version} version --json --registry=${npmRegistry()}`,
-      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 15_000 },
-    ).trim();
+    const out = npmView([`${pkgName}@${version}`, "version"]);
     if (!out) return false;
     // npm returns the literal version string for an exact-version match,
     // and an empty body for unknown versions.
@@ -116,10 +120,7 @@ export function npmVersionExists(pkgName, version) {
 }
 
 function npmViewJSON(args) {
-  const out = execSync(
-    `npm view ${args} --json --registry=${npmRegistry()}`,
-    { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 15_000 },
-  ).trim();
+  const out = npmView(args);
   return out ? JSON.parse(out) : null;
 }
 
@@ -152,6 +153,14 @@ function fail(msg) {
 
 function checkVersions({ requireTag, quiet = false }) {
   const v = readVersions();
+  if (v.coreName !== CORE_PACKAGE_NAME || v.cliName !== CLI_PACKAGE_NAME) {
+    fail(
+      `Package identity mismatch:\n` +
+        `  expected core: ${CORE_PACKAGE_NAME}; found: ${v.coreName}\n` +
+        `  expected CLI:  ${CLI_PACKAGE_NAME}; found: ${v.cliName}\n` +
+        `Refusing to publish packages outside the Ecochain namespace.`,
+    );
+  }
   if (v.coreVersion !== v.cliVersion) {
     fail(
       `Version mismatch:\n` +
@@ -165,7 +174,7 @@ function checkVersions({ requireTag, quiet = false }) {
   if (requireTag) {
     if (!tagVersion) {
       fail(
-        `Expected a git tag like v${v.cliVersion} via GITHUB_REF / GITHUB_REF_NAME but found "${
+        `Expected a git tag like ${RELEASE_TAG_PREFIX}${v.cliVersion} via GITHUB_REF / GITHUB_REF_NAME but found "${
           process.env.GITHUB_REF_NAME || process.env.GITHUB_REF || ""
         }".`,
       );
@@ -184,7 +193,7 @@ function checkVersions({ requireTag, quiet = false }) {
   if (!quiet) {
     console.log(
       `${GREEN}ok${RESET} versions match: ${v.coreName}@${v.coreVersion} = ${v.cliName}@${v.cliVersion}` +
-        (tagVersion ? ` = git tag v${tagVersion}` : ""),
+        (tagVersion ? ` = git tag ${RELEASE_TAG_PREFIX}${tagVersion}` : ""),
     );
   }
   return { ...v, tagVersion };
@@ -225,7 +234,7 @@ function publishPlan({ output }) {
       ? `${GREEN}publish${RESET}`
       : `${YELLOW}skip (already on npm)${RESET}`;
   console.log(
-    `${DIM}plan for v${plan.version} -> npm tag "${plan.tag}":${RESET}\n` +
+    `${DIM}plan for ${RELEASE_TAG_PREFIX}${plan.version} -> npm tag "${plan.tag}":${RESET}\n` +
       `  ${plan.core.name}@${plan.version}: ${status(plan.core)}\n` +
       `  ${plan.cli.name}@${plan.version}:  ${status(plan.cli)}`,
   );
@@ -285,20 +294,20 @@ async function verifyNpm({ packageFilter }) {
 
   for (const pkg of packages) {
     await retry(`${pkg.name}@${v.cliVersion}`, () => {
-      const version = npmViewJSON(`${pkg.name}@${v.cliVersion} version`);
+      const version = npmViewJSON([`${pkg.name}@${v.cliVersion}`, "version"]);
       if (version !== v.cliVersion) {
         fail(
-          `${pkg.name}@${v.cliVersion} is not visible on the public npm registry.`,
+          `${pkg.name}@${v.cliVersion} is not visible through npm's active configuration.`,
         );
       }
-      const taggedVersion = npmViewJSON(`${pkg.name}@${tag} version`);
+      const taggedVersion = npmViewJSON([`${pkg.name}@${tag}`, "version"]);
       if (taggedVersion !== v.cliVersion) {
         fail(
           `${pkg.name}@${tag} resolves to ${taggedVersion ?? "nothing"}, expected ${v.cliVersion}.`,
         );
       }
       console.log(
-        `${GREEN}ok${RESET} ${pkg.name}@${v.cliVersion} visible on npm tag "${tag}".`,
+        `${GREEN}ok${RESET} ${pkg.name}@${v.cliVersion} visible through npm's active configuration with tag "${tag}".`,
       );
     });
   }
@@ -352,4 +361,9 @@ async function main() {
   fail(`unknown command: ${cmd}`);
 }
 
-main();
+if (
+  process.argv[1] &&
+  fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  await main();
+}

@@ -103,7 +103,8 @@ export function computeNext(current, type) {
 
 function main() {
   const [type] = process.argv.slice(2);
-  if (!type) fail(`usage: bump-versions.js <patch|minor|major|beta|rc|promote>`);
+  if (!type)
+    fail(`usage: bump-versions.js <patch|minor|major|beta|rc|promote>`);
 
   const core = readJSON(CORE_PKG);
   const cli = readJSON(CLI_PKG);

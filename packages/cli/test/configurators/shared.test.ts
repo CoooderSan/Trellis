@@ -1,11 +1,13 @@
 import { describe, expect, it, afterEach } from "vitest";
 import {
   getPythonCommandForPlatform,
+  composeSharedCheckContract,
   replacePythonCommandLiterals,
   resolveAllAsSkillsNeutral,
   resolvePlaceholders,
   resolvePlaceholdersNeutral,
   resolveSkillsNeutral,
+  wrapWithOmpFrontmatter,
 } from "../../src/configurators/shared.js";
 import { AI_TOOLS } from "../../src/types/ai-tools.js";
 import type { TemplateContext } from "../../src/types/ai-tools.js";
@@ -45,6 +47,30 @@ const cursorCtx: TemplateContext = {
 // Tests
 // ---------------------------------------------------------------------------
 
+describe("composeSharedCheckContract", () => {
+  it("injects the common check contract into the one executor placeholder", () => {
+    const result = composeSharedCheckContract(
+      "before\n{{TRELLIS_CHECK_CONTRACT}}\nafter",
+      codexCtx,
+    );
+
+    expect(result).toContain("before\n# Code Quality Check");
+    expect(result).toContain("`ITERATION`-profile verification");
+    expect(result).toContain("git diff --cached --no-ext-diff");
+    expect(result).toContain("after");
+    expect(result).not.toContain("{{TRELLIS_CHECK_CONTRACT}}");
+  });
+
+  it.each([
+    ["missing", "no marker"],
+    ["duplicate", "{{TRELLIS_CHECK_CONTRACT}}\n{{TRELLIS_CHECK_CONTRACT}}"],
+  ])("fails closed when the executor placeholder is %s", (_case, input) => {
+    expect(() => composeSharedCheckContract(input, claudeCtx)).toThrow(
+      /exactly one.*TRELLIS_CHECK_CONTRACT/,
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // replacePythonCommandLiterals — platform-mocked unit tests
 // ---------------------------------------------------------------------------
@@ -70,9 +96,9 @@ describe("replacePythonCommandLiterals", () => {
 
   it("replaces multiple occurrences on win32", () => {
     mockPlatform("win32");
-    expect(
-      replacePythonCommandLiterals("python3 a.py && python3 b.py"),
-    ).toBe("python a.py && python b.py");
+    expect(replacePythonCommandLiterals("python3 a.py && python3 b.py")).toBe(
+      "python a.py && python b.py",
+    );
   });
 
   it("preserves shebang lines on win32", () => {
@@ -120,13 +146,13 @@ describe("replacePythonCommandLiterals", () => {
     const input = [
       "#!/usr/bin/env python3",
       "# comment about python3",
-      "exec python3 \"$0\" \"$@\"",
+      'exec python3 "$0" "$@"',
       "python3 ./.trellis/scripts/task.py",
     ].join("\n");
     const expected = [
       "#!/usr/bin/env python3",
       "# comment about python",
-      "exec python \"$0\" \"$@\"",
+      'exec python "$0" "$@"',
       "python ./.trellis/scripts/task.py",
     ].join("\n");
     expect(replacePythonCommandLiterals(input)).toBe(expected);
@@ -157,7 +183,9 @@ describe("resolvePlaceholders", () => {
     it("resolves {{PYTHON_CMD}}", () => {
       const result = resolvePlaceholders("run {{PYTHON_CMD}} script.py");
       const expected =
-        process.platform === "win32" ? "run python script.py" : "run python3 script.py";
+        process.platform === "win32"
+          ? "run python script.py"
+          : "run python3 script.py";
       expect(result).toBe(expected);
     });
 
@@ -205,9 +233,9 @@ describe("resolvePlaceholders", () => {
     });
 
     it("handles hyphenated command names", () => {
-      expect(
-        resolvePlaceholders("{{CMD_REF:finish-work}}", claudeCtx),
-      ).toBe("/trellis:finish-work");
+      expect(resolvePlaceholders("{{CMD_REF:finish-work}}", claudeCtx)).toBe(
+        "/trellis:finish-work",
+      );
       expect(
         resolvePlaceholders("{{CMD_REF:check-cross-layer}}", codexCtx),
       ).toBe("$check-cross-layer");
@@ -366,7 +394,8 @@ describe("resolvePlaceholders", () => {
 
   describe("blank line cleanup", () => {
     it("collapses 3+ consecutive blank lines to 2", () => {
-      const template = "A\n\n{{#AGENT_CAPABLE}}\nRemoved\n{{/AGENT_CAPABLE}}\n\nB";
+      const template =
+        "A\n\n{{#AGENT_CAPABLE}}\nRemoved\n{{/AGENT_CAPABLE}}\n\nB";
       const result = resolvePlaceholders(template, cursorCtx);
       expect(result).not.toMatch(/\n{3,}/);
       expect(result).toContain("A");
@@ -473,12 +502,12 @@ describe("resolvePlaceholdersNeutral", () => {
   it("still resolves {{EXECUTOR_AI}} and {{USER_ACTION_LABEL}} per platform", () => {
     // Defensive: not used in current shared skills, but kept functional for
     // future templates.
-    expect(
-      resolvePlaceholdersNeutral("{{EXECUTOR_AI}}", claudeCtx),
-    ).toBe("Bash scripts or Task calls");
-    expect(
-      resolvePlaceholdersNeutral("{{USER_ACTION_LABEL}}", codexCtx),
-    ).toBe("Skills");
+    expect(resolvePlaceholdersNeutral("{{EXECUTOR_AI}}", claudeCtx)).toBe(
+      "Bash scripts or Task calls",
+    );
+    expect(resolvePlaceholdersNeutral("{{USER_ACTION_LABEL}}", codexCtx)).toBe(
+      "Skills",
+    );
   });
 
   it("still applies conditional blocks per context", () => {
@@ -565,5 +594,50 @@ describe("resolveSkillsNeutral / resolveAllAsSkillsNeutral", () => {
       const match = allShared.find((s) => s.name === skill.name);
       expect(match?.content).toBe(skill.content);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wrapWithOmpFrontmatter — OMP command YAML frontmatter
+// ---------------------------------------------------------------------------
+
+describe("wrapWithOmpFrontmatter", () => {
+  it("wraps continue command with description-only frontmatter", () => {
+    const content =
+      "# Continue Current Task\n\nResume work on the current task.";
+    const result = wrapWithOmpFrontmatter("continue", content);
+    expect(result).toMatch(/^---\ndescription: .+\n---\n\n/);
+    expect(result).not.toContain("# Continue Current Task");
+    expect(result).toContain("Resume work on the current task.");
+    expect(result).not.toContain("argument-hint");
+  });
+
+  it("wraps finish-work command with description + argument-hint", () => {
+    const content = "# Finish Work\n\nWrap up the current session.";
+    const result = wrapWithOmpFrontmatter("finish-work", content);
+    expect(result).toMatch(
+      /^---\ndescription: .+\nargument-hint: "\[task-name\]"\n---\n\n/,
+    );
+    expect(result).not.toContain("# Finish Work");
+    expect(result).toContain("Wrap up the current session.");
+  });
+
+  it("strips trellis- prefix before looking up description", () => {
+    const content = "# Continue Current Task\n\nBody text.";
+    const result = wrapWithOmpFrontmatter("trellis-continue", content);
+    expect(result).toMatch(/^---\ndescription: /);
+    expect(result).toContain("Body text.");
+  });
+
+  it("throws on unknown command name", () => {
+    expect(() => wrapWithOmpFrontmatter("nonexistent", "body")).toThrow(
+      /Missing command description/,
+    );
+  });
+
+  it("preserves body content after H1 removal", () => {
+    const content = "# Title\n\nLine 1\n\nLine 2\n\n## Section\n\nMore text.";
+    const result = wrapWithOmpFrontmatter("continue", content);
+    expect(result).toContain("Line 1\n\nLine 2\n\n## Section\n\nMore text.");
   });
 });

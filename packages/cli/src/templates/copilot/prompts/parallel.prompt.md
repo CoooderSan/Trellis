@@ -81,7 +81,7 @@ Plan Agent will:
 1. Evaluate requirement validity (may reject if unclear/too large)
 2. Call research agent to analyze codebase
 3. Create and configure task directory
-4. Write intent.md with authorization/scope and prd.md with acceptance criteria
+4. Write prd.md with acceptance criteria
 5. Output ready-to-use task directory
 
 After plan.py completes, start the worktree agent:
@@ -100,8 +100,8 @@ Use when:
 #### Step 1: Create Task Directory
 
 ```bash
-# title is task description, --slug for task directory name
-TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<title>" --slug <task-name>)
+# title is task description, --slug is the task directory name, and the approved Product Intent is required for a feature
+TASK_DIR=$(python3 ./.trellis/scripts/task.py create "<title>" --slug <task-name> --classification business-feature --product-intent-link "<approved intent URL or document id>")
 ```
 
 #### Step 2: Configure Task
@@ -122,31 +122,14 @@ python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" implement "<path>" "<
 python3 ./.trellis/scripts/task.py add-context "$TASK_DIR" check "<path>" "<reason>"
 ```
 
-#### Step 4: Update intent.md and prd.md
+#### Step 4: Update prd.md
 
 ```bash
-# task.py create already created intent.md and prd.md; edit both before start.
-$EDITOR "$TASK_DIR/intent.md"
+# task.py create already created prd.md; edit it with requirements and acceptance criteria.
 $EDITOR "$TASK_DIR/prd.md"
 ```
 
-Use this intent.md shape:
-
-```markdown
-# Intent: <name>
-
-## Intent
-...
-
-## Scope
-- In scope: ...
-- Out of scope: ...
-
-## Acceptance Criteria
-- [ ] ...
-```
-
-Use this prd.md shape:
+Use this shape:
 
 ```markdown
 # Feature: <name>

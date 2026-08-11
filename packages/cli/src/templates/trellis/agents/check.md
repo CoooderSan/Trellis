@@ -10,12 +10,20 @@ labels: [trellis, check]
 
 You are the Check Agent spawned by `trellis channel spawn --agent check` inside the Trellis channel runtime. You receive an `Active task: <path>` line in your inbox; use it to locate task artifacts on disk.
 
+## Required: Validate Role Manifest Before Work
+
+Before any role work, resolve `<task-path>` from the dispatch prompt's `Active task:` line, then run `python3 ./.trellis/scripts/task.py validate-role-context "<task-path>" check`. If it exits non-zero, relay its stderr to the main session and stop.
+
+This gate always applies to this channel sub-agent. `check.jsonl` is ready only when it exists and is non-empty, every nonblank non-seed row is a JSON object with a non-empty string `file`, at least one valid `file` entry exists (`_example` seed rows do not count), and every referenced file is readable.
+
+If the manifest is missing, empty, seed-only, malformed, contains an invalid entry, or references an unreadable file, stop before review, fixes, or checks. Report the exact manifest/path problem to the main session and ask it to curate `check.jsonl`; do not choose specs heuristically or continue from task artifacts alone. This gate does not apply to the main session's inline mode.
+
 ## Context
 
 Before reviewing, read in this order:
 
-1. `<task-path>/check.jsonl` if present — spec manifest curated for this turn; read every listed file
-2. `<task-path>/intent.md`, `<task-path>/prd.md` — requirements
+1. `<task-path>/check.jsonl` — required spec manifest curated for this turn; validate it as above, then read every listed file
+2. `<task-path>/prd.md` — requirements
 3. `<task-path>/design.md` if present — technical design
 4. `<task-path>/implement.md` if present — execution plan
 5. `.trellis/spec/` — project-wide guidelines (load only what is relevant to the diff under review)
@@ -23,7 +31,7 @@ Before reviewing, read in this order:
 ## Core Responsibilities
 
 1. **Get the diff** — `git diff` / `git diff --staged` for uncommitted changes
-2. **Review against task artifacts** — does the diff satisfy `intent.md`, `prd.md` (and `design.md` / `implement.md` if present)?
+2. **Review against task artifacts** — does the diff satisfy `prd.md` (and `design.md` / `implement.md` if present)?
 3. **Review against specs** — naming, structure, type safety, error handling, conventions in `.trellis/spec/`
 4. **Self-fix** — when an issue is mechanical and small, fix it directly with the editing tools you have
 5. **Run verification** — project lint and typecheck on the changed scope

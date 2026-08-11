@@ -6,7 +6,7 @@
 
 ## Overview
 
-This project is a **TypeScript monorepo** using ES modules. It publishes a CLI package (`@mindfoldhq/trellis`) and a reusable core package (`@mindfoldhq/trellis-core`). The source code also follows a **dogfooding architecture** - Trellis uses its own configuration files (`.cursor/`, `.claude/`, `.trellis/`) as templates for new projects.
+This project is a **TypeScript monorepo** using ES modules. It publishes a CLI package (`@ecochain/trellis`) and a reusable core package (`@ecochain/trellis-core`). The source code also follows a **dogfooding architecture** - Trellis uses its own configuration files (`.cursor/`, `.claude/`, `.trellis/`) as templates for new projects.
 
 ---
 
@@ -14,14 +14,14 @@ This project is a **TypeScript monorepo** using ES modules. It publishes a CLI p
 
 ```
 packages/
-├── core/                # @mindfoldhq/trellis-core: reusable APIs
+├── core/                # @ecochain/trellis-core: reusable APIs
 │   ├── src/
 │   │   ├── channel/     # channel/thread storage, reducers, event protocol helpers
 │   │   ├── task/        # reusable task record helpers
 │   │   ├── testing/     # test helpers intended for package consumers
 │   │   └── index.ts     # package public API
 │   └── package.json     # explicit public exports
-└── cli/                 # @mindfoldhq/trellis: user-facing CLI
+└── cli/                 # @ecochain/trellis: user-facing CLI
     ├── src/
     │   ├── cli/         # CLI entry point and argument parsing
     │   │   └── index.ts # Main CLI entry (Commander.js setup)
@@ -81,23 +81,23 @@ These directories are copied to `dist/` during build and used as templates:
 
 Files that are copied directly from Trellis project to user projects:
 
-| Source | Destination | Description |
-|--------|-------------|-------------|
-| `.cursor/` | `.cursor/` | Entire directory copied |
-| `.claude/` | `.claude/` | Entire directory copied |
-| `.trellis/scripts/` | `.trellis/scripts/` | All scripts copied |
-| `.trellis/workflow.md` | `.trellis/workflow.md` | Direct copy |
-| `.trellis/.gitignore` | `.trellis/.gitignore` | Direct copy |
-| `.trellis/workspace/index.md` | `.trellis/workspace/index.md` | Direct copy |
+| Source                        | Destination                   | Description             |
+| ----------------------------- | ----------------------------- | ----------------------- |
+| `.cursor/`                    | `.cursor/`                    | Entire directory copied |
+| `.claude/`                    | `.claude/`                    | Entire directory copied |
+| `.trellis/scripts/`           | `.trellis/scripts/`           | All scripts copied      |
+| `.trellis/workflow.md`        | `.trellis/workflow.md`        | Direct copy             |
+| `.trellis/.gitignore`         | `.trellis/.gitignore`         | Direct copy             |
+| `.trellis/workspace/index.md` | `.trellis/workspace/index.md` | Direct copy             |
 
 ### What is NOT Dogfooded
 
 Files that use generic templates (in `src/templates/`):
 
-| Template Source | Destination | Reason |
-|----------------|-------------|--------|
+| Template Source                           | Destination             | Reason                                   |
+| ----------------------------------------- | ----------------------- | ---------------------------------------- |
 | `src/templates/markdown/spec/**/*.md.txt` | `.trellis/spec/**/*.md` | User fills with project-specific content |
-| `src/templates/markdown/agents.md` | `AGENTS.md` | Project root file |
+| `src/templates/markdown/agents.md`        | `AGENTS.md`             | Project root file                        |
 
 ### Build Process
 
@@ -130,31 +130,50 @@ dist/
 
 ### Layer Responsibilities
 
-| Layer | Directory | Responsibility |
-|-------|-----------|----------------|
-| Core | `packages/core/src/` | Reusable APIs, reducers, storage helpers, typed contracts |
-| CLI | `packages/cli/src/cli/` | Parse arguments, display help, call commands |
-| Commands | `packages/cli/src/commands/` | Implement CLI commands, orchestrate actions |
-| Configurators | `packages/cli/src/configurators/` | Copy/generate configuration for tools |
-| Templates | `packages/cli/src/templates/` | Extract template content, provide utilities |
-| Types | `packages/cli/src/types/` | CLI-specific TypeScript type definitions |
-| Utils | `packages/cli/src/utils/` | CLI-specific utility functions |
-| Constants | `packages/cli/src/constants/` | CLI constants (paths, names) |
+| Layer         | Directory                         | Responsibility                                            |
+| ------------- | --------------------------------- | --------------------------------------------------------- |
+| Core          | `packages/core/src/`              | Reusable APIs, reducers, storage helpers, typed contracts |
+| CLI           | `packages/cli/src/cli/`           | Parse arguments, display help, call commands              |
+| Commands      | `packages/cli/src/commands/`      | Implement CLI commands, orchestrate actions               |
+| Configurators | `packages/cli/src/configurators/` | Copy/generate configuration for tools                     |
+| Templates     | `packages/cli/src/templates/`     | Extract template content, provide utilities               |
+| Types         | `packages/cli/src/types/`         | CLI-specific TypeScript type definitions                  |
+| Utils         | `packages/cli/src/utils/`         | CLI-specific utility functions                            |
+| Constants     | `packages/cli/src/constants/`     | CLI constants (paths, names)                              |
 
 Shared logic belongs in `packages/core/src/` when it is useful outside terminal command rendering. Package boundary rules live in `trellis-core-sdk.md`.
 
 ### Configurator Pattern
 
-Configurators use `cpSync` for direct directory copy (dogfooding):
+A configurator exports **one** function: `collect<Platform>Templates()`,
+returning `Map<relPath, content>` — the single description of what that
+platform installs. `configure` is derived from it in the registry.
 
 ```typescript
 // configurators/cursor.ts
-export async function configureCursor(cwd: string): Promise<void> {
-  const sourcePath = getCursorSourcePath(); // dist/.cursor/ or .cursor/
-  const destPath = path.join(cwd, ".cursor");
-  cpSync(sourcePath, destPath, { recursive: true });
+export function collectCursorTemplates(): Map<string, string> {
+  const files = collectBothTemplates(
+    AI_TOOLS.cursor.templateContext,
+    (n) => `.cursor/commands/trellis-${n}.md`,
+    ".cursor/skills",
+  );
+  for (const agent of getAllAgents()) {
+    files.set(`.cursor/agents/${agent.name}.md`, agent.content);
+  }
+  for (const [k, v] of collectSharedHooks(".cursor/hooks", "cursor")) {
+    files.set(k, v);
+  }
+  files.set(".cursor/hooks.json", resolvePlaceholders(getHooksConfig()));
+  return files;
 }
+
+// configurators/index.ts
+cursor: fromTemplates(collectCursorTemplates),
 ```
+
+Full contract — map key/value rules, the three platforms that also need a
+`configure`, and the parity oracle — in `configurator-shared.md` →
+"Template maps".
 
 ### Template Extraction
 
@@ -177,16 +196,17 @@ copyTrellisDir(srcRelativePath: string, destPath: string, options?: { executable
 
 ### Files and Directories
 
-| Convention | Example | Usage |
-|------------|---------|-------|
-| `kebab-case` | `file-writer.ts` | All TypeScript files |
-| `kebab-case` | `multi-agent/` | All directories |
-| `*.ts` | `init.ts` | TypeScript source files |
-| `*.md.txt` | `index.md.txt` | Template files for markdown |
+| Convention   | Example          | Usage                       |
+| ------------ | ---------------- | --------------------------- |
+| `kebab-case` | `file-writer.ts` | All TypeScript files        |
+| `kebab-case` | `multi-agent/`   | All directories             |
+| `*.ts`       | `init.ts`        | TypeScript source files     |
+| `*.md.txt`   | `index.md.txt`   | Template files for markdown |
 
 ### Why `.txt` Extension for Templates
 
 Templates use `.txt` extension to:
+
 - Prevent IDE markdown preview from rendering templates
 - Make clear these are template sources, not actual docs
 - Avoid confusion with actual markdown files
@@ -197,9 +217,9 @@ Templates use `.txt` extension to:
 
 **How the bug happens** (confirmed in git log — v0.1.x through v0.4): a spec-authoring workflow writes to the wrong directory. The two paths look almost identical:
 
-| Path | Purpose |
-|------|---------|
-| `.trellis/spec/<pkg>/<layer>/*.md` | This repo's dogfood spec (Trellis documenting its own code) |
+| Path                                                        | Purpose                                                                     |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `.trellis/spec/<pkg>/<layer>/*.md`                          | This repo's dogfood spec (Trellis documenting its own code)                 |
 | `packages/cli/src/templates/markdown/spec/<layer>/*.md.txt` | User-facing placeholder templates (ship to new projects via `trellis init`) |
 
 If you open-and-edit the wrong one, nothing fails at build / test / lint time — `markdown/index.ts` silently ignores your new file because it only reads the `.md.txt` variants. The drift can persist for years (caught in 2026-04 after ~3 months).
@@ -211,6 +231,7 @@ If you open-and-edit the wrong one, nothing fails at build / test / lint time �
 3. If the new file is not imported by `packages/cli/src/templates/markdown/index.ts`, it shouldn't exist in that directory. `ls packages/cli/src/templates/markdown/spec/**/*.md` must return empty.
 
 **Audit command**:
+
 ```bash
 # Every file here must end in .md.txt
 find packages/cli/src/templates/markdown/spec -type f -name "*.md" ! -name "*.md.txt"
@@ -229,11 +250,11 @@ Detects monorepo workspace configuration and enumerates packages. Returns `Detec
 
 **Return value semantics**:
 
-| Return | Meaning |
-|--------|---------|
-| `null` | Not a monorepo (no workspace config or `.gitmodules` found) |
-| `[]` (empty array) | Monorepo config exists (e.g., `pnpm-workspace.yaml`) but no packages match on disk |
-| `[...]` (populated array) | Monorepo with detected packages |
+| Return                    | Meaning                                                                            |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| `null`                    | Not a monorepo (no workspace config or `.gitmodules` found)                        |
+| `[]` (empty array)        | Monorepo config exists (e.g., `pnpm-workspace.yaml`) but no packages match on disk |
+| `[...]` (populated array) | Monorepo with detected packages                                                    |
 
 **Detection priority** (checked in order, results merged):
 
@@ -251,11 +272,11 @@ All workspace managers' glob patterns are expanded via `expandWorkspaceGlobs()`,
 
 ```typescript
 interface DetectedPackage {
-  name: string;         // From readPackageName() fallback chain
-  path: string;         // Normalized relative path (no ./ or trailing /)
-  type: ProjectType;    // Detected via detectProjectType() on the package dir
+  name: string; // From readPackageName() fallback chain
+  path: string; // Normalized relative path (no ./ or trailing /)
+  type: ProjectType; // Detected via detectProjectType() on the package dir
   isSubmodule: boolean; // True if path appears in .gitmodules
-  isGitRepo: boolean;   // True if discovered via parsePolyrepo (independent .git, not a submodule)
+  isGitRepo: boolean; // True if discovered via parsePolyrepo (independent .git, not a submodule)
 }
 ```
 
@@ -310,11 +331,11 @@ Last-resort detector for **polyrepo** layouts (multiple independent git repos in
 
 ### CLI Flags
 
-| Flag | Behavior |
-|------|----------|
-| `--monorepo` | Force monorepo mode. On detector miss, prints a checklist of all 7 markers checked + a manual `config.yaml` example showing both `type: submodule` and `git: true`, then `return`s (not `process.exit(1)`) |
-| `--no-monorepo` | Skip monorepo detection entirely |
-| _(neither)_ | Auto-detect; prompt user to confirm if packages found |
+| Flag            | Behavior                                                                                                                                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--monorepo`    | Force monorepo mode. On detector miss, prints a checklist of all 7 markers checked + a manual `config.yaml` example showing both `type: submodule` and `git: true`, then `return`s (not `process.exit(1)`) |
+| `--no-monorepo` | Skip monorepo detection entirely                                                                                                                                                                           |
+| _(neither)_     | Auto-detect; prompt user to confirm if packages found                                                                                                                                                      |
 
 > **Design Decision (do NOT revisit lightly)**: There is intentionally **no `--packages` CLI flag**. The escape hatch for users with non-standard layouts is hand-writing `packages:` in `.trellis/config.yaml` — `writeMonorepoConfig` is non-destructive and won't overwrite. Reasons: (1) `config.yaml` is the runtime source of truth, a flag would be a transient duplicate; (2) Trellis prefers declarative configuration over imperative flags. If future need pushes back, document the use case before adding the flag.
 
@@ -339,10 +360,10 @@ Non-destructive config.yaml patch:
 
 The TS `DetectedPackage` interface and the Python runtime config schema are coupled. When changing one, change the other.
 
-| TS field (`DetectedPackage`) | YAML key (`config.yaml` `packages.<name>`) | Python reader |
-|---|---|---|
-| `isSubmodule: true` | `type: submodule` | `get_submodule_packages()` in `.trellis/scripts/common/config.py` |
-| `isGitRepo: true` | `git: true` | `get_git_packages()` in `.trellis/scripts/common/config.py` |
+| TS field (`DetectedPackage`) | YAML key (`config.yaml` `packages.<name>`) | Python reader                                                     |
+| ---------------------------- | ------------------------------------------ | ----------------------------------------------------------------- |
+| `isSubmodule: true`          | `type: submodule`                          | `get_submodule_packages()` in `.trellis/scripts/common/config.py` |
+| `isGitRepo: true`            | `git: true`                                | `get_git_packages()` in `.trellis/scripts/common/config.py`       |
 
 The Python helper `_is_true_config_value()` accepts `true` (case-insensitive string). YAML literals are emitted unquoted by `writeMonorepoConfig`. End-to-end round-trip is covered by `test/commands/init.integration.test.ts` polyrepo case.
 
@@ -386,7 +407,7 @@ Packages that received a remote template download (tracked via `remoteSpecPackag
 ### DO
 
 - Dogfood from project's own config files when possible
-- Use `cpSync` for copying entire directories
+- Describe a platform's file set exactly once, in its `collect<Platform>Templates()`
 - Keep generic templates in `src/templates/markdown/`
 - Use `.md.txt` or `.yaml.txt` for template files
 - Update dogfooding sources (`.cursor/`, `.claude/`, `.trellis/scripts/`) when making changes
@@ -401,6 +422,40 @@ Packages that received a remote template download (tracked via `remoteSpecPackag
 
 ---
 
+## Workspace Journal Merge Behavior (parallel sessions / worktrees)
+
+Parallel Trellis sessions (multiple git worktrees, or overlapping branches)
+regularly touch `.trellis/workspace/<developer>/` at the same time. The two
+files there behave differently on merge, and this is intentional:
+
+- **`journal-N.md` auto-resolves.** The project ships `.gitattributes` with
+  `.trellis/workspace/*/journal-*.md merge=union` (project root; both the
+  bundled template at `packages/cli/src/templates/trellis/gitattributes.txt`
+  and this repo's own dogfooded copy carry the rule). Each session only
+  appends a new session block, so a union merge keeps both sides' blocks with
+  no conflict markers — there is nothing semantically to resolve.
+- **`index.md` conflicts ARE EXPECTED and safe.** No merge attribute applies
+  to `index.md` — it is fully rewritten every session (current-status
+  counters, active-documents table, session-history table), so a union merge
+  would silently interleave two different rewrites of the same marker blocks
+  into structurally broken output. When two parallel worktrees/branches both
+  touch `index.md`, git's normal 3-way conflict is the correct outcome.
+  Picking either side to resolve it is safe: `index.md` is a **derived
+  summary**, not a source of truth. Real task state lives in each task's
+  `task.json`, not in the workspace index.
+
+`ensureGitattributes()` (`packages/cli/src/configurators/workflow.ts`) writes
+this rule additively — it is called from both `trellis init` and
+`trellis update`, never overwrites an existing project-root `.gitattributes`
+wholesale, and is a no-op if a `journal-*.md merge=union` rule already exists
+(user-authored or from a previous run).
+
+`add_session.py` prints a one-time-per-process warning (stderr, non-blocking)
+when it detects it is running inside a git worktree (not the main working
+tree) with `session_auto_commit` enabled, pointing back at this section.
+
+---
+
 ## Design Decisions
 
 ### Remote Template Download (giget)
@@ -408,46 +463,58 @@ Packages that received a remote template download (tracked via `remoteSpecPackag
 **Context**: Need to download GitHub subdirectories for remote template support.
 
 **Options Considered**:
+
 1. `degit` / `tiged` - Simple, but no programmatic API
 2. `giget` - TypeScript native, has programmatic API, used by Nuxt/UnJS
 3. Manual GitHub API - Too complex
 
 **Decision**: Use `giget` because:
+
 - TypeScript native with programmatic API
 - Supports GitHub subdirectory: `gh:user/repo/path/to/subdir`
 - Built-in caching for offline support
 - Actively maintained by UnJS ecosystem
 
 **Example**:
+
 ```typescript
 import { downloadTemplate } from "giget";
 
-await downloadTemplate("gh:mindfold-ai/Trellis/marketplace/specs/electron-fullstack", {
+// Official upstream marketplace fallback. Team-owned distribution may override
+// the registry/repository through the configured template-fetch path.
+await downloadTemplate("gh:mindfold-ai/marketplace/specs/electron-fullstack", {
   dir: destDir,
-  preferOffline: true,
 });
 ```
+
+**Note**: `downloadWithStrategy()` does not pass `preferOffline` — giget's
+default network-first behavior applies at all three call sites (skip,
+overwrite, append), so `init`/`update` always check the remote registry
+for new content instead of silently serving a stale cached tarball.
 
 ### Directory Conflict Strategy (skip/overwrite/append)
 
 **Context**: When downloading remote templates, target directory may already exist.
 
 **Decision**: Three strategies with `skip` as default:
+
 - `skip` - Don't download if directory exists (safe default)
 - `overwrite` - Delete existing, download fresh
 - `append` - Only copy files that don't exist (merge)
 
 **Why**: giget doesn't support append natively, so we:
+
 1. Download to temp directory
 2. Walk and copy missing files only
 3. Clean up temp directory
 
 **Example**:
+
 ```typescript
 // append strategy implementation
 const tempDir = path.join(os.tmpdir(), `trellis-template-${Date.now()}`);
 await downloadTemplate(source, { dir: tempDir });
-await copyMissing(tempDir, destDir);  // Only copy non-existing files
+await copyMissing(tempDir, destDir); // Only copy non-existing files
 await fs.promises.rm(tempDir, { recursive: true });
 ```
 
@@ -462,7 +529,7 @@ const INSTALL_PATHS: Record<string, string> = {
   spec: ".trellis/spec",
   skill: ".claude/skills",
   command: ".claude/commands",
-  full: ".",  // Entire project root
+  full: ".", // Entire project root
 };
 
 // Usage: auto-detect install path from template type
@@ -470,6 +537,7 @@ const destDir = INSTALL_PATHS[template.type] || INSTALL_PATHS.spec;
 ```
 
 **Extensibility**: To add new template type:
+
 1. Add entry to `INSTALL_PATHS`
 2. Add templates to `index.json` with new type
 3. No code changes needed for download logic

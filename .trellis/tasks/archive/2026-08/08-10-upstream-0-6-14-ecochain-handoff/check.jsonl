@@ -1,0 +1,8 @@
+{"file":".trellis/spec/cli/backend/index.md","reason":"Check the complete CLI backend change against package standards."}
+{"file":".trellis/spec/cli/backend/platform-integration.md","reason":"Verify creator/joiner and cross-platform template behavior."}
+{"file":".trellis/spec/cli/backend/configurator-shared.md","reason":"Verify common truth sources and generated platform parity."}
+{"file":".trellis/spec/cli/backend/script-conventions.md","reason":"Verify task lifecycle scripts and Python compatibility."}
+{"file":".trellis/spec/cli/backend/release-process.md","reason":"Verify distribution identity and release safety invariants."}
+{"file":".trellis/spec/cli/unit-test/index.md","reason":"Apply the CLI testing quality checklist."}
+{"file":".trellis/spec/cli/unit-test/conventions.md","reason":"Verify focused tests use real entrypoints and meaningful assertions."}
+{"file":".trellis/spec/cli/unit-test/mock-strategies.md","reason":"Check temporary project and subprocess isolation patterns."}

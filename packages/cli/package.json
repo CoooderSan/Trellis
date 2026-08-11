@@ -1,6 +1,6 @@
 {
   "name": "@ecochain/trellis",
-  "version": "0.6.8",
+  "version": "0.6.14",
   "description": "AI capabilities grow like ivy — Trellis provides the structure to guide them along a disciplined path",
   "type": "module",
   "main": "./dist/index.js",
@@ -10,7 +10,6 @@
     "tl": "./bin/trellis.js"
   },
   "publishConfig": {
-    "registry": "https://packages.aliyun.com/63b637070a96c30780aae039/npm/npm-registry/",
     "access": "public"
   },
   "scripts": {

@@ -7,26 +7,13 @@ tools: read, write, edit, bash, find, grep
 
 ## Required: Load Trellis Context First
 
-This platform does NOT auto-inject task context via hook. Before doing anything else, you MUST load context yourself.
+Before doing anything else, resolve `<task-path>` from the dispatch prompt's `Active task:` line. If that line is missing, run `python3 ./.trellis/scripts/task.py current --source`; if neither source yields a task path, ask the main session which task to work on and do not guess.
 
-### Step 1: Find the active task path
+Before any role work, run `python3 ./.trellis/scripts/task.py validate-role-context "<task-path>" check`. If it exits non-zero, relay its stderr to the main session and stop.
 
-Try in order — stop at the first one that yields a task path:
+`check.jsonl` is dispatch-ready only when it exists, is readable, and is non-empty, every nonblank non-seed row is a JSON object with a non-empty string `file`, at least one valid `file` entry exists (`_example` seed rows do not count), and every referenced file is readable. If the manifest is missing, unreadable, empty, seed-only, malformed, contains an invalid entry, or references an unreadable file, stop before review, fixes, or checks. Report the exact manifest/path problem to the main session and ask it to curate `check.jsonl`; do not choose specs heuristically or continue from task artifacts alone. This gate does not apply to the main session's inline mode.
 
-1. **Look at the dispatch prompt** you received from the main agent. If its first line is `Active task: <path>` (e.g. `Active task: .trellis/tasks/04-17-foo`), use that path. The main agent is required to include this line on class-2 platforms.
-2. **Run** `python3 ./.trellis/scripts/task.py current --source` and read the `Current task:` line.
-3. **If both fail** (no `Active task:` line in the prompt and `task.py current` returns no task), ask the user which task to work on; do NOT guess.
-
-### Step 2: Load task context from the resolved path
-
-1. Read `<task-path>/check.jsonl` — JSONL list of spec/research files relevant to this agent.
-2. For each entry in the JSONL, Read its `file` path — these are the specs and research notes you must follow.
-   **Skip rows without a `"file"` field** (e.g. `{"_example": "..."}` seed rows left over from `task.py create` before the curator ran).
-3. Read the task's `prd.md` (requirements), then `design.md` if present (technical design), then `implement.md` if present (execution plan).
-
-If `check.jsonl` has no curated entries (only a seed row, or the file is missing), fall back to: read the task artifacts, list available specs with `python3 ./.trellis/scripts/get_context.py --mode packages`, and pick the specs that match the task domain yourself. Do NOT block on the missing jsonl — lightweight tasks may be PRD-only, while complex tasks may also include `design.md` and `implement.md`.
-
-If the resolved task path has no `prd.md`, ask the user what to work on; do NOT proceed without context.
+After validation, read each spec/research file listed in `check.jsonl`, then read `prd.md`, `design.md` if present, and `implement.md` if present.
 
 ---
 

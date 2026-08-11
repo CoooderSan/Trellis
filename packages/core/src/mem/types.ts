@@ -7,7 +7,13 @@
  * reads channel events.
  */
 
-export type MemSourceKind = "claude" | "codex" | "opencode" | "pi";
+export type MemSourceKind =
+  | "claude"
+  | "codex"
+  | "grok"
+  | "opencode"
+  | "pi"
+  | "zcode";
 export type MemSourceFilter = MemSourceKind | "all";
 export type MemPhase = "brainstorm" | "implement" | "all";
 export type DialogueRole = "user" | "assistant";
@@ -15,6 +21,14 @@ export type DialogueRole = "user" | "assistant";
 export interface DialogueTurn {
   role: DialogueRole;
   text: string;
+  /**
+   * `"marker"` annotates a compaction boundary rather than a spoken turn. It
+   * stays in the pool so `extract` / `context` can show where the model's own
+   * context was cut, and is skipped by search scoring — the platform's summary
+   * restates turns that are now in the pool themselves, and counting both would
+   * score the same topic twice.
+   */
+  kind?: "marker";
 }
 
 /**
@@ -157,6 +171,9 @@ export interface TaskPyEvent {
 
 export interface ListMemSessionsOptions {
   filter?: MemFilter;
+  /** Optional sink for non-fatal source warnings while preserving the
+   * historical array return type. */
+  onWarning?: (warning: MemWarning) => void;
 }
 
 export interface SearchMemSessionsOptions {
@@ -191,4 +208,5 @@ export interface ExtractMemDialogueOptions {
 
 export interface ListMemProjectsOptions {
   filter?: MemFilter;
+  onWarning?: (warning: MemWarning) => void;
 }

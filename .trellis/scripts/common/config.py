@@ -117,11 +117,12 @@ def _parse_yaml_block(
             key, _, value = stripped.partition(":")
             key = key.strip()
             value = _strip_inline_comment(value).strip()
+            was_quoted = len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'")
             value = _unquote(value)
             current_list = None
 
-            if value:
-                # key: value
+            if value or was_quoted:
+                # key: value (an explicit quoted "" is a value, not "no value")
                 target[key] = value
                 i += 1
             else:
@@ -167,6 +168,7 @@ def _next_content_line(lines: list[str], start: int) -> tuple[int, str]:
 DEFAULT_SESSION_COMMIT_MESSAGE = "chore: record journal"
 DEFAULT_MAX_JOURNAL_LINES = 2000
 DEFAULT_SESSION_AUTO_COMMIT = True
+DEFAULT_CODEX_DISPATCH_MODE = "auto"
 
 CONFIG_FILE = "config.yaml"
 
@@ -243,6 +245,128 @@ def get_session_auto_commit(repo_root: Path | None = None) -> bool:
     return DEFAULT_SESSION_AUTO_COMMIT
 
 
+def get_codex_dispatch_mode(repo_root: Path | None = None) -> str:
+    """Return Codex dispatch mode.
+
+    Default is ``auto``, which dispatches Trellis sub-agents and uses native
+    context injection with a child-side fallback. ``inline`` is an explicit
+    opt-out. ``sub-agent`` remains a backwards-compatible alias for ``auto``.
+
+    Invalid explicit configuration falls back to ``inline`` rather than
+    unexpectedly dispatching a sub-agent. This CLI-facing parser is the only
+    place that emits a warning for invalid values; hook readers fail safely
+    without producing per-turn warning noise.
+    """
+    config = _load_config(repo_root)
+    codex = config.get("codex")
+    if codex is None:
+        return DEFAULT_CODEX_DISPATCH_MODE
+    if not isinstance(codex, dict):
+        print(
+            f"[WARN] invalid codex config: {codex!r}; using inline",
+            file=sys.stderr,
+        )
+        return "inline"
+
+    raw = codex.get("dispatch_mode", DEFAULT_CODEX_DISPATCH_MODE)
+    mode = str(raw).strip().lower()
+    if mode in ("auto", "inline"):
+        return mode
+    if mode == "sub-agent":
+        return "auto"
+    print(
+        f"[WARN] invalid codex.dispatch_mode value: {raw!r}; using inline",
+        file=sys.stderr,
+    )
+    return "inline"
+
+
+DEFAULT_CONTEXT_INJECTION_MAX_FILE_BYTES = 32768
+DEFAULT_CONTEXT_INJECTION_MAX_ARTIFACT_BYTES = 65536
+DEFAULT_CONTEXT_INJECTION_MAX_TOTAL_BYTES = 131072
+
+
+def get_context_injection_limits(repo_root: Path | None = None) -> dict[str, int]:
+    """Return sub-agent context injection byte limits.
+
+    Reads the ``context_injection:`` section of ``.trellis/config.yaml``:
+
+        context_injection:
+          max_file_bytes: 32768
+          max_artifact_bytes: 65536
+          max_total_bytes: 131072
+
+    ``0`` disables the corresponding limit. Missing keys use their default;
+    invalid (non-int or negative) values fall back to the default for that
+    key with a stderr warning.
+    """
+    defaults = {
+        "max_file_bytes": DEFAULT_CONTEXT_INJECTION_MAX_FILE_BYTES,
+        "max_artifact_bytes": DEFAULT_CONTEXT_INJECTION_MAX_ARTIFACT_BYTES,
+        "max_total_bytes": DEFAULT_CONTEXT_INJECTION_MAX_TOTAL_BYTES,
+    }
+
+    config = _load_config(repo_root)
+    section = config.get("context_injection")
+    if not isinstance(section, dict):
+        return defaults
+
+    result = dict(defaults)
+    for key, default_value in defaults.items():
+        if key not in section:
+            continue
+        raw = section[key]
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            print(
+                f"[WARN] invalid context_injection.{key} value: {raw!r}; "
+                f"using default {default_value}",
+                file=sys.stderr,
+            )
+            continue
+        if value < 0:
+            print(
+                f"[WARN] invalid context_injection.{key} value: {raw!r}; "
+                f"using default {default_value}",
+                file=sys.stderr,
+            )
+            continue
+        result[key] = value
+
+    return result
+
+
+DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD = "no-trellis"
+
+
+def get_prompt_injection_config(repo_root: Path | None = None) -> dict[str, str]:
+    """Return per-turn prompt injection config.
+
+    Reads the ``prompt_injection:`` section of ``.trellis/config.yaml``:
+
+        prompt_injection:
+          skip_keyword: "no-trellis"   # "" disables the escape hatch entirely
+
+    ``skip_keyword`` is the word-boundary, case-insensitive keyword that, when
+    present in the user's prompt, makes the per-turn workflow-state injection
+    emit nothing for that turn. Defaults to ``"no-trellis"``. A non-string
+    value falls back to the default.
+    """
+    defaults = {"skip_keyword": DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD}
+
+    config = _load_config(repo_root)
+    section = config.get("prompt_injection")
+    if not isinstance(section, dict):
+        return defaults
+
+    result = dict(defaults)
+    raw = section.get("skip_keyword", DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD)
+    if isinstance(raw, str):
+        result["skip_keyword"] = raw
+    return result
+
+
 def get_hooks(event: str, repo_root: Path | None = None) -> list[str]:
     """Get hook commands for a lifecycle event.
 
@@ -261,6 +385,63 @@ def get_hooks(event: str, repo_root: Path | None = None) -> list[str]:
     if isinstance(commands, list):
         return [str(c) for c in commands]
     return []
+
+
+# =============================================================================
+# Governance Gate
+# =============================================================================
+
+
+def get_governance_config(repo_root: Path | None = None) -> dict:
+    """Return the generic, project-configurable governance section."""
+    config = _load_config(repo_root)
+    governance = config.get("governance")
+    return governance if isinstance(governance, dict) else {}
+
+
+def is_governance_enabled(repo_root: Path | None = None) -> bool:
+    """Return whether classified lifecycle gates are enabled.
+
+    Classified governance is the default even when the config has no
+    ``governance`` section. Projects can explicitly opt out with
+    ``governance.enabled: false``.
+    """
+    governance = get_governance_config(repo_root)
+    raw = governance.get("enabled", True)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() not in {"false", "no", "0", "off"}
+
+
+def get_governance_command(repo_root: Path | None = None) -> str | None:
+    """Return the optional external governance evaluator command."""
+    command = get_governance_config(repo_root).get("command")
+    if isinstance(command, str) and command.strip():
+        return command.strip()
+    return None
+
+
+def is_governance_event_enforced(
+    event: str,
+    repo_root: Path | None = None,
+) -> bool:
+    """Return whether a lifecycle event is hard-blocking."""
+    if not is_governance_enabled(repo_root):
+        return False
+
+    enforce = get_governance_config(repo_root).get("enforce")
+    if isinstance(enforce, dict) and event in enforce:
+        raw = enforce[event]
+        if isinstance(raw, bool):
+            return raw
+        normalized = str(raw).strip().lower()
+        if normalized in {"false", "no", "0", "off"}:
+            return False
+        if normalized in {"true", "yes", "1", "on"}:
+            return True
+        return event in {"task_create", "task_start"}
+
+    return event in {"task_create", "task_start"}
 
 
 # =============================================================================

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import chalk from "chalk";
-import { PACKAGE_NAME, PACKAGE_REGISTRY, VERSION } from "../constants/version.js";
+import { PACKAGE_NAME, VERSION } from "../constants/version.js";
 
 export interface UpgradeOptions {
   tag?: string;
@@ -67,7 +67,7 @@ export function buildUpgradeCommand(
 ): UpgradeCommandPlan {
   const tag = resolveUpgradeTag(currentVersion, options.tag);
   const target = `${PACKAGE_NAME}@${tag}`;
-  const npmArgs = ["install", "-g", target, `--registry=${PACKAGE_REGISTRY}`];
+  const npmArgs = ["install", "-g", target];
   const displayCommand = `npm ${npmArgs.join(" ")}`;
   const spawnOptions: SpawnOptions = { stdio: "inherit", shell: false };
 

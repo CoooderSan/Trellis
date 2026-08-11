@@ -141,9 +141,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# Local IDE metadata
-.idea/
-
 # Ralph Loop state file
 .trellis/.ralph-state.json
 
@@ -186,7 +183,11 @@ smoke_test/
 # Claude Code scheduled tasks session lock
 .claude/scheduled_tasks.lock
 
+# Snow CLI generated project configuration and local runtime data
+/.snow/
+
 tmp/
 tmp1/
 .playwright-mcp
 .gitnexus
+.codegraph/

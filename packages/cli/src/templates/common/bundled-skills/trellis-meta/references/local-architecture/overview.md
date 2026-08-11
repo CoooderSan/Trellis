@@ -27,7 +27,7 @@ All three layers live inside the user project, so an AI can read and modify them
 | `.trellis/workflow.md` | Workflow phases, skill routing, and workflow-state prompt blocks. |
 | `.trellis/config.yaml` | Project configuration, task lifecycle hooks, monorepo package configuration, and journal configuration. |
 | `.trellis/spec/` | The user's project-specific coding conventions and thinking guides. |
-| `.trellis/tasks/` | Each task's Intent, PRD, technical notes, research files, and JSONL context. |
+| `.trellis/tasks/` | Each task's PRD, technical notes, research files, and JSONL context. |
 | `.trellis/workspace/` | Per-developer journals and cross-session memory. |
 | `.trellis/scripts/` | Local Python runtime used by commands, hooks, and context injection. |
 | `.trellis/.runtime/` | Session-level runtime state, such as the current task pointer. |

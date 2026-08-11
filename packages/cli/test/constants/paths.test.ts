@@ -43,7 +43,6 @@ describe("FILE_NAMES", () => {
     expect(FILE_NAMES).toHaveProperty("DEVELOPER");
     expect(FILE_NAMES).toHaveProperty("CURRENT_TASK");
     expect(FILE_NAMES).toHaveProperty("TASK_JSON");
-    expect(FILE_NAMES).toHaveProperty("INTENT");
     expect(FILE_NAMES).toHaveProperty("PRD");
     expect(FILE_NAMES).toHaveProperty("WORKFLOW_GUIDE");
     expect(FILE_NAMES).toHaveProperty("JOURNAL_PREFIX");
@@ -73,9 +72,7 @@ describe("PATHS", () => {
   });
 
   it("WORKSPACE is WORKFLOW/workspace", () => {
-    expect(PATHS.WORKSPACE).toBe(
-      `${DIR_NAMES.WORKFLOW}/${DIR_NAMES.WORKSPACE}`,
-    );
+    expect(PATHS.WORKSPACE).toBe(`${DIR_NAMES.WORKFLOW}/${DIR_NAMES.WORKSPACE}`);
   });
 
   it("TASKS is WORKFLOW/tasks", () => {

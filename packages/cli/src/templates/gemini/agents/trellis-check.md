@@ -19,7 +19,6 @@ You are already the `trellis-check` sub-agent that the main session dispatched. 
 
 Before checking, read:
 - `.trellis/spec/` - Development guidelines
-- Task `intent.md` - Intent document
 - Task `prd.md` - Requirements document
 - Task `design.md` - Technical design (if exists)
 - Task `implement.md` - Execution plan (if exists)
@@ -28,7 +27,7 @@ Before checking, read:
 ## Core Responsibilities
 
 1. **Get code changes** - Use git diff to get uncommitted code
-2. **Review task artifacts** - Check changes against intent.md, prd.md, design.md if present, and implement.md if present
+2. **Review task artifacts** - Check changes against prd.md, design.md if present, and implement.md if present
 3. **Check against specs** - Verify code follows guidelines
 4. **Self-fix** - Fix issues yourself, not just report them
 5. **Run verification** - typecheck and lint
@@ -52,7 +51,7 @@ git diff              # View specific changes
 
 ### Step 2: Check Against Specs and Task Artifacts
 
-Read task intent.md, prd.md, design.md if present, and implement.md if present, then read relevant specs in `.trellis/spec/` to check code:
+Read the task's prd.md, design.md if present, and implement.md if present, then read relevant specs in `.trellis/spec/` to check code:
 
 - Does it satisfy the task requirements
 - Does it follow the technical design and implementation plan when present

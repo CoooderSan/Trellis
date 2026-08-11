@@ -1,21 +1,33 @@
 # Code Quality Check
 
-Comprehensive quality verification for recently written code. Combines spec compliance, cross-layer safety, and pre-commit checks.
+Comprehensive `ITERATION`-profile verification for the current worktree. Combine task/spec compliance, risk-appropriate checks, cross-layer safety, and evidence that remains bound to the change identity it actually checked.
 
 ---
 
 ## Step 1: Identify What Changed
 
 ```bash
+git rev-parse --show-toplevel
+git rev-parse HEAD
 git diff --name-only HEAD
-git status
+git diff HEAD
+git diff --cached --no-ext-diff --no-textconv --binary --full-index HEAD
+git diff --no-ext-diff --no-textconv --binary --full-index
+git status --short
+git ls-files --others --exclude-standard
+python3 ./.trellis/scripts/capture_iteration_identity.py
 ```
+
+`git diff HEAD` covers tracked staged and unstaged content. Separately enumerate and inspect the full contents of every untracked, non-ignored file reported by `git ls-files --others --exclude-standard`; a name-only or status listing is not a review of that content.
+
+Use the read-only capture script's labeled JSON fields as the canonical iteration identity: repository root, HEAD when applicable, capture time, staged-diff digest, unstaged-diff digest, and the path plus content digest of every untracked non-ignored file. Quote those labeled values without reordering or transposing them. The script verifies two consecutive snapshots and reports `identity_status: UNKNOWN` when capture is incomplete or changes during the read. Its digests do not replace the required full-content inspection above.
+
+This is the exact dirty change scope being checked. If any required path cannot be enumerated, read, or digested, identity is `UNKNOWN`, not green. If you self-fix anything, discard the pre-fix snapshot and rerun the capture script before reporting. If any identity component changes later, affected evidence is stale and must be rerun or marked invalid.
 
 ## Step 2: Read Task Artifacts and Applicable Specs
 
 Read the current task artifacts in order:
 
-- `intent.md`
 - `prd.md`
 - `design.md` if present
 - `implement.md` if present
@@ -32,25 +44,28 @@ cat .trellis/spec/<package>/<layer>/index.md
 
 Read the specific guideline files referenced — the index is a pointer, not the goal.
 
-## Step 3: Run Project Checks
+## Step 3: Choose and Run Risk-Appropriate Checks
 
-Run the project's lint, type-check, and test commands. Fix any failures before proceeding.
+TDD is optional and risk-driven. Prefer it for reproducible bugs, business rules, state machines, algorithms, and pure logic whose expected behavior can be expressed before implementation.
+
+Discover and run the repository's applicable lint, type-check, tests, builds, contract checks, integration checks, and runtime probes. Configuration, device-dependent behavior, cross-system integration, or legacy seams may require logs or explicit manual verification instead of a particular automated test category.
+
+If a check is not configured, not applicable, or intentionally skipped, do not treat that absence as a pass. Record the reason and provide proportionate alternative verification evidence. Exit code zero alone does not prove that tests were discovered or executed.
 
 ## Step 4: Review Against Checklist
 
 ### Code Quality
 
-- [ ] Linter passes?
-- [ ] Type checker passes (if applicable)?
-- [ ] Tests pass?
+- [ ] Applicable lint/type/build/test/contract/integration/runtime checks have evidence?
+- [ ] Test discovery/execution is confirmed rather than inferred from exit code alone?
 - [ ] No debug logging left in?
 - [ ] No suppressed warnings or type-safety bypasses?
 
-### Test Coverage
+### Behavior Coverage
 
-- [ ] New function → unit test added?
-- [ ] Bug fix → regression test added?
-- [ ] Changed behavior → existing tests updated?
+- [ ] Changed behavior and identified risks are covered by automated checks or explicit alternative evidence?
+- [ ] Reproducible bug/regression paths have a durable prevention check when practical?
+- [ ] `NOT_APPLICABLE` / `SKIPPED` checks include a reason?
 
 ### Spec Sync
 
@@ -91,4 +106,27 @@ Skip this step if your change is confined to a single layer.
 
 ## Step 6: Report and Fix
 
-Report violations found and fix them directly. Re-run project checks after fixes.
+Report violations found and fix them directly. Re-run affected checks after fixes.
+
+The final structured Agent report is the independent `ITERATION` evidence artifact for this run. Return it to the main session; do not write it into `check.jsonl` or create a tracked task artifact whose own write would change the dirty scope it claims to describe.
+
+Report each check using the shared status vocabulary:
+
+- `PASSED`, `FAILED`, `NOT_CONFIGURED`, `NOT_APPLICABLE`, `SKIPPED`, `PENDING`, `UNKNOWN`, or `PLANNED`
+- identity: worktree, HEAD when applicable, dirty diff/change scope
+- evidence: command or observation, checked object, key result, time, and source
+- invalidation: which code, HEAD, target, configuration, or environment changes make the evidence stale
+
+Required facts at `FAILED`, `UNKNOWN`, or `PENDING` are not green and cannot support an MR-ready claim. Do not alter Sonar, pipeline, or platform facts to manufacture a pass. `check.jsonl` is only a sub-agent context manifest; never write quality results into it.
+
+Use this final report structure:
+
+- Profile: `ITERATION`
+- Overall status: one shared status value
+- Identity: repository root, HEAD, capture time, and final staged/unstaged/untracked content digests
+- Findings fixed and findings not fixed
+- Evidence: one entry per required check with command or observation, shared status, checked object, key result, execution time, and source
+- Invalidation: exact changes that make each result stale
+- MR boundary: `MR_CANDIDATE` remains unavailable until the repository's merge-request gate checks an exact source SHA, fetched target SHA, and complete candidate diff
+
+This skill reports `ITERATION` evidence. An `MR_CANDIDATE` claim additionally requires an exact source SHA, fetched target SHA, and complete candidate diff checked by the repository's merge-request gate.

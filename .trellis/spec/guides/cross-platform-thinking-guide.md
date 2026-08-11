@@ -19,12 +19,12 @@
 
 ### 1. Script Execution
 
-| Assumption | macOS/Linux | Windows |
-|------------|-------------|---------|
-| Shebang (`#!/usr/bin/env python3`) | ✅ Works | ❌ Ignored |
-| Direct execution (`./script.py`) | ✅ Works | ❌ Fails |
-| `python3` command | ✅ Always available | ⚠️ May need `python` |
-| `python` command | ⚠️ May be Python 2 | ✅ Usually Python 3 |
+| Assumption                         | macOS/Linux         | Windows              |
+| ---------------------------------- | ------------------- | -------------------- |
+| Shebang (`#!/usr/bin/env python3`) | ✅ Works            | ❌ Ignored           |
+| Direct execution (`./script.py`)   | ✅ Works            | ❌ Fails             |
+| `python3` command                  | ✅ Always available | ⚠️ May need `python` |
+| `python` command                   | ⚠️ May be Python 2  | ✅ Usually Python 3  |
 
 **Rule 1**: For user-facing docs, help text, and error messages, either:
 
@@ -102,11 +102,11 @@ subprocess.run([sys.executable, "other_script.py"])
 
 ### 2. Path Handling
 
-| Assumption | macOS/Linux | Windows |
-|------------|-------------|---------|
-| `/` separator | ✅ Works | ⚠️ Sometimes works |
-| `\` separator | ❌ Escape char | ✅ Native |
-| `pathlib.Path` | ✅ Works | ✅ Works |
+| Assumption     | macOS/Linux    | Windows            |
+| -------------- | -------------- | ------------------ |
+| `/` separator  | ✅ Works       | ⚠️ Sometimes works |
+| `\` separator  | ❌ Escape char | ✅ Native          |
+| `pathlib.Path` | ✅ Works       | ✅ Works           |
 
 **Rule (Python)**: Use `pathlib.Path` for all path operations.
 
@@ -123,21 +123,23 @@ path = Path(base) / filename
 
 A path string has two distinct roles. **Treat them differently.**
 
-| Role | OS-native (`\` on Windows) | Always POSIX (`/`) |
-|------|---------------------------|--------------------|
-| `fs.readFileSync(p)` / `path.join(cwd, x)` for fs call | ✅ Required | ❌ May fail on Windows |
-| `Map<relPath, content>` key, JSON field, hash dictionary key, anything persisted across OS | ❌ Cross-OS mismatch | ✅ Required |
+| Role                                                                                       | OS-native (`\` on Windows) | Always POSIX (`/`)     |
+| ------------------------------------------------------------------------------------------ | -------------------------- | ---------------------- |
+| `fs.readFileSync(p)` / `path.join(cwd, x)` for fs call                                     | ✅ Required                | ❌ May fail on Windows |
+| `Map<relPath, content>` key, JSON field, hash dictionary key, anything persisted across OS | ❌ Cross-OS mismatch       | ✅ Required            |
 
 **Rule**: Anywhere a path string crosses OS or persists (Map keys consumed by another OS, JSON fields, hash dictionary keys), normalize to POSIX. Anywhere it goes straight to `fs.*`, leave OS-native.
 
 **Single source of truth**: `packages/cli/src/utils/posix.ts` exports `toPosix(p)`. Don't sprinkle `replaceAll('\\', '/')` at every `path.join` site — apply `toPosix` **once at the boundary**: collector exit (Map key entering hash dictionary) or write-time (`saveHashes` before `JSON.stringify`).
+
+**This rule is now load-bearing for writes too**, not just for hash lookups: `writeTemplateMap` (`configurators/shared.ts:560`) reconstructs the target path by splitting the map key on `/`. A backslashed key would write one file named `a\b\c.md` instead of three nested directories.
 
 ```typescript
 // BAD - logical key carries OS-native separator
 function collectTemplates(): Map<string, string> {
   const files = new Map<string, string>();
   for (const entry of walk(dir)) {
-    files.set(path.join(".opencode", entry), readFile(entry));  // \ on Windows
+    files.set(path.join(".opencode", entry), readFile(entry)); // \ on Windows
   }
   return files;
 }
@@ -156,7 +158,7 @@ function collectTemplates(): Map<string, string> {
 // ALSO ACCEPTABLE - write-side defense (for storage helpers like saveHashes)
 function saveHashes(cwd: string, hashes: Record<string, string>): void {
   const normalized = Object.fromEntries(
-    Object.entries(hashes).map(([k, v]) => [toPosix(k), v])
+    Object.entries(hashes).map(([k, v]) => [toPosix(k), v]),
   );
   fs.writeFileSync(getHashesPath(cwd), JSON.stringify(normalized, null, 2));
 }
@@ -166,10 +168,10 @@ function saveHashes(cwd: string, hashes: Record<string, string>): void {
 
 ### 3. Line Endings
 
-| Format | macOS/Linux | Windows | Git |
-|--------|-------------|---------|-----|
-| `\n` (LF) | ✅ Native | ⚠️ Some tools | ✅ Normalized |
-| `\r\n` (CRLF) | ⚠️ Extra char | ✅ Native | Converted |
+| Format        | macOS/Linux   | Windows       | Git           |
+| ------------- | ------------- | ------------- | ------------- |
+| `\n` (LF)     | ✅ Native     | ⚠️ Some tools | ✅ Normalized |
+| `\r\n` (CRLF) | ⚠️ Extra char | ✅ Native     | Converted     |
 
 **Rule 1**: Use `.gitattributes` to enforce consistent line endings.
 
@@ -198,11 +200,11 @@ Apply this rule wherever the hash crosses OS boundaries (template hash dictionar
 
 ### 4. Environment Variables
 
-| Variable | macOS/Linux | Windows |
-|----------|-------------|---------|
-| `HOME` | ✅ Set | ❌ Use `USERPROFILE` |
-| `PATH` separator | `:` | `;` |
-| Case sensitivity | ✅ Case-sensitive | ❌ Case-insensitive |
+| Variable         | macOS/Linux       | Windows              |
+| ---------------- | ----------------- | -------------------- |
+| `HOME`           | ✅ Set            | ❌ Use `USERPROFILE` |
+| `PATH` separator | `:`               | `;`                  |
+| Case sensitivity | ✅ Case-sensitive | ❌ Case-insensitive  |
 
 **Rule 1**: Use `pathlib.Path.home()` instead of environment variables.
 
@@ -224,9 +226,10 @@ PowerShell, Git Bash, MSYS2, or another POSIX-like shell.
 command = `export TRELLIS_CONTEXT_ID=${shellQuote(contextKey)}; ${command}`;
 
 // GOOD - shell-dialect-aware command prefix
-const prefix = process.platform === "win32" && !isWindowsPosixShell(process.env)
-  ? `$env:TRELLIS_CONTEXT_ID = ${powershellQuote(contextKey)}; `
-  : `export TRELLIS_CONTEXT_ID=${shellQuote(contextKey)}; `;
+const prefix =
+  process.platform === "win32" && !isWindowsPosixShell(process.env)
+    ? `$env:TRELLIS_CONTEXT_ID = ${powershellQuote(contextKey)}; `
+    : `export TRELLIS_CONTEXT_ID=${shellQuote(contextKey)}; `;
 command = `${prefix}${command}`;
 ```
 
@@ -241,12 +244,12 @@ already-correct command a second time.
 
 ### 5. Command Availability
 
-| Command | macOS/Linux | Windows |
-|---------|-------------|---------|
-| `grep` | ✅ Built-in | ❌ Not available |
-| `find` | ✅ Built-in | ⚠️ Different syntax |
-| `cat` | ✅ Built-in | ❌ Use `type` |
-| `tail -f` | ✅ Built-in | ❌ Not available |
+| Command   | macOS/Linux | Windows             |
+| --------- | ----------- | ------------------- |
+| `grep`    | ✅ Built-in | ❌ Not available    |
+| `find`    | ✅ Built-in | ⚠️ Different syntax |
+| `cat`     | ✅ Built-in | ❌ Use `type`       |
+| `tail -f` | ✅ Built-in | ❌ Not available    |
 
 **Rule**: Use Python standard library instead of shell commands when possible.
 
@@ -288,11 +291,11 @@ must not fail or become noisy because an advisory check could not complete.
 
 ### 6. File Encoding
 
-| Default Encoding | macOS/Linux | Windows |
-|------------------|-------------|---------|
-| Terminal | UTF-8 | Often CP1252 or GBK |
-| File I/O | UTF-8 | System locale |
-| Git output | UTF-8 | May vary |
+| Default Encoding | macOS/Linux | Windows             |
+| ---------------- | ----------- | ------------------- |
+| Terminal         | UTF-8       | Often CP1252 or GBK |
+| File I/O         | UTF-8       | System locale       |
+| Git output       | UTF-8       | May vary            |
 
 **Rule**: Always explicitly specify `encoding="utf-8"` and use `errors="replace"`.
 
@@ -340,12 +343,14 @@ result = subprocess.run(
 When making platform-related changes, check **all these locations**:
 
 ### Commands / Skills Sync
-- [ ] New command/skill added to ALL platforms (claude, cursor, iflow, codex, and any new platform)
+
+- [ ] New command/skill added to ALL platforms — the list is `PLATFORM_IDS` in `configurators/index.ts`, not a remembered set
 - [ ] Each platform's test file updated with new entry in `EXPECTED_COMMAND_NAMES` / `EXPECTED_SKILL_NAMES`
 - [ ] Platform-integration spec's required command table updated if adding a new required command
 - [ ] Command format matches platform convention (see `platform-integration.md` → Command Format by Platform)
 
 ### Documentation & Help Text
+
 - [ ] Docstrings at top of Python files
 - [ ] `--help` output / argparse descriptions
 - [ ] Usage examples in README
@@ -353,11 +358,13 @@ When making platform-related changes, check **all these locations**:
 - [ ] Markdown documentation (`.md` files)
 
 ### Code Locations
+
 - [ ] `src/templates/` - Template files for new projects
 - [ ] `.trellis/scripts/` - Project's own scripts (if self-hosting)
 - [ ] `dist/` - Built output (rebuild after changes)
 
 ### Search Pattern
+
 ```bash
 # Find all places that might need updating
 grep -r "python [a-z]" --include="*.py" --include="*.md"
@@ -450,6 +457,7 @@ export function saveHashes(cwd: string, hashes: Record<string, string>): void {
 ```
 
 **When to apply**:
+
 - Hash dictionaries / content fingerprints (e.g., `.template-hashes.json`)
 - Cache files where stale entries are recomputable from authoritative source
 - Any cross-OS persisted file where format change correlates with cross-platform fixes
@@ -469,22 +477,23 @@ When parsing JSON or external data, TypeScript types are **compile-time only**. 
 ```typescript
 // BAD - Trusts TypeScript type definition
 interface MigrationItem {
-  from: string;  // TypeScript says required
+  from: string; // TypeScript says required
   to?: string;
 }
 
 function process(item: MigrationItem) {
-  const path = item.from;  // Runtime: could be undefined!
+  const path = item.from; // Runtime: could be undefined!
 }
 
 // GOOD - Defensive check before use
 function process(item: MigrationItem) {
-  if (!item.from) return;  // Skip invalid data
-  const path = item.from;  // Now guaranteed
+  if (!item.from) return; // Skip invalid data
+  const path = item.from; // Now guaranteed
 }
 ```
 
 **When to apply**:
+
 - Parsing JSON files (manifests, configs)
 - API responses
 - User input
@@ -494,7 +503,7 @@ function process(item: MigrationItem) {
 
 ```typescript
 // Filter pattern - skip invalid items
-const validItems = items.filter(item => item.from && item.to);
+const validItems = items.filter((item) => item.from && item.to);
 
 // Early return pattern - bail on invalid
 if (!data.requiredField) {
@@ -530,6 +539,10 @@ subprocess.run(["./script.py"])  # FileNotFoundError
 src/templates/script.py  ← Updated
 .trellis/scripts/script.py  ← Forgot to sync!
 ```
+
+No longer silent: a `.py` byte difference between the two trees fails the
+test suite. See `cli/backend/script-conventions.md` → "Two script trees, one
+content".
 
 ### 4. "Python 3 is always python3"
 
@@ -600,20 +613,20 @@ When release notes or docs claim an asset is bundled, installed automatically, o
 included with Trellis, verify the whole distribution path:
 
 - [ ] Source file exists in the branch being tagged, not only in another branch,
-  docs submodule, or marketplace tree.
+      docs submodule, or marketplace tree.
 - [ ] `pnpm build` copies the asset into `dist/templates/**`.
 - [ ] `npm pack --dry-run --json` includes the expected `dist/**` path.
 - [ ] The built binary installs the asset in a fresh temp repository.
 - [ ] `.trellis/.template-hashes.json` tracks the generated asset path.
 - [ ] `trellis update --dry-run` reports `Already up to date!` in that temp
-  repository.
+      repository.
 
 **Why this matters**: docs/changelog text can move independently from the code
 branch that owns distributable templates. A feature can be documented as bundled
 while the published npm tarball still lacks the files.
 
 ```bash
-pnpm --filter @mindfoldhq/trellis build
+pnpm --filter @ecochain/trellis build
 
 cd packages/cli
 npm pack --dry-run --json | grep 'dist/templates/common/bundled-skills/<skill>/SKILL.md'

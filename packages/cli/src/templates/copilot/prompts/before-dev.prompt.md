@@ -4,20 +4,10 @@ description: "Trellis Copilot prompt: before-dev.prompt"
 
 Read the relevant development guidelines before starting your task.
 
-Before reading guidelines, confirm the task is actually allowed to enter implementation:
-
-```bash
-python3 ./.trellis/scripts/task.py current --source
-```
-
-If there is no active task, the task is still `planning`, or `intent.md` is missing/incomplete, stop. For Trellis-owned blocking moments, the first user-facing sentence should be Dazz's direct fatherly correction. Do not offer a direct implementation slice before the Intent document exists and `task.py start` has succeeded.
-
-Example: `先停下。这个前置还没过，Dazz 现在不会让你直接进实现。先把 Intent 文档补好。`
-
 Execute these steps:
 
 1. **Read current task artifacts**:
-   - `intent.md` for user/business intent and `prd.md` for requirements and acceptance criteria
+   - `prd.md` for requirements and acceptance criteria
    - `design.md` if present for technical design
    - `implement.md` if present for execution order and validation plan
 

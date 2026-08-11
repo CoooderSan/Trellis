@@ -246,7 +246,7 @@ const SKILL_DESCRIPTIONS: Record<string, string> = {
   "before-dev":
     "Discovers and injects project-specific coding guidelines from .trellis/spec/ before implementation begins. Reads spec indexes, pre-development checklists, and shared thinking guides for the target package. Use when starting a new coding task, before writing any code, switching to a different package, or needing to refresh project conventions and standards.",
   brainstorm:
-    "Guides collaborative requirements discovery before implementation. Creates task directory, seeds Intent and PRD artifacts, asks high-value questions one at a time, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or the user describes a new feature or complex task.",
+    "Guides collaborative requirements discovery before implementation. Creates task directory, seeds PRD, asks high-value questions one at a time, researches technical choices, and converges on MVP scope. Use when requirements are unclear, there are multiple valid approaches, or the user describes a new feature or complex task.",
   check:
     "Comprehensive quality verification: spec compliance, lint, type-check, tests, cross-layer data flow, code reuse, and consistency checks. Use when code is written and needs quality verification, before committing changes, or to catch context drift during long sessions.",
   "break-loop":
@@ -297,7 +297,49 @@ export function wrapWithCommandFrontmatter(
       `Missing command description for "${baseName}". Add it to COMMAND_DESCRIPTIONS in shared.ts.`,
     );
   }
-  return `---\nname: ${name}\ndescription: ${description}\n---\n\n${content}`;
+  // JSON.stringify produces a double-quoted YAML scalar, which is safe even
+  // when the description contains a colon (an unquoted plain scalar cannot
+  // contain ": " — some parsers reject it outright, e.g. Trae CLI's SlashCommand
+  // schema; others silently truncate at the second colon).
+  return `---\nname: ${name}\ndescription: ${JSON.stringify(
+    description,
+  )}\n---\n\n${content}`;
+}
+
+/**
+ * Argument-hint values for commands that accept positional args.
+ * Used by OMP platform's YAML frontmatter.
+ */
+const COMMAND_ARGUMENT_HINTS: Record<string, string> = {
+  "finish-work": "[task-name]",
+};
+
+/**
+ * Wrap resolved command content with OMP-style YAML frontmatter.
+ * OMP uses `description` (required) + optional `argument-hint`.
+ * The leading `# Title` heading from the source template is stripped
+ * because OMP's frontmatter replaces its role.
+ */
+export function wrapWithOmpFrontmatter(name: string, content: string): string {
+  const baseName = name.replace(/^trellis-/, "");
+  const description = COMMAND_DESCRIPTIONS[baseName];
+  if (!description) {
+    throw new Error(
+      `Missing command description for "${baseName}". Add it to COMMAND_DESCRIPTIONS in shared.ts.`,
+    );
+  }
+  // Strip leading H1 + blank line from template body
+  const body = content.replace(/^# [^\n]+\n\n/, "");
+  const hint = COMMAND_ARGUMENT_HINTS[baseName];
+  // JSON.stringify produces a double-quoted YAML scalar, safe even when the
+  // description contains a colon (see wrapWithCommandFrontmatter).
+  const quotedDescription = JSON.stringify(description);
+  const frontmatter = hint
+    ? `---\ndescription: ${quotedDescription}\nargument-hint: ${JSON.stringify(
+        hint,
+      )}\n---`
+    : `---\ndescription: ${quotedDescription}\n---`;
+  return `${frontmatter}\n\n${body}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -312,6 +354,10 @@ import {
   getCommandTemplates,
   getSkillTemplates,
 } from "../templates/common/index.js";
+import {
+  getSharedHookScriptsForPlatform,
+  type SharedHookPlatform,
+} from "../templates/shared-hooks/index.js";
 
 /** A resolved template ready to be written to disk. */
 export interface ResolvedTemplate {
@@ -326,6 +372,45 @@ export interface ResolvedSkillFile {
   content: string;
 }
 
+const SHARED_CHECK_CONTRACT_PLACEHOLDER = "{{TRELLIS_CHECK_CONTRACT}}";
+
+/**
+ * Compose the common Check skill contract into a platform's real check-agent
+ * executor. The platform template owns role metadata, recursion guards, and
+ * context loading; common/skills/check.md owns the actual quality contract.
+ *
+ * Keeping an explicit placeholder makes drift fail closed: a renamed or
+ * duplicated marker throws during template collection instead of silently
+ * shipping an agent that lacks the shared contract.
+ */
+export function composeSharedCheckContract(
+  agentContent: string,
+  ctx: TemplateContext,
+): string {
+  const markerCount =
+    agentContent.split(SHARED_CHECK_CONTRACT_PLACEHOLDER).length - 1;
+  if (markerCount !== 1) {
+    throw new Error(
+      `Check agent template must contain exactly one ${SHARED_CHECK_CONTRACT_PLACEHOLDER} placeholder (found ${markerCount}).`,
+    );
+  }
+
+  const checkTemplate = getSkillTemplates().find(
+    (template) => template.name === "check",
+  );
+  if (!checkTemplate) {
+    throw new Error("Missing common check skill template.");
+  }
+
+  return resolvePlaceholders(
+    agentContent.replace(
+      SHARED_CHECK_CONTRACT_PLACEHOLDER,
+      checkTemplate.content.trim(),
+    ),
+    ctx,
+  );
+}
+
 /**
  * Filter command templates based on platform capabilities.
  *
@@ -335,9 +420,10 @@ export interface ResolvedSkillFile {
  * auto-injects the workflow overview, so a user-facing `start` would be
  * redundant.
  *
- * `agentCapable && !hasHooks` platforms (Codex, ZCode, OpenCode, Reasonix)
+ * `agentCapable && !hasHooks` platforms (Codex, ZCode, OpenCode, Reasonix, Grok)
  * have no such hook (or use an out-of-band plugin), so they need the
  * user-invocable `trellis-start` skill / `start.md` command as fallback.
+ * Snow is class-1 (`hasHooks: true`) with auto inject + project agents.
  * Agent-less platforms (Kilo, Antigravity, Devin) also keep `start` since
  * they rely entirely on user-triggered workflows.
  */
@@ -458,7 +544,7 @@ export function resolveBundledSkills(
 }
 
 // ---------------------------------------------------------------------------
-// Shared configurator write helpers
+// Shared collectors
 // ---------------------------------------------------------------------------
 
 /** Collect skill files under a target root for update hash tracking. */
@@ -477,60 +563,82 @@ export function collectSkillTemplates(
   return files;
 }
 
-/** Write skill directories from resolved templates and bundled skill files. */
-export async function writeSkills(
-  skillsRoot: string,
-  skills: { name: string; content: string }[],
-  bundledSkills: readonly ResolvedSkillFile[] = [],
-): Promise<void> {
-  ensureDir(skillsRoot);
-  for (const skill of skills) {
-    const skillDir = path.join(skillsRoot, skill.name);
-    ensureDir(skillDir);
-    await writeFile(
-      path.join(skillDir, "SKILL.md"),
-      replacePythonCommandLiterals(skill.content),
-    );
+// ---------------------------------------------------------------------------
+// Template maps — a platform's file set, described once
+//
+// `collect<Platform>Templates()` returns `Map<relPath, content>`: the single
+// description of what a platform installs. `trellis update` diffs that map and
+// `configure` writes it through `writeTemplateMap`. Nothing else enumerates a
+// platform's files — two descriptions that disagree is how `trellis update`
+// silently stops managing a file (manifests/0.5.7.json).
+// ---------------------------------------------------------------------------
+
+/** Apply the python3 → python rewrite to every entry of a template map. */
+export function renderTemplateMap(
+  files: Map<string, string>,
+): Map<string, string> {
+  const rendered = new Map<string, string>();
+  for (const [relPath, content] of files) {
+    rendered.set(relPath, replacePythonCommandLiterals(content));
   }
-  for (const skillFile of bundledSkills) {
-    const targetPath = path.join(skillsRoot, skillFile.relativePath);
-    ensureDir(path.dirname(targetPath));
-    await writeFile(
-      targetPath,
-      replacePythonCommandLiterals(skillFile.content),
-    );
+  return rendered;
+}
+
+/**
+ * Write a collected template map into `cwd`.
+ *
+ * Renders through {@link renderTemplateMap} first — the same rewrite
+ * `collectPlatformTemplates` applies on the update path — so a file's
+ * init-time bytes and its update-time expected bytes cannot drift.
+ */
+export async function writeTemplateMap(
+  cwd: string,
+  files: Map<string, string>,
+): Promise<void> {
+  for (const [relPath, content] of renderTemplateMap(files)) {
+    const absPath = path.join(cwd, ...relPath.split("/"));
+    ensureDir(path.dirname(absPath));
+    await writeFile(absPath, content);
   }
 }
 
-/** Write agent/droid definition files */
-export async function writeAgents(
-  agentsDir: string,
-  agents: { name: string; content: string }[],
-  ext = ".md",
-): Promise<void> {
-  ensureDir(agentsDir);
-  for (const agent of agents) {
-    await writeFile(
-      path.join(agentsDir, `${agent.name}${ext}`),
-      replacePythonCommandLiterals(agent.content),
-    );
-  }
-}
-
-/** Write the shared hook scripts that `platform` actually registers. */
-export async function writeSharedHooks(
-  hooksDir: string,
-  platform: import("../templates/shared-hooks/index.js").SharedHookPlatform,
-): Promise<void> {
-  const { getSharedHookScriptsForPlatform } =
-    await import("../templates/shared-hooks/index.js");
-  ensureDir(hooksDir);
+/**
+ * Collect the shared hook scripts that `platform` actually registers, keyed
+ * under `hooksPath`. Driven by SHARED_HOOKS_BY_PLATFORM so a platform's hook
+ * set is never restated per configurator.
+ */
+export function collectSharedHooks(
+  hooksPath: string,
+  platform: SharedHookPlatform,
+): Map<string, string> {
+  const files = new Map<string, string>();
   for (const hook of getSharedHookScriptsForPlatform(platform)) {
-    await writeFile(
-      path.join(hooksDir, hook.name),
-      replacePythonCommandLiterals(hook.content),
-    );
+    files.set(`${hooksPath}/${hook.name}`, hook.content);
   }
+  return files;
+}
+
+/** Collect commands + skills for "both" platforms (a commands directory plus
+ *  a skills root). */
+export function collectBothTemplates(
+  ctx: TemplateContext,
+  cmdPath: (name: string) => string,
+  skillRoot: string,
+  wrapCmd?: (filePath: string, content: string) => string,
+): Map<string, string> {
+  const files = new Map<string, string>();
+  for (const cmd of resolveCommands(ctx)) {
+    const filePath = cmdPath(cmd.name);
+    files.set(filePath, wrapCmd ? wrapCmd(filePath, cmd.content) : cmd.content);
+  }
+  for (const [filePath, content] of collectSkillTemplates(
+    skillRoot,
+    resolveSkills(ctx),
+    resolveBundledSkills(ctx),
+  )) {
+    files.set(filePath, content);
+  }
+  return files;
 }
 
 // ---------------------------------------------------------------------------
@@ -544,6 +652,30 @@ export async function writeSharedHooks(
 // ---------------------------------------------------------------------------
 
 export type SubAgentType = "implement" | "check";
+
+/** Add the fail-closed role-manifest gate to a JSON agent's prompt field. */
+export function injectRoleManifestGateJson(
+  content: string,
+  agentType: SubAgentType,
+): string {
+  const manifest = agentType === "check" ? "check.jsonl" : "implement.jsonl";
+  const stopWork =
+    agentType === "check" ? "review, fixes, or checks" : "edits or checks";
+  const parsed = JSON.parse(content) as Record<string, unknown>;
+  if (typeof parsed.prompt !== "string") return content;
+
+  const gate = `## Required: Validate Role Manifest Before Work
+
+Before any role work, resolve \`<task-path>\` from the dispatch prompt's \`Active task:\` line, then run \`python3 ./.trellis/scripts/task.py validate-role-context "<task-path>" ${agentType}\`. If it exits non-zero, relay its stderr to the main session and stop.
+
+This gate always applies to this sub-agent, even when hook context is present. \`${manifest}\` is ready only when it exists and is non-empty, every nonblank non-seed row is a JSON object with a non-empty string \`file\`, at least one valid \`file\` entry exists (\`_example\` seed rows do not count), and every referenced file is readable.
+
+If the manifest is missing, empty, seed-only, malformed, contains an invalid entry, or references an unreadable file, stop before ${stopWork}. Report the exact manifest/path problem to the main session and ask it to curate \`${manifest}\`; do not choose specs heuristically or continue from task artifacts alone. This gate does not apply to the main session's inline mode.
+
+`;
+  parsed.prompt = `${gate}${parsed.prompt}`;
+  return `${JSON.stringify(parsed, null, 2)}\n`;
+}
 
 /** Build the standard "load Trellis context first" prelude block. */
 export function buildPullBasedPrelude(agentType: SubAgentType): string {
@@ -565,14 +697,19 @@ Try in order — stop at the first one that yields a task path:
 
 ### Step 2: Load task context from the resolved path
 
-1. Read \`<task-path>/${jsonl}\` — JSONL list of spec/research files relevant to this agent.
-2. For each entry in the JSONL, Read its \`file\` path — these are the specs and research notes you must follow.
-   **Skip rows without a \`"file"\` field** (e.g. \`{"_example": "..."}\` seed rows left over from \`task.py create\` before the curator ran).
-3. Read the task's \`intent.md\` (authorization/scope), then \`prd.md\` (requirements), then \`design.md\` if present (technical design), then \`implement.md\` if present (execution plan).
+1. Before any role work, run \`python3 ./.trellis/scripts/task.py validate-role-context "<task-path>" ${agentType}\`. If it exits non-zero, relay its stderr to the main session and stop.
+2. The runtime command validates \`<task-path>/${jsonl}\` as ready only when:
+   - the file exists and is non-empty;
+   - every nonblank non-seed row is a JSON object with a non-empty string \`file\` field;
+   - at least one valid \`file\` entry exists (a \`{"_example": "..."}\` seed row does not count); and
+   - every referenced file is readable.
+3. If the manifest is missing, empty, seed-only, malformed, contains an invalid entry, or references an unreadable file: **stop before edits, review fixes, or checks**. Report the exact manifest/path problem to the main session and ask it to curate \`${jsonl}\`. Do not choose specs heuristically and do not continue from task artifacts alone.
+4. For each validated JSONL entry, Read its \`file\` path — these are the specs and research notes you must follow.
+5. Read the task's \`prd.md\` (requirements), then \`design.md\` if present (technical design), then \`implement.md\` if present (execution plan).
 
-If \`${jsonl}\` has no curated entries (only a seed row, or the file is missing), fall back to: read the task artifacts, list available specs with \`python3 ./.trellis/scripts/get_context.py --mode packages\`, and pick the specs that match the task domain yourself. Do NOT block on the missing jsonl — lightweight tasks may use \`intent.md\` + \`prd.md\`, while complex tasks may also include \`design.md\` and \`implement.md\`.
+This manifest gate applies to this implement/check sub-agent role. It does not apply when the main session deliberately runs inline mode without dispatching a sub-agent.
 
-If the resolved task path has no \`intent.md\` or \`prd.md\`, ask the user what to work on; do NOT proceed without context.
+If the resolved task path has no \`prd.md\`, ask the user what to work on; do NOT proceed without context.
 
 ---
 

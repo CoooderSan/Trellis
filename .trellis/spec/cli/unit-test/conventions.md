@@ -6,79 +6,135 @@
 
 ## Test Infrastructure
 
-| Item | Value |
-|------|-------|
-| Framework | Vitest 4.x |
-| Config | `vitest.config.ts` |
-| Include | `test/**/*.test.ts` |
-| Exclude | `third/**` |
-| Setup files | `test/setup.ts` (runs before any test, strips host-shell session env vars — see "Test Isolation" below) |
-| Lint scope | `eslint src/ test/` |
-| Module system | ESM (`"type": "module"` + `"module": "NodeNext"`) |
-| Coverage provider | `@vitest/coverage-v8` |
-| Coverage command | `pnpm test:coverage` |
-| Coverage scope | `src/**/*.ts` (excludes `src/cli/index.ts`) |
-| Coverage reports | `text` (terminal), `html` (`./coverage/index.html`), `json-summary` |
+| Item              | Value                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------- |
+| Framework         | Vitest 4.x                                                                                              |
+| Config            | `vitest.config.ts`                                                                                      |
+| Include           | `test/**/*.test.ts`                                                                                     |
+| Exclude           | `third/**`                                                                                              |
+| Setup files       | `test/setup.ts` (runs before any test, strips host-shell session env vars — see "Test Isolation" below) |
+| Lint scope        | `eslint src/ test/`                                                                                     |
+| Module system     | ESM (`"type": "module"` + `"module": "NodeNext"`)                                                       |
+| Coverage provider | `@vitest/coverage-v8`                                                                                   |
+| Coverage command  | `pnpm test:coverage`                                                                                    |
+| Coverage scope    | `src/**/*.ts` (excludes `src/cli/index.ts`)                                                             |
+| Coverage reports  | `text` (terminal), `html` (`./coverage/index.html`), `json-summary`                                     |
 
 ---
 
 ## Test Isolation
 
-### Strip host-shell session env vars at process start
+### Strip host-shell env vars at process start
 
-Several Trellis modules (e.g. `OpenCodeContext.getContextKey`, `TrellisContext.getActiveTask`) consult `process.env.TRELLIS_CONTEXT_ID` and `process.env.OPENCODE_RUN_ID` as **highest-priority overrides** — production behavior, by design.
+`test/setup.ts` is registered via `setupFiles` in `vitest.config.ts` and
+unconditionally `delete`s a list of env vars before any test loads. The list is
+currently 10 entries in three groups, and each group exists for a _different_
+reason — which is what makes the "when to extend" rule easy to get wrong.
 
-When tests run inside a Claude Code or OpenCode session, those env vars leak from the parent shell into the vitest process and **hijack the resolver**, ignoring the test's mocked `platformInput`. Symptom: tests expecting a derived `opencode_oc-a` contextKey receive `claude_<host-session-id>` instead, failing deterministically only on dev machines.
-
-**Convention**: `test/setup.ts` is registered via `setupFiles` in `vitest.config.ts` and unconditionally `delete`s these env vars before any test loads:
+**Group 1 — vars production resolvers honor as a user override.**
 
 ```ts
-// test/setup.ts
 delete process.env.TRELLIS_CONTEXT_ID;
-delete process.env.OPENCODE_RUN_ID;
 ```
 
-**When to extend**: any new env var that production resolvers honor as a user override, AND that the dev's host shell may export, must be added to `test/setup.ts`. Do NOT fix this in production code by ignoring the env var — the override is a real feature for end users.
+`TrellisContext.getContextKey` treats it as the highest-priority override —
+production behavior, by design. When the suite runs inside a Claude Code or
+OpenCode session it leaks in from the parent shell and hijacks the resolver,
+ignoring the test's mocked `platformInput`. Symptom: a test expecting
+`opencode_oc-a` receives `claude_<host-session-id>`, failing deterministically
+only on dev machines.
 
-**When NOT to use**: tests that *intentionally* exercise the env-override path should set the env explicitly inside the test (`process.env.X = "..."` in a `beforeEach` and restore in `afterEach`).
+`OPENCODE_RUN_ID` used to sit in this group. The JS branch that read it was
+removed on 2026-08-06 (no OpenCode version sets the name), so it is no longer a
+resolver override and the scrub went with it.
+
+**Group 2 — vars a hook _writes to_.**
+
+```ts
+delete process.env.CLAUDE_ENV_FILE;
+```
+
+Not an override at all. `shared-hooks/session-start.py` **appends** `export
+TRELLIS_CONTEXT_ID=…` to whatever this points at, so a dev running the suite
+inside a Claude Code session wrote fixture keys (`claude_session-a` and
+friends) into their own real shell setup file. The damage is outside the repo,
+which is why no test failure ever surfaced it.
+
+**Group 3 — vars that redirect a script at the wrong repo.**
+
+```ts
+delete process.env.CLAUDE_PROJECT_DIR;
+delete process.env.QODER_PROJECT_DIR;
+delete process.env.CODEBUDDY_PROJECT_DIR;
+delete process.env.FACTORY_PROJECT_DIR;
+delete process.env.CURSOR_PROJECT_DIR;
+delete process.env.GEMINI_PROJECT_DIR;
+delete process.env.KIRO_PROJECT_DIR;
+delete process.env.COPILOT_PROJECT_DIR;
+```
+
+`session-start.py` prefers `*_PROJECT_DIR` over the JSON payload's `cwd` and
+over `process.cwd()`. Left set, a hook under test reads the **real** repo's
+`.trellis/` instead of the test tmpdir — so the assertions run against the
+maintainer's own tasks.
+
+**When to extend** — any of the three triggers, not just the first:
+
+1. A production resolver honors it as a user override.
+2. A script under test **writes** to the path it names.
+3. It redirects a script's notion of "which repo am I in".
+
+Do NOT fix any of these in production code by ignoring the env var — for
+groups 1 and 3 the behavior is a real feature for end users.
+
+**When NOT to use**: tests that _intentionally_ exercise the env-override path
+should set the env explicitly inside the test (`process.env.X = "..."` in a
+`beforeEach`, restored in `afterEach`).
 
 ---
 
 ## When to Write Tests
 
-### Must write
+### Risk-driven defaults
 
-| Change Type | Test Type | Example |
-|-------------|-----------|---------|
-| New pure/utility function | Unit test | Added `compareVersions()` → test boundary values |
-| New platform | Unit (auto-covered by `registry-invariants.test.ts`) | Added opencode → invariants verify consistency |
-| Bug fix | Regression test | Fixed Windows encoding → add to `regression.test.ts` |
-| Changed init/update behavior | Integration test | Changed downgrade logic → add/update scenario in `update.integration.test.ts` |
+TDD is optional. Select verification from the observable behavior, regression
+risk, and practical test seam. A change is not complete merely because one
+particular test category is inconvenient or inapplicable: record the reason and
+provide proportionate alternative evidence such as contract checks, integration
+runs, builds, logs, runtime probes, or explicit manual verification.
 
-### Don't need tests
+| Change Type                                     | Preferred Evidence                                   | Example                                                                       |
+| ----------------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------- |
+| New pure/utility function with observable rules | Unit test when it materially protects behavior       | Added `compareVersions()` → test boundary values                              |
+| New platform                                    | Unit (auto-covered by `registry-invariants.test.ts`) | Added opencode → invariants verify consistency                                |
+| Reproducible bug fix                            | Durable regression check when practical              | Fixed Windows encoding → add a focused prevention case                        |
+| Changed init/update behavior                    | Focused integration evidence                         | Changed downgrade logic → add/update scenario in `update.integration.test.ts` |
 
-| Change Type | Reason |
-|-------------|--------|
-| Template text / doc content changes | No logic change |
-| New migration manifest JSON | `registry-invariants.test.ts` auto-validates format |
-| CLI flag description text | Display-only |
+### Usually does not need a new automated test
 
-### Must update existing tests
+| Change Type                         | Reason                                              |
+| ----------------------------------- | --------------------------------------------------- |
+| Template text / doc content changes | No logic change                                     |
+| New migration manifest JSON         | `registry-invariants.test.ts` auto-validates format |
+| CLI flag description text           | Display-only                                        |
 
-| Change Type | What to Update |
-|-------------|----------------|
-| New command/skill added to a platform | Add to `EXPECTED_COMMAND_NAMES` / `EXPECTED_SKILL_NAMES` in that platform's test file |
-| New command added to ANY platform | Add to ALL platform test files (claude, cursor, iflow, codex) — see platform-integration spec for required command list |
+### Existing contract suites to update when applicable
+
+| Change Type                           | What to Update                                                                                                   |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| New command/skill added to a platform | Add to `EXPECTED_COMMAND_NAMES` / `EXPECTED_SKILL_NAMES` in that platform's test file                            |
+| New command added to ANY platform     | Add to every affected file under `test/templates/` — see platform-integration spec for the required command list |
 
 ### Decision flow
 
 ```
-Does this change have logic branches?
-├─ No (pure data/text) → Don't write tests
+Does this change have observable behavior or identified risk?
+├─ No (pure data/text) → inspect/render the artifact and record that evidence
 └─ Yes
-   ├─ Standalone function with predictable input→output? → Unit test
-   ├─ Fixing a historical bug? → Regression test (verify fix exists in source)
-   └─ Changes init/update end-to-end behavior? → Integration test
+   ├─ Predictable input→output with a stable seam? → Prefer a unit test
+   ├─ Reproducible historical bug? → Prefer a durable regression check
+   ├─ Cross-boundary init/update behavior? → Prefer integration evidence
+   └─ A test category is impractical? → Record why and use proportionate alternative evidence
 ```
 
 ---
@@ -97,6 +153,7 @@ test/
 ```
 
 **Rules**:
+
 - Mirror `src/` directory structure under `test/`
 - Suffix: `.test.ts` for unit tests, `.integration.test.ts` for integration tests
 - One test file per source module (exceptions: regression tests)
@@ -206,7 +263,9 @@ expect(scripts.size).toBe(23);
 expect(versions.length).toBe(23);
 
 // Good: dynamic count from source of truth
-const jsonFiles = fs.readdirSync(manifestDir).filter(f => f.endsWith(".json"));
+const jsonFiles = fs
+  .readdirSync(manifestDir)
+  .filter((f) => f.endsWith(".json"));
 expect(versions.length).toBe(jsonFiles.length);
 expect(versions.length).toBeGreaterThan(0);
 ```
@@ -264,7 +323,8 @@ expect(commands.length).toBeGreaterThan(0);
 it("is valid JSON", () => {
   expect(() => JSON.parse(settingsTemplate)).not.toThrow();
 });
-it("is a non-empty string", () => { // redundant if parse succeeds
+it("is a non-empty string", () => {
+  // redundant if parse succeeds
   expect(settingsTemplate.length).toBeGreaterThan(0);
 });
 
@@ -280,7 +340,7 @@ it("is valid non-empty JSON", () => {
 ```typescript
 // Bad: regression test checks old location after code was moved
 it("[beta.10] git_context.py has inline encoding fix", () => {
-  expect(commonGitContext).toContain('sys.platform == "win32"');  // Moved to __init__.py!
+  expect(commonGitContext).toContain('sys.platform == "win32"'); // Moved to __init__.py!
 });
 
 // Good: updated to check new location
@@ -348,7 +408,7 @@ it("#2b issue #204: empty tasks/ → bootstrap", async () => {
 
 // Good: args match exactly what the issue reporter typed
 it("#2b issue #204: empty tasks/ + --yes alone → bootstrap", async () => {
-  await init({ yes: true, user: "alice" });  // user's literal command
+  await init({ yes: true, user: "alice" }); // user's literal command
   expect(fs.existsSync(bootstrapPath)).toBe(true);
 });
 

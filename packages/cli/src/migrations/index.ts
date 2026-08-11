@@ -184,6 +184,16 @@ export function getConfigSectionsAddedBetween(
 }
 
 /**
+ * Keep historical upstream manifests intact while presenting their package
+ * references through this fork's distribution identity.
+ */
+function normalizeDistributionIdentity(text: unknown): string {
+  return String(text)
+    .replaceAll("@mindfoldhq/trellis-core", "@ecochain/trellis-core")
+    .replaceAll("@mindfoldhq/trellis", "@ecochain/trellis");
+}
+
+/**
  * Get aggregated metadata for migrations between versions
  * Returns combined changelog, breaking status, migrate recommendation, and migration guides
  */
@@ -225,7 +235,9 @@ export function getMigrationMetadata(
     const manifest = manifests[version];
     if (manifest) {
       if (manifest.changelog) {
-        result.changelog.push(`v${version}: ${manifest.changelog}`);
+        result.changelog.push(
+          `v${version}: ${normalizeDistributionIdentity(manifest.changelog)}`,
+        );
       }
       if (manifest.breaking) {
         result.breaking = true;
@@ -236,8 +248,10 @@ export function getMigrationMetadata(
       if (manifest.migrationGuide) {
         result.migrationGuides.push({
           version,
-          guide: manifest.migrationGuide,
-          aiInstructions: manifest.aiInstructions,
+          guide: normalizeDistributionIdentity(manifest.migrationGuide),
+          aiInstructions: manifest.aiInstructions
+            ? normalizeDistributionIdentity(manifest.aiInstructions)
+            : undefined,
         });
       }
     }

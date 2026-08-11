@@ -4,9 +4,6 @@ import {
   resolveUpgradeTag,
   upgrade,
 } from "../../src/commands/upgrade.js";
-import { PACKAGE_REGISTRY } from "../../src/constants/version.js";
-
-const REGISTRY_ARG = `--registry=${PACKAGE_REGISTRY}`;
 
 describe("upgrade command", () => {
   it("defaults stable versions to latest", () => {
@@ -39,9 +36,9 @@ describe("upgrade command", () => {
       buildUpgradeCommand({ tag: "beta" }, "0.5.12", "darwin"),
     ).toMatchObject({
       command: "npm",
-      args: ["install", "-g", "@ecochain/trellis@beta", REGISTRY_ARG],
+      args: ["install", "-g", "@ecochain/trellis@beta"],
       spawnOptions: { stdio: "inherit", shell: false },
-      displayCommand: `npm install -g @ecochain/trellis@beta ${REGISTRY_ARG}`,
+      displayCommand: "npm install -g @ecochain/trellis@beta",
       target: "@ecochain/trellis@beta",
       tag: "beta",
       binaryCheckCommand: "which trellis",
@@ -53,14 +50,9 @@ describe("upgrade command", () => {
       buildUpgradeCommand({ tag: "beta" }, "0.5.12", "win32"),
     ).toMatchObject({
       command: "cmd.exe",
-      args: [
-        "/d",
-        "/s",
-        "/c",
-        `npm install -g @ecochain/trellis@beta ${REGISTRY_ARG}`,
-      ],
+      args: ["/d", "/s", "/c", "npm install -g @ecochain/trellis@beta"],
       spawnOptions: { stdio: "inherit", shell: false },
-      displayCommand: `npm install -g @ecochain/trellis@beta ${REGISTRY_ARG}`,
+      displayCommand: "npm install -g @ecochain/trellis@beta",
       target: "@ecochain/trellis@beta",
       tag: "beta",
       binaryCheckCommand: "where trellis",
@@ -75,9 +67,7 @@ describe("upgrade command", () => {
 
     expect(runner).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith(
-      expect.stringContaining(
-        `Run: npm install -g @ecochain/trellis@latest ${REGISTRY_ARG}`,
-      ),
+      expect.stringContaining("Run: npm install -g @ecochain/trellis@latest"),
     );
 
     log.mockRestore();
@@ -91,7 +81,7 @@ describe("upgrade command", () => {
 
     expect(runner).toHaveBeenCalledWith(
       "npm",
-      ["install", "-g", "@ecochain/trellis@latest", REGISTRY_ARG],
+      ["install", "-g", "@ecochain/trellis@latest"],
       { stdio: "inherit", shell: false },
     );
     expect(log).toHaveBeenCalledWith(
@@ -107,7 +97,7 @@ describe("upgrade command", () => {
     const runner = vi.fn(() => ({ status: 1, signal: null }));
 
     await expect(upgrade({ tag: "latest" }, runner)).rejects.toThrow(
-      /npm install failed with exit code 1\.[\s\S]*Troubleshooting:[\s\S]*Manual command: npm install -g @ecochain\/trellis@latest[\s\S]*--registry=https:\/\/packages\.aliyun\.com\/63b637070a96c30780aae039\/npm\/npm-registry\/[\s\S]*npm config get prefix[\s\S]*which trellis/,
+      /npm install failed with exit code 1\.[\s\S]*Troubleshooting:[\s\S]*Manual command: npm install -g @ecochain\/trellis@latest[\s\S]*npm config get prefix[\s\S]*which trellis/,
     );
 
     log.mockRestore();

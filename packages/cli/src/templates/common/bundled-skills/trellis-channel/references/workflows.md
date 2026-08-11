@@ -14,7 +14,6 @@ trellis channel create brainstorm-storage-layer --by main \
 
 trellis channel spawn brainstorm-storage-layer \
   --agent architect --provider codex \
-  --file .trellis/tasks/05-XX-storage-adapter/intent.md \
   --file .trellis/tasks/05-XX-storage-adapter/prd.md \
   --file .trellis/tasks/05-XX-storage-adapter/design.md \
   --as cx-arch --timeout 30m
@@ -58,7 +57,6 @@ trellis channel create cr-foo --task "$TASK" --by main
 trellis channel spawn cr-foo \
   --agent check \
   --jsonl "$TASK/check.jsonl" \
-  --file "$TASK/intent.md" \
   --file "$TASK/prd.md" \
   --file "$TASK/design.md" \
   --file "$TASK/implement.md" \
@@ -81,11 +79,11 @@ Use one channel and distinct worker names.
 trellis channel create cr-feature --by main --ephemeral
 
 trellis channel spawn cr-feature --agent check \
-  --jsonl "$TASK/check.jsonl" --file "$TASK/intent.md" --file "$TASK/prd.md" --file "$TASK/design.md" \
+  --jsonl "$TASK/check.jsonl" --file "$TASK/prd.md" --file "$TASK/design.md" \
   --timeout 15m
 
 trellis channel spawn cr-feature --agent check --provider codex --as check-cx \
-  --jsonl "$TASK/check.jsonl" --file "$TASK/intent.md" --file "$TASK/prd.md" --file "$TASK/design.md" \
+  --jsonl "$TASK/check.jsonl" --file "$TASK/prd.md" --file "$TASK/design.md" \
   --timeout 15m
 
 trellis channel send cr-feature --as main --to check --text-file /tmp/cr-brief.md

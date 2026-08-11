@@ -1,0 +1,31 @@
+{
+  "id": "fix-windows-release-npm-invocation",
+  "name": "fix-windows-release-npm-invocation",
+  "title": "Fix Windows npm invocation in release scripts",
+  "description": "Fix Windows npm invocation in manifest continuity and manifest creation scripts, then rerun release and MR gates.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "caocong",
+  "assignee": "caocong",
+  "createdAt": "2026-08-11",
+  "completedAt": "2026-08-11",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "review_source": "private/main...feat/upstream-0.6.14-ecochain",
+    "classification": "review-revision",
+    "product_intent": "NOT_REQUIRED",
+    "product_intent_reason": "This is a compatibility correction found during author self-review of the 0.6.14 maintenance MR candidate; Product Intent is not required."
+  }
+}

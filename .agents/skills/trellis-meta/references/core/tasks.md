@@ -183,11 +183,11 @@ python3 .trellis/scripts/task.py finish
 ### Create Task
 
 ```bash
-python3 .trellis/scripts/task.py create "Task name" --slug task-slug
-python3 .trellis/scripts/task.py create "Child task" --slug child --parent <parent-dir>
+python3 .trellis/scripts/task.py create "Task name" --slug task-slug --classification maintenance --product-intent-reason "Internal engineering work with no product behavior change"
+python3 .trellis/scripts/task.py create "Child task" --slug child --parent <parent-dir> --classification maintenance --product-intent-reason "Internal child task with no product behavior change"
 ```
 
-Options: `--assignee <name>`, `--priority P0|P1|P2|P3`, `--description "text"`, `--parent <dir>`
+Options: `--assignee <name>`, `--priority P0|P1|P2|P3`, `--description "text"`, `--parent <dir>`, `--classification <class>`, `--product-intent-link <id>`, `--product-intent-reason <reason>`
 
 ### List Tasks
 
