@@ -13,18 +13,21 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const downloadTemplateMock = vi.fn(async (_source: string, options: { dir: string }) => {
-  fs.mkdirSync(options.dir, { recursive: true });
-  fs.writeFileSync(path.join(options.dir, "marker.txt"), "content");
-  return {};
-});
+const downloadTemplateMock = vi.fn(
+  async (_source: string, options: { dir: string }) => {
+    fs.mkdirSync(options.dir, { recursive: true });
+    fs.writeFileSync(path.join(options.dir, "marker.txt"), "content");
+    return {};
+  },
+);
 
 vi.mock("giget", () => ({
   downloadTemplate: (...args: [string, { dir: string }]) =>
     downloadTemplateMock(...args),
 }));
 
-const { downloadWithStrategy } = await import("../../src/utils/template-fetcher.js");
+const { downloadWithStrategy, TEMPLATE_INDEX_URL } =
+  await import("../../src/utils/template-fetcher.js");
 
 describe("downloadWithStrategy — #383 preferOffline removed", () => {
   afterEach(() => {
@@ -69,4 +72,42 @@ describe("downloadWithStrategy — #383 preferOffline removed", () => {
 
     fs.rmSync(destDir, { recursive: true, force: true });
   });
+});
+
+describe("Ecochain marketplace release routing", () => {
+  afterEach(() => downloadTemplateMock.mockClear());
+
+  it.each([
+    [
+      undefined,
+      "specs/example",
+      "gh:CoooderSan/trellis-marketplace/specs/example#ecochain-main",
+    ],
+    [
+      "gh:custom/repo",
+      "specs/example#release",
+      "gh:custom/repo/specs/example#release",
+    ],
+    [
+      null,
+      "gh:custom/repo/specs/example#release",
+      "gh:custom/repo/specs/example#release",
+    ],
+  ])(
+    "preserves the correct repository and ref for source %s",
+    async (source, template, expected) => {
+      const destDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "trellis-routing-"),
+      );
+      try {
+        await downloadWithStrategy(template, destDir, "overwrite", source);
+        expect(downloadTemplateMock.mock.calls[0][0]).toBe(expected);
+        expect(TEMPLATE_INDEX_URL).toBe(
+          "https://raw.githubusercontent.com/CoooderSan/trellis-marketplace/ecochain-main/index.json",
+        );
+      } finally {
+        fs.rmSync(destDir, { recursive: true, force: true });
+      }
+    },
+  );
 });

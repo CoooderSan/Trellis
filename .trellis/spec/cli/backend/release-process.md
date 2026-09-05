@@ -10,8 +10,8 @@ Trellis publishes two npm packages from one git tag:
 
 | Package                  | Role                                                             | Published by                                        |
 | ------------------------ | ---------------------------------------------------------------- | --------------------------------------------------- |
-| `@ecochain/trellis`      | User-facing CLI                                                  | Controlled CI; GitHub is manual npmjs recovery only |
-| `@ecochain/trellis-core` | Programmatic core APIs used by the CLI and external integrations | Controlled CI; GitHub is manual npmjs recovery only |
+| `@ecochain/trellis`      | User-facing CLI                                                  | Controlled CI; manually selected registry executor |
+| `@ecochain/trellis-core` | Programmatic core APIs used by the CLI and external integrations | Controlled CI; manually selected registry executor |
 
 The package pair is version-locked. Every published version must exist for both packages with the exact same version and npm dist-tag.
 
@@ -30,6 +30,15 @@ repository does not yet contain a GitLab publishing pipeline, so
 executor**. It has no tag/release trigger: first mirror the already-reviewed
 GitLab tag to GitHub, then explicitly dispatch the workflow with that existing
 tag. GitHub is not the development primary or the release push target.
+
+The existing Ecochain distribution is the team registry, currently serving
+0.6.14. Use `.github/workflows/publish-team.yml` for this channel: it is manual,
+checks the exact GitLab-originated tag, runs the same build/test/pack gates,
+and publishes core before CLI with `TEAM_REGISTRY_AUTH`. Authentication is
+scoped to the team registry and injected only after tests. Its CI working copy
+disables npmjs-only provenance for this registry. Both exact versions and
+dist-tags must be verified after publication. The npmjs recovery workflow
+remains separate; choosing it would target a different distribution channel.
 
 Do not run `npm publish` or `pnpm publish` locally for official Trellis packages. Local machines may run `pnpm pack`, `release-preflight`, tests, lint, typecheck, and dry-run checks, but not package publication.
 
@@ -417,7 +426,7 @@ git -C "$tmpdir" init -q
 - [ ] Release branch and only the exact current `ecochain-v<version>` tag were pushed to GitLab `private`, not GitHub.
 - [ ] Any GitHub tag used for publication was mirrored from the reviewed GitLab tag.
 - [ ] Official package publication is left to the controlled CI executor.
-- [ ] npmjs `@ecochain` scope permission and `NPM_TOKEN` are provisioned and independently verified in the recovery executor; local tests do not prove these external prerequisites.
+- [ ] The selected registry credential (`TEAM_REGISTRY_AUTH` for the existing team channel, `NPM_TOKEN` for npmjs recovery) is provisioned and independently verified in its executor; local tests do not prove these external prerequisites.
 
 ---
 

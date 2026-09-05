@@ -238,3 +238,11 @@ if (explicitTemplate || !isInteractive()) {
 ```
 
 Only the no-argument interactive picker may prompt for conflict resolution.
+
+## Ecochain marketplace publication
+
+The Ecochain CLI reads the default index from `CoooderSan/trellis-marketplace`
+on `ecochain-main`. Default giget downloads explicitly pin `#ecochain-main` so downloads
+and index entries resolve the same release stream. Explicit registry
+sources continue to use their supplied source and ref. Publish workflow fixes
+to this team-owned fork before advancing the parent submodule pointer.

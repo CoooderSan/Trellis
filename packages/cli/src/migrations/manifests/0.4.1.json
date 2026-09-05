@@ -1,0 +1,9 @@
+{
+  "version": "0.4.1",
+  "description": "Reconstructed historical continuity manifest for the already-published Ecochain 0.4.1 release.",
+  "breaking": false,
+  "recommendMigrate": false,
+  "changelog": "**Historical metadata:**\n- The published `@ecochain/trellis@0.4.1` tarball contained no version-specific migration manifest. Package comparison found no renamed or removed managed paths.",
+  "migrations": [],
+  "notes": "This no-op manifest restores update-chain continuity for the historical 0.4.1 package, which shipped without a manifest."
+}

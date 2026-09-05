@@ -2,7 +2,7 @@
  * Remote template fetcher for Trellis CLI
  *
  * Fetches spec templates from the official marketplace:
- * https://github.com/mindfold-ai/marketplace
+ * https://github.com/CoooderSan/trellis-marketplace
  */
 
 import fs from "node:fs";
@@ -16,9 +16,9 @@ import { toPosix } from "./posix.js";
 // =============================================================================
 
 export const TEMPLATE_INDEX_URL =
-  "https://raw.githubusercontent.com/mindfold-ai/marketplace/main/index.json";
+  "https://raw.githubusercontent.com/CoooderSan/trellis-marketplace/ecochain-main/index.json";
 
-const TEMPLATE_REPO = "gh:mindfold-ai/marketplace";
+const TEMPLATE_REPO = "gh:CoooderSan/trellis-marketplace";
 
 /** Map template type to installation path */
 const INSTALL_PATHS: Record<string, string> = {
@@ -895,7 +895,9 @@ export async function downloadWithStrategy(
   const gigetSource =
     repoSource === null
       ? templatePath // templatePath is already a full giget source
-      : `${repoSource ?? TEMPLATE_REPO}/${templatePath}`;
+      : repoSource === undefined
+        ? `${TEMPLATE_REPO}/${templatePath}#ecochain-main`
+        : `${repoSource}/${templatePath}`;
 
   const exists = fs.existsSync(destDir);
 

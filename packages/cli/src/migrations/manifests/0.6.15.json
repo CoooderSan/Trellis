@@ -1,0 +1,9 @@
+{
+  "version": "0.6.15",
+  "description": "Honor approved plans and accept Chinese planning documents",
+  "breaking": false,
+  "recommendMigrate": false,
+  "changelog": "**Fixes:**\n- After approval of the latest final plan, the main AI validates artifacts and activates the task without duplicate confirmation.\n- Task Basis and PRD validation accept Chinese, English and bilingual headings, numbering and nested sections while retaining substantive evidence checks.\n- Ecochain marketplace workflow variants use the same approval handoff and are published from the team-owned fork.",
+  "migrations": [],
+  "notes": "Upgrade @ecochain/trellis, run trellis update in each project and restart the session. Existing approval remains valid for format-only repairs. No --migrate required."
+}
