@@ -62,9 +62,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Verify version alignment (core, cli, git tag)
-        run: node packages/cli/scripts/release-preflight.js check-versions --require-tag
+        run: GITHUB_REF_NAME="$RELEASE_TAG" node packages/cli/scripts/release-preflight.js check-versions --require-tag
         env:
-          GITHUB_REF_NAME: ${{ inputs.tag }}
+          RELEASE_TAG: ${{ inputs.tag }}
 
       - name: Typecheck (core + cli)
         run: pnpm typecheck
@@ -119,11 +119,15 @@ jobs:
             fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
           }
           NODE
+          # Build/tests already passed on the unchanged tagged source.
+          # Copy the remaining prepublish assets before skipping duplicate
+          # lifecycle scripts on the registry-specific package metadata.
+          cp README.md LICENSE packages/cli/
           if [ "$PUBLISH_CORE" = true ]; then
-            (cd packages/core && pnpm publish --access public --no-git-checks --tag "$DIST_TAG")
+            (cd packages/core && pnpm publish --ignore-scripts --access public --no-git-checks --tag "$DIST_TAG")
           fi
           if [ "$PUBLISH_CLI" = true ]; then
-            (cd packages/cli && pnpm publish --access public --no-git-checks --tag "$DIST_TAG")
+            (cd packages/cli && pnpm publish --ignore-scripts --access public --no-git-checks --tag "$DIST_TAG")
           fi
 
       - name: Verify both published packages and dist-tags
