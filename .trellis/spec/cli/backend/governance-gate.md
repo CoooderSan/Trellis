@@ -80,6 +80,43 @@ must contain meaningful `Goal`, `Requirements`, and `Acceptance Criteria`.
 Neither `design.md` nor `implement.md` is globally required for lightweight
 work.
 
+### Localized planning documents
+
+Required concepts are stable; spelling, order, numbering, and layout are not
+approval gates. The parser accepts H2–H6 sections, optional numeric/Chinese
+numbering, English, Chinese, and bilingual headings (for example
+`## 1. 目标（Goal）`). Extra sections and nested requirement/acceptance sections
+are allowed. `SECTION_ALIASES` in `common/governance_gate.py` owns the accepted
+vocabulary; templates and skills must follow it.
+
+| Concept | Chinese headings |
+| --- | --- |
+| Goal | 目标、任务目标 |
+| Requirements | 需求、要求、需求说明、功能需求 |
+| Acceptance Criteria | 验收标准、验收条件 |
+| Classification | 分类、任务分类、请求分类 |
+| Product Intent | 产品意图 |
+| Requested Outcome | 预期结果、期望结果、预期成果 |
+| In Scope / Out of Scope | 范围与非目标、范围与非范围、范围边界、范围内与范围外 |
+| Acceptance or Verification Basis | 验收或验证依据、验收与验证依据、验收依据、验证依据 |
+
+Product Intent field labels accept `Status / 状态`, `Link / 链接 / 引用`, and
+`Reason / 原因 / 理由`, with ASCII or full-width colons. Classification/status
+enum values remain the machine-readable values documented above.
+
+A combined `要求与验收` heading may contain separate `### 需求` and
+`### 验收标准` subsections. Do not count undifferentiated prose twice to pretend
+both concepts have evidence. Headings alone, comments, empty checkboxes, and
+placeholders are not evidence. Code under a real section can describe
+requirements or verification; headings inside fenced code cannot create
+document sections. Errors distinguish a missing
+or unrecognized section from a recognized but empty section, and list accepted
+Chinese headings. Format-only repairs preserve existing approval.
+
+This is a structural completeness check, not semantic product review or proof
+of user approval. Removing language/layout restrictions must not remove the
+classification, scope, acceptance, or Product Intent evidence checks.
+
 ## 4. Validation and error matrix
 
 | Event/input                                                                                | Result                    | Required remediation                                                                                    |

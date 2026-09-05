@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -35,6 +36,24 @@ TBD_RE = re.compile(
     r"\b(TBD|TODO|UNKNOWN|REQUIRED)\b|待定|未填写|未确认|<[^>]+>",
     re.IGNORECASE,
 )
+
+# One vocabulary for localized Task Basis and PRD headings. Machine-readable
+# classification and Product Intent status values remain unchanged.
+SECTION_ALIASES = {
+    "classification": ("分类", "任务分类", "请求分类"),
+    "product intent": ("产品意图",),
+    "requested outcome": ("预期结果", "期望结果", "预期成果"),
+    "in scope out of scope": ("范围与非目标", "范围与非范围", "范围边界", "范围内与范围外"),
+    "acceptance or verification basis": ("验收或验证依据", "验收与验证依据", "验收依据", "验证依据"),
+    "goal": ("目标", "任务目标"),
+    "requirements": ("需求", "要求", "需求说明", "功能需求"),
+    "acceptance criteria": ("验收标准", "验收条件"),
+}
+FIELD_ALIASES = {
+    "Status": ("状态",),
+    "Link": ("链接", "引用"),
+    "Reason": ("原因", "理由"),
+}
 
 
 @dataclass(frozen=True)
@@ -122,19 +141,52 @@ Reason: {reason or "TBD"}
 
 
 def _normalize_heading(value: str) -> str:
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", value.lower()).split())
+    value = unicodedata.normalize("NFKC", value).strip().lower()
+    value = re.sub(r"^(?:\d+(?:\.\d+)*|[一二三四五六七八九十百]+)[.、:)\s]+", "", value)
+    normalized = " ".join(re.sub(r"[^\w]+|_", " ", value).split())
+    for canonical, aliases in SECTION_ALIASES.items():
+        if normalized == canonical or normalized in aliases:
+            return canonical
+        for alias in aliases:
+            if normalized in (f"{canonical} {alias}", f"{alias} {canonical}"):
+                return canonical
+    return normalized
 
 
 def _extract_h2_sections(content: str) -> dict[str, str]:
+    """Read logical sections below the document title (H2-H6).
+
+    Keep nested prose and code in their parent section. Comments and headings
+    alone are not evidence; fenced headings cannot create document sections.
+    The historical helper name is retained.
+    """
     sections: dict[str, list[str]] = {}
-    current: str | None = None
+    stack: list[tuple[int, str]] = []
+    fence: str | None = None
+    content = re.sub(r"<!--.*?(?:-->|\Z)", "", content, flags=re.DOTALL)
     for line in content.splitlines():
-        match = re.match(r"^##\s+(.+?)\s*$", line)
-        if match:
-            current = _normalize_heading(match.group(1))
-            sections.setdefault(current, [])
+        fence_match = re.match(r"^\s{0,3}(`{3,}|~{3,})", line)
+        if fence is not None:
+            if re.fullmatch(rf"\s{{0,3}}{re.escape(fence[0])}{{{len(fence)},}}\s*", line):
+                fence = None
+            else:
+                for current in dict.fromkeys(key for _, key in stack):
+                    sections[current].append(line)
             continue
-        if current is not None:
+        if fence_match:
+            fence = fence_match.group(1)
+            continue
+        match = re.match(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$", line)
+        if match:
+            level = len(match.group(1))
+            while stack and stack[-1][0] >= level:
+                stack.pop()
+            if level > 1:
+                current = _normalize_heading(match.group(2))
+                stack.append((level, current))
+                sections.setdefault(current, [])
+            continue
+        for current in dict.fromkeys(key for _, key in stack):
             sections[current].append(line)
     return {key: "\n".join(lines).strip() for key, lines in sections.items()}
 
@@ -153,12 +205,25 @@ def _meaningful(value: str | None) -> bool:
 
 
 def _field(body: str, name: str) -> str:
+    names = "|".join(re.escape(key) for key in (name, *FIELD_ALIASES.get(name, ())))
     match = re.search(
-        rf"^[ \t]*{re.escape(name)}[ \t]*:[ \t]*([^\r\n]*)[ \t]*$",
+        rf"^[ \t]*(?:{names})[ \t]*[:：][ \t]*([^\r\n]*)[ \t]*$",
         body,
         re.MULTILINE | re.IGNORECASE,
     )
     return match.group(1).strip() if match else ""
+
+
+def _section_blocker(label: str, heading: str, sections: dict[str, str]) -> str:
+    aliases = " / ".join(SECTION_ALIASES[heading])
+    detail = "Section has no substantive content." if heading in sections else (
+        "Section heading was not recognized or is absent. Recognized headings in this document: "
+        + (", ".join(sections) or "none") + "."
+    )
+    return (
+        f"{label} section is missing or incomplete: ## {heading.title()}. "
+        f"{detail} Accepted Chinese headings: {aliases}; English or bilingual headings also work."
+    )
 
 
 def _blocked(summary: str, blockers: list[str], next_step: str) -> GateResult:
@@ -275,7 +340,7 @@ def _result_for_start(repo_root: Path, task_dir: str | None) -> GateResult:
         "acceptance or verification basis",
     ):
         if not _meaningful(sections.get(heading)):
-            blockers.append(f"Task Basis section is missing or incomplete: ## {heading.title()}")
+            blockers.append(_section_blocker("Task Basis", heading, sections))
 
     product_intent = sections.get("product intent", "")
     product_status = _field(product_intent, "Status").upper()
@@ -317,7 +382,7 @@ def _result_for_start(repo_root: Path, task_dir: str | None) -> GateResult:
         else:
             for heading in ("goal", "requirements", "acceptance criteria"):
                 if not _meaningful(prd_sections.get(heading)):
-                    blockers.append(f"prd.md section is missing or incomplete: ## {heading.title()}")
+                    blockers.append(_section_blocker("prd.md", heading, prd_sections))
 
     if blockers:
         return _blocked(

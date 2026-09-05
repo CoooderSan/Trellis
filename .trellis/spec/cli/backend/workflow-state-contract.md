@@ -28,6 +28,21 @@ breadcrumb body lives in `.trellis/workflow.md`; this spec covers everything
 
 ## Marker syntax
 
+### Planning-to-implementation transition
+
+The `planning` breadcrumb describes task lifecycle state, not host Plan mode
+and not a prohibition on changing that state. Before approval it routes to
+planning; once the latest final plan has been approved in a subsequent user
+message, it instructs the main AI to validate artifacts, execute `task.py start`,
+and continue after success. Contextual approvals such as `ok` or `开始吧` count.
+Do not require duplicate approval or a user-run transition command. Repair
+format-only gate failures and retry within the existing authorization; only
+material scope, behavior, risk, or acceptance changes require renewed review.
+Actual host restrictions remain separate and must be identified as such.
+
+Keep the planning and planning-inline blocks, activation walkthrough,
+marketplace workflows, and brainstorm skill transition clause consistent.
+
 Each breadcrumb body lives in a managed block of `.trellis/workflow.md`:
 
 ```

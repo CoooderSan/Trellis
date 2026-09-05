@@ -205,6 +205,8 @@ def _default_prd_content(title: str, description: str | None = None) -> str:
     heading = title.strip() or "Untitled task"
     return f"""# {heading}
 
+<!-- Headings may be Chinese, English, or bilingual: 目标 / Goal, 需求 / Requirements, 验收标准 / Acceptance Criteria. Numbered and nested H2-H6 sections are supported. -->
+
 ## Goal
 
 {goal}

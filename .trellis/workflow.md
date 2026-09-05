@@ -248,8 +248,11 @@ Do not require a fixed command chain; explicit commands/skills are standalone co
 <!-- Per-turn breadcrumb: shown throughout Phase 1 (status='planning') -->
 
 [workflow-state:planning]
-Load `trellis-brainstorm`; stay in planning.
-Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
+Load `trellis-brainstorm`. Stay in planning only until the latest final plan has user approval.
+Once the user approves that plan in a subsequent message (including `ok`, `开始吧`, or `继续` when replying to its approval request), the main AI must validate the planning artifacts, run `task.py start <task-dir>`, and continue implementation after start succeeds. Do not ask for the same approval again or require the user to run the transition command.
+The task's `planning` status describes the current lifecycle state; it does not prohibit `task.py start` and is not the host's Plan mode. A genuine host-level restriction must be identified separately.
+Correct recoverable document/format errors and retry within existing approval. Re-review only material scope, behavior, risk, or acceptance changes.
+Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; obtain final-plan approval before `task.py start`, reusing approval already received for the unchanged plan.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Sub-agent mode: curate each applicable `implement.jsonl` or `check.jsonl` spec/research manifest before that implement/check dispatch.
 If a Trellis-owned approval or Task Basis gate blocks the transition, use Dazz's direct correction and give the single concrete action needed; keep normal planning updates natural.
@@ -262,8 +265,11 @@ If a Trellis-owned approval or Task Basis gate blocks the transition, use Dazz's
      into a sub-agent. -->
 
 [workflow-state:planning-inline]
-Load `trellis-brainstorm`; stay in planning.
-Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
+Load `trellis-brainstorm`. Stay in planning only until the latest final plan has user approval.
+Once the user approves that plan in a subsequent message (including `ok`, `开始吧`, or `继续` when replying to its approval request), the main AI must validate the planning artifacts, run `task.py start <task-dir>`, and continue implementation after start succeeds. Do not ask for the same approval again or require the user to run the transition command.
+The task's `planning` status describes the current lifecycle state; it does not prohibit `task.py start` and is not the host's Plan mode. A genuine host-level restriction must be identified separately.
+Correct recoverable document/format errors and retry within existing approval. Re-review only material scope, behavior, risk, or acceptance changes.
+Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; obtain final-plan approval before `task.py start`, reusing approval already received for the unchanged plan.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Inline mode: skip jsonl curation only; Phase 2 must load applicable specs via `trellis-before-dev` and still perform risk-appropriate verification.
 If a Trellis-owned approval or Task Basis gate blocks the transition, use Dazz's direct correction and give the single concrete action needed; keep normal planning updates natural.
@@ -394,7 +400,7 @@ Use `--classification bugfix` instead of `maintenance` for a bug fix. Review rev
 
 For task trees, create the parent task first and then create each child with `--parent <parent-dir>`. Pass `--classification` and the applicable `--product-intent-link` or `--product-intent-reason` for every parent and child; tree position never supplies a Task Basis. Do not start the parent just because children exist; start the child that owns the next independently verifiable deliverable.
 
-After this command succeeds, the per-turn breadcrumb auto-switches to `[workflow-state:planning]`, telling the AI to stay in planning.
+After this command succeeds, the per-turn breadcrumb auto-switches to `[workflow-state:planning]`, guiding planning until final-plan approval, then letting the main AI activate the task.
 
 Run only `create` here — do not also run `start`. `start` flips status to `in_progress`, which switches the breadcrumb to the implementation phase before planning artifacts are reviewed. Save `start` for step 1.4.
 
@@ -517,7 +523,7 @@ Skip jsonl curation only. Context is loaded directly by the `trellis-before-dev`
 
 #### 1.4 Activate task `[required · once]`
 
-After artifact review, flip the task status to `in_progress`:
+After the user approves the latest final plan, the main AI validates the artifacts and runs the following command to flip the task status to `in_progress`. Repair format-only failures and retry without duplicate approval; do not delegate this routine transition to the user:
 
 ```bash
 python3 ./.trellis/scripts/task.py start <task-dir>

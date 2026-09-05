@@ -122,6 +122,130 @@ afterEach(() => {
 });
 
 describe("classified governance gate", () => {
+  it.each([
+    [
+      "Chinese",
+      "## 目标\n修复规划阶段无法自动启动的问题。\n## 需求\n批准后执行启动命令。\n## 验收标准\n- [ ] 用户无需重复批准。",
+    ],
+    [
+      "bilingual",
+      "## 1. 目标（Goal）\n批准后继续开发。\n## 二、Requirements / 需求\n保留现有授权。\n## 3. **验收标准 / Acceptance Criteria**\n- [ ] 启动后进入实现。",
+    ],
+    [
+      "nested",
+      "## 目标\n支持中文规划文档。\n## 要求与验收\n### 需求\n识别中文章节。\n### 验收标准\n- [ ] 中文文档启动成功。",
+    ],
+    [
+      "reordered",
+      "## 验收条件\n启动成功。\n## 额外说明\n允许额外内容。\n## 要求\n保留验证依据。\n## 任务目标\n降低格式限制。",
+    ],
+    [
+      "code verification",
+      "## 目标\n支持中文规划。\n## 需求\n保留已有代码示例。\n## 验收标准\n```bash\npython3 verify_planning.py\n```\n",
+    ],
+  ])(
+    "starts with %s planning headings and Chinese Task Basis fields",
+    (_name, prd) => {
+      const projectDir = createProject();
+      const created = runTask(projectDir, [
+        "create",
+        "Localized planning",
+        "--slug",
+        "localized",
+        "--classification",
+        "maintenance",
+        "--product-intent-reason",
+        "Repair workflow transition without changing product behavior.",
+        "--no-start",
+      ]);
+      expect(created.status).toBe(0);
+      const taskDir = created.stdout.trim();
+      writeFile(
+        join(projectDir, taskDir, "intent.md"),
+        [
+          "# 任务依据",
+          "## 任务分类",
+          "maintenance",
+          "## 产品意图",
+          "状态：NOT_REQUIRED",
+          "链接：",
+          "原因：修复已有流程，不增加产品范围。",
+          "## 预期结果",
+          "批准后自动继续。",
+          "## 范围与非目标",
+          "仅修复流程，不改产品功能。",
+          "## 验收或验证依据",
+          "中文规划可通过门禁。",
+        ].join("\n"),
+      );
+      writeFile(join(projectDir, taskDir, "prd.md"), prd);
+      const result = runTask(projectDir, ["start", taskDir]);
+      expect(result.stderr).not.toContain("Governance gate blocked");
+      expect(result.status).toBe(0);
+      expect(
+        JSON.parse(
+          readFileSync(join(projectDir, taskDir, "task.json"), "utf-8"),
+        ),
+      ).toMatchObject({ status: "in_progress" });
+    },
+  );
+
+  it.each([
+    ["empty", "## 验收标准\n- [ ]\n", "no substantive content"],
+    ["placeholder", "## 验收标准\n待定\n", "no substantive content"],
+    ["heading only", "## 验收标准\n### 等待补充\n", "no substantive content"],
+    [
+      "comment",
+      "<!--\n## 验收标准\n不能用注释冒充验收依据。\n-->\n",
+      "not recognized or is absent",
+    ],
+    [
+      "fenced example",
+      "```md\n## 验收标准\n不能用示例冒充验收依据。\n```\n",
+      "not recognized or is absent",
+    ],
+    [
+      "unrecognized heading",
+      "## 随便写个标题\n已有文字不能代替验收依据。\n",
+      "not recognized or is absent",
+    ],
+  ])(
+    "keeps %s acceptance evidence blocked without activating the task",
+    (_name, acceptance, diagnostic) => {
+      const projectDir = createProject();
+      const created = runTask(projectDir, [
+        "create",
+        "Incomplete localized planning",
+        "--slug",
+        "incomplete-localized",
+        "--classification",
+        "maintenance",
+        "--product-intent-reason",
+        "Repair existing planning behavior.",
+        "--no-start",
+      ]);
+      expect(created.status).toBe(0);
+      const taskDir = created.stdout.trim();
+      completeTaskBasis(projectDir, taskDir, "maintenance", [
+        "Status: NOT_REQUIRED",
+        "Reason: Engineering-only repair.",
+      ]);
+      writeFile(
+        join(projectDir, taskDir, "prd.md"),
+        `## 目标\n支持中文。\n## 需求\n保留有效依据。\n${acceptance}`,
+      );
+      const result = runTask(projectDir, ["start", taskDir]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(diagnostic);
+      expect(result.stderr).toContain("验收标准");
+      expect(
+        JSON.parse(
+          readFileSync(join(projectDir, taskDir, "task.json"), "utf-8"),
+        ),
+      ).toMatchObject({ status: "planning" });
+    },
+  );
+
   it.each(["readonly", "operational"])(
     "does not create a development task for %s work",
     (classification) => {

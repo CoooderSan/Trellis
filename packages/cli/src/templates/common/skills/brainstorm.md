@@ -2,7 +2,7 @@
 
 ## Non-Negotiable Planning Contract
 
-A request to build, implement, fix, refactor, or "go ahead" is not approval to leave planning. Task-creation consent is also not implementation approval.
+An initial request to build, implement, fix, refactor, or "go ahead" does not by itself approve a plan that has not yet been presented. A subsequent reply approving the latest final plan (including `ok`, `开始吧`, or `继续` in that context) does authorize leaving planning. Task-creation consent is also not implementation approval.
 
 For every non-trivial task, the user must respond at least once after the initial request before implementation begins. If no clarification is needed, that response must approve the final planning summary described below.
 
@@ -79,7 +79,7 @@ Examples:
    - Treat TDD as optional: prefer it for reproducible bugs, rules, state machines, algorithms, and pure logic; use contract, integration, build, runtime, log, or manual evidence where a test category is not applicable.
 7. Run the requirement convergence gate, then the PRD convergence pass.
 8. Present the final planning summary and stop. Do not run `task.py start` or edit product code in the same turn.
-9. Only a subsequent user message that explicitly approves the latest planning summary authorizes `task.py start` and implementation. If the artifacts change materially after approval, repeat the final review.
+9. Only a subsequent user message that explicitly approves the latest planning summary authorizes `task.py start` and implementation. If the artifacts change materially after approval, repeat the final review. Once that approval exists, the main AI validates the artifacts, runs `task.py start <task-dir>`, and proceeds after success. The task remaining `planning` is not a prohibition on this transition. Fix format-only gate failures and retry without requesting duplicate approval or asking the user to run start.
 
 Do not invent a project-specific product/spec hierarchy. If the repository already has product, domain, or spec docs, use them. If it does not, proceed with the evidence that exists.
 
@@ -161,6 +161,8 @@ Lightweight tasks may omit `design.md` and `implement.md`; they may not skip evi
 The final planning summary must show Goal, In Scope, Out of Scope, Acceptance Criteria, Key Decisions, relevant Risks or Deferred Items, and artifact status.
 
 ## Artifact Rules
+
+PRD headings may be Chinese, English, or bilingual: `目标 / Goal`, `需求 / Requirements`, and `验收标准 / Acceptance Criteria`. Numbered headings and nested sections (H2–H6) are supported. Keep each required concept identifiable; a combined `要求与验收` heading needs distinct requirement and acceptance subsections. Empty sections, comments, and placeholders do not supply evidence. Code examples can document requirements or verification, but headings inside fenced code do not define document sections. Before final review, evaluate the `task_start` governance gate without activating the task; `task.py validate` checks role context and does not replace this artifact check.
 
 `prd.md` records requirements and acceptance:
 
