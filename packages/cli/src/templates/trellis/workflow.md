@@ -259,7 +259,7 @@ If a Trellis-owned approval or Task Basis gate blocks the transition, use Dazz's
 [/workflow-state:planning]
 
 <!-- Per-turn breadcrumb: shown throughout Phase 1 when codex.dispatch_mode=inline.
-     Codex-only opt-in alternate to [workflow-state:planning]. The main agent
+     Codex default alternate to [workflow-state:planning]. The main agent
      edits code directly in Phase 2, so jsonl curation is skipped —
      the inline workflow loads `trellis-before-dev` instead of injecting JSONL
      into a sub-agent. -->
@@ -300,13 +300,13 @@ For a Trellis-owned manifest/spec hard stop, the main session explains it with D
 [/workflow-state:in_progress]
 
 <!-- Per-turn breadcrumb: shown while status='in_progress' when
-     codex.dispatch_mode=inline. Codex-only opt-in alternate to
+     codex.dispatch_mode=inline. Codex default alternate to
      [workflow-state:in_progress]. The main session edits code directly
      instead of dispatching sub-agents. -->
 
 [workflow-state:in_progress-inline]
 Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> commit (Phase 3.4) -> completion through the active workflow and host. An explicit `/trellis:finish-work` invocation is a recovery/platform fallback, not a required user step.
-Do not dispatch implement/check sub-agents in inline mode.
+Trellis must not automatically dispatch implement/check sub-agents in inline mode. Explicit user authorization for the current task may still permit native sub-agents under the applicable governance rules.
 Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, plus applicable spec/research loaded by skills. Skipping jsonl does not skip specs, review, or risk-appropriate verification.
 For a Trellis-owned task/spec hard stop, use Dazz's direct correction plus the single concrete fix; ordinary implementation and check reporting stays natural.
 [/workflow-state:in_progress-inline]

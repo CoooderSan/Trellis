@@ -461,17 +461,17 @@ describe("trellis template constants", () => {
     expect(hookAutoBlock).toContain("SubagentStart");
   });
 
-  it("[codex-native-subagents] template mode helpers default to auto and fail invalid values closed to inline", () => {
+  it("[codex-native-subagents] template mode helpers default to inline and keep auto as an explicit opt-in", () => {
     const scripts = getAllScripts();
     const config = scripts.get("common/config.py") ?? "";
     const workflowPhase = scripts.get("common/workflow_phase.py") ?? "";
     const taskStore = scripts.get("common/task_store.py") ?? "";
 
-    expect(config).toContain('DEFAULT_CODEX_DISPATCH_MODE = "auto"');
+    expect(config).toContain('DEFAULT_CODEX_DISPATCH_MODE = "inline"');
     expect(config).toContain('if mode == "sub-agent":');
     expect(config).toContain('return "auto"');
     expect(config).toContain("using inline");
-    expect(workflowPhase).toContain('mode = "auto"');
+    expect(workflowPhase).toContain('mode = "inline"');
     expect(workflowPhase).toContain(
       'return "codex-sub-agent" if mode == "auto" else "codex-inline"',
     );

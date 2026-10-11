@@ -130,14 +130,14 @@ channel:
 #-------------------------------------------------------------------------------
 # Codex (dispatch behavior)
 #-------------------------------------------------------------------------------
-# Codex-only knob; other platforms ignore it. Default ("auto") dispatches
-# trellis-implement / trellis-check / trellis-research sub-agents. This does
-# not rely on inherited parent transcripts: `fork_turns` remains
-# caller-controlled, while Codex's native SubagentStart hook injects task
-# context when trusted and child-side loading remains the fallback when it is
-# unavailable. Set to "inline" only to keep implementation and checks in the
-# main session. "sub-agent" remains a backwards-compatible alias for "auto".
-# Invalid explicit values safely use inline mode.
+# Codex-only knob; other platforms ignore it. Default ("inline") keeps
+# implementation and checks in the main session. Set "auto" to opt into
+# trellis-implement / trellis-check / trellis-research sub-agent dispatch.
+# Auto mode does not rely on inherited parent transcripts: `fork_turns`
+# remains caller-controlled, while Codex's native SubagentStart hook injects
+# task context when trusted and child-side loading remains the fallback when
+# it is unavailable. "sub-agent" remains a backwards-compatible alias for
+# "auto". Invalid explicit values safely use inline mode.
 #
 # In "auto" mode, dispatched sub-agents inherit the main session's model
 # unless you pin one. To use a cheaper/faster model for implement/check/
@@ -145,9 +145,12 @@ channel:
 # on the generated `.codex/agents/trellis-*.toml` files (see the commented
 # hint lines in those files) — there is no config.yaml knob for this,
 # `trellis update` preserves your edits across regeneration.
+# Inline mode only disables Trellis-managed automatic dispatch. A user may
+# still explicitly authorize Codex native sub-agents for the current task;
+# team governance controls that per-task authorization and count.
 #
 # codex:
-#   dispatch_mode: auto  # or "inline"; legacy alias: "sub-agent"
+#   dispatch_mode: inline  # set "auto" to opt into Trellis sub-agent dispatch; legacy alias: "sub-agent"
 
 #-------------------------------------------------------------------------------
 # Sub-agent context injection limits

@@ -1,0 +1,9 @@
+{
+  "version": "0.6.16",
+  "description": "Make Codex inline execution the safe default while preserving explicit sub-agent opt-in",
+  "breaking": false,
+  "recommendMigrate": false,
+  "changelog": "**Codex dispatch safety:**\n- `codex.dispatch_mode` now defaults to `inline`, so the main Codex session implements and checks work itself unless a project explicitly opts into Trellis sub-agent dispatch.\n- Inline mode disables Trellis-managed automatic dispatch; it still permits Codex native sub-agents when the user explicitly authorizes them for the current task under applicable governance.\n- Set `codex.dispatch_mode: auto` in `.trellis/config.yaml` to keep Trellis-managed Codex sub-agent dispatch. The legacy `sub-agent` value remains an alias for `auto`.\n- New Codex tasks no longer seed implement/check JSONL files in the default inline mode; explicit `auto` projects keep the existing JSONL and native `SubagentStart` flow.\n- Invalid dispatch values continue to fail closed to inline mode.",
+  "migrations": [],
+  "notes": "Upgrade both Ecochain Trellis packages, run `trellis update` in each project, then start a new Codex session. No `--migrate` flag is required. Projects with no explicit `codex.dispatch_mode` become inline by default; projects already set to `auto` or the legacy `sub-agent` alias keep sub-agent dispatch."
+}

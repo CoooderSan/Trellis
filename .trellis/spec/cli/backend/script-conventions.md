@@ -648,11 +648,11 @@ a `.current-task` fallback or a Python hook directory.
 - `task.py create` creates `implement.jsonl` / `check.jsonl` only when the
   repo has a platform configured that consumes those files. For `.codex/`,
   this is gated by `get_codex_dispatch_mode()`: the default is
-  `codex.dispatch_mode: auto` (native `SubagentStart` context injection with
-  a child-side pull fallback), which seeds JSONL like every other sub-agent
-  platform. `sub-agent` is a backwards-compatible alias for `auto`. Setting
-  `codex.dispatch_mode: inline` opts out and loads context through skills
-  instead, so JSONL is not seeded.
+  `codex.dispatch_mode: inline`, which loads context through skills and does
+  not seed JSONL. Explicit `codex.dispatch_mode: auto` opts into native
+  `SubagentStart` context injection with a child-side pull fallback and seeds
+  JSONL like every other sub-agent platform. `sub-agent` is a
+  backwards-compatible alias for `auto`.
 - `task.py start` writes session-local state only when a context key is
   available. Otherwise it enters degraded mode: no session pointer is persisted,
   `.trellis/.current-task` is not written, and `task.json.status` may still move
@@ -729,8 +729,8 @@ developer set"}` to stderr and exits 1 (mirrors the human-mode error).
 | `create` with context key, default mode                                                                          | Task files exist; session runtime points at the new task; activation and source are printed; no `.current-task`         |
 | `create --no-start` with context key                                                                             | Task files exist; existing session runtime is unchanged; skip notice is printed; no `.current-task`                     |
 | `create` without context key                                                                                     | Task files exist; no `.runtime`; no `.current-task`                                                                     |
-| `create` with `.codex/` and no `codex.dispatch_mode` override (default `auto`)                                   | Task files exist; `implement.jsonl` and `check.jsonl` contain seed `_example` rows                                      |
-| `create` with `.codex/` and `codex.dispatch_mode: inline`                                                        | Task files exist; no `implement.jsonl`; no `check.jsonl`                                                                |
+| `create` with `.codex/` and no `codex.dispatch_mode` override (default `inline`)                                 | Task files exist; no `implement.jsonl`; no `check.jsonl`                                                                |
+| `create` with `.codex/` and `codex.dispatch_mode: auto`                                                          | Task files exist; `implement.jsonl` and `check.jsonl` contain seed `_example` rows                                      |
 | `start` without context key                                                                                      | Returns success in degraded mode; no `.runtime`; no `.current-task`; hints IDE/session identity or `TRELLIS_CONTEXT_ID` |
 | `start` with `TRELLIS_CONTEXT_ID`                                                                                | Writes `.runtime/sessions/<key>.json`; does not require `.current-task`                                                 |
 | `current --source` with same context key                                                                         | Prints `Source: session:<key>`                                                                                          |
@@ -1958,9 +1958,9 @@ Two near-misses worth remembering:
   `# default` comment on the user's config silently broke dispatch routing.
 - `task.py create` must read `codex.dispatch_mode` through
   `get_codex_dispatch_mode()` before deciding whether `.codex/` should seed
-  `implement.jsonl` / `check.jsonl`. A missing key defaults to `auto`;
-  an invalid explicit value falls back to `inline` (with a stderr warning),
-  not `auto`.
+  `implement.jsonl` / `check.jsonl`. A missing key defaults to `inline`;
+  an invalid explicit value also falls back to `inline` (with a stderr
+  warning).
 - `session_auto_commit` (0.5.11) almost shipped with a one-line
   `config.get(...).strip()` reader before being routed through
   `get_session_auto_commit`.

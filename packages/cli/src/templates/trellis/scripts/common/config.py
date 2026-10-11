@@ -168,7 +168,7 @@ def _next_content_line(lines: list[str], start: int) -> tuple[int, str]:
 DEFAULT_SESSION_COMMIT_MESSAGE = "chore: record journal"
 DEFAULT_MAX_JOURNAL_LINES = 2000
 DEFAULT_SESSION_AUTO_COMMIT = True
-DEFAULT_CODEX_DISPATCH_MODE = "auto"
+DEFAULT_CODEX_DISPATCH_MODE = "inline"
 
 CONFIG_FILE = "config.yaml"
 
@@ -248,9 +248,10 @@ def get_session_auto_commit(repo_root: Path | None = None) -> bool:
 def get_codex_dispatch_mode(repo_root: Path | None = None) -> str:
     """Return Codex dispatch mode.
 
-    Default is ``auto``, which dispatches Trellis sub-agents and uses native
-    context injection with a child-side fallback. ``inline`` is an explicit
-    opt-out. ``sub-agent`` remains a backwards-compatible alias for ``auto``.
+    Default is ``inline``, so the main Codex session performs the work itself.
+    ``auto`` explicitly opts into Trellis sub-agent dispatch and native context
+    injection with a child-side fallback. ``sub-agent`` remains a
+    backwards-compatible alias for ``auto``.
 
     Invalid explicit configuration falls back to ``inline`` rather than
     unexpectedly dispatching a sub-agent. This CLI-facing parser is the only

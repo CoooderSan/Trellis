@@ -573,8 +573,12 @@ The native hook path calls this resolver with `platform="codex"`,
   fallback if that read fails, and accept the marker as complete only when no
   saved-output notice is present. Marker absence without a saved-output notice
   also uses the pull fallback.
-- Native dispatch (`codex.dispatch_mode: auto`) does not set a model on the
-  spawned sub-agent by default — Codex's own precedence (spawn value ->
+- Codex defaults to `codex.dispatch_mode: inline`, so the main session performs
+  implement/check work and Trellis does not auto-dispatch. Per-task user
+  authorization can still allow Codex native sub-agents under applicable
+  governance. Trellis-managed native dispatch is available through explicit
+  `codex.dispatch_mode: auto`; it does not set a model on the spawned sub-agent
+  by default — Codex's own precedence (spawn value ->
   `[agents]` default -> parent) means the child **inherits the main
   session's model** unless the generated `.codex/agents/trellis-*.toml`
   pins one. Users tune this by editing `model` / `model_reasoning_effort`
