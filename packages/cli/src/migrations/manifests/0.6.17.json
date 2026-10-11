@@ -1,0 +1,9 @@
+{
+  "version": "0.6.17",
+  "description": "Reissue Codex inline-dispatch safety on a distinct patch version so existing 0.6.16 projects receive the update",
+  "breaking": false,
+  "recommendMigrate": false,
+  "changelog": "**Codex dispatch safety:**\n- Reissues the inline-dispatch default as `0.6.17` so projects already stamped `0.6.16` do not treat the update as a no-op.\n- `codex.dispatch_mode` defaults to `inline`, so the main Codex session implements and checks work itself unless a project explicitly opts into Trellis sub-agent dispatch.\n- Set `codex.dispatch_mode: auto` in `.trellis/config.yaml` to keep Trellis-managed Codex sub-agent dispatch. The legacy `sub-agent` value remains an alias for `auto`.\n- New Codex tasks no longer seed implement/check JSONL files in the default inline mode. Invalid dispatch values fail closed to inline mode.",
+  "migrations": [],
+  "notes": "Upgrade both Ecochain Trellis packages to 0.6.17, run `trellis update` in each project, then start a new Codex session. No `--migrate` flag is required."
+}
